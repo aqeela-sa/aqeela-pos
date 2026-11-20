@@ -4,9 +4,10 @@
 import * as F from "./fb.js";
 import { firebaseConfig } from "./firebase-config.js";
 
-const VERSION = "1.2.2";
+const VERSION = "1.2.3";
 const ADMIN_EMAIL = "abuabraj@gmail.com";
 const DEVICE_EMAIL = "cashier@aqeela-pos.app";
+const APP_NAME = `<span dir="ltr">Cashier AQ</span>`;
 
 const CATS = [["chicken", "الدجاج"], ["meat", "اللحم"], ["extras", "الإضافات"], ["drinks", "المشروبات"]];
 const TYPES = [["dine", "محلي"], ["take", "سفري"], ["lokit", "لوكيت"]];
@@ -145,7 +146,7 @@ function route() {
 /* ---------- screens ---------- */
 function render(view, msg) {
   if (S.view !== view) closeModal(); S.view = view; const A = $("#app");
-  if (view === "boot") A.innerHTML = `<div class="center"><div class="brand"><div class="logo"><img src="icons/logo.png" alt=""></div><h1>شاورما العقيله</h1><p>جارٍ التحميل…</p></div></div>`;
+  if (view === "boot") A.innerHTML = `<div class="center"><div class="brand"><div class="logo"><img src="icons/logo.png" alt=""></div><h1>${APP_NAME}</h1><p>جارٍ التحميل…</p></div></div>`;
   if (view === "login") return drawLogin(msg);
   if (view === "setup") return drawSetup();
   if (view === "notready") A.innerHTML = `<div class="center"><div class="panel"><div class="brand"><div class="logo"><img src="icons/logo.png" alt=""></div><h1>الكاشير غير مُجهّز بعد</h1><p>يجب أن يدخل المدير مرة واحدة من حسابه لتجهيز المنيو والإعدادات.</p></div>
@@ -157,7 +158,7 @@ function render(view, msg) {
 
 function drawLogin(msg) {
   $("#app").innerHTML = `<div class="center"><form class="panel" id="lf">
-    <div class="brand"><div class="logo"><img src="icons/logo.png" alt=""></div><h1>كاشير شاورما العقيله</h1><p>تسجيل دخول الجهاز (مرة واحدة)</p></div>
+    <div class="brand"><div class="logo"><img src="icons/logo.png" alt=""></div><h1>${APP_NAME}</h1><p>تسجيل دخول الجهاز (مرة واحدة)</p></div>
     ${msg ? `<div class="err">${esc(msg)}</div>` : ""}
     <div class="f"><label for="em">البريد الإلكتروني</label><input id="em" type="email" autocomplete="username" inputmode="email" dir="ltr" value="${esc(ls.get("lastEmail", DEVICE_EMAIL))}" required></div>
     <div class="f"><label for="pw">كلمة المرور</label><input id="pw" type="password" autocomplete="current-password" dir="ltr" required></div>
@@ -200,7 +201,7 @@ function drawPin() {
   let who = list.length === 1 ? list[0].id : null, pin = "";
   const noPins = list.every(c => !c.pinHash);
   $("#app").innerHTML = `${S.device.test ? `<div class="testbar">وضع تجريبي — الطلبات لا تُحسب في المبيعات</div>` : ""}<div class="center"><div class="panel" style="width:min(460px,100%)">
-    <div class="brand"><div class="logo"><img src="icons/logo.png" alt=""></div><h1>${esc(S.config.store.name)}</h1><p>اختر اسمك وأدخل رمزك</p></div>
+    <div class="brand"><div class="logo"><img src="icons/logo.png" alt=""></div><h1>${APP_NAME}</h1><p>اختر اسمك وأدخل رمزك</p></div>
     ${noPins ? `<div class="note warn" style="margin-bottom:12px">لم تُحدَّد رموز الكاشيرين بعد. ${isAdmin() ? "حدّدها من لوحة المدير ← الكاشيرون." : "يحددها المدير من لوحة المدير."}</div>` : ""}
     <div class="who">${list.map(c => `<button data-c="${c.id}" ${!c.pinHash ? "disabled" : ""}>${esc(c.name)}${!c.pinHash ? "<small>بدون رمز</small>" : ""}</button>`).join("")}</div>
     <div class="dots" id="dots">${"<i></i>".repeat(4)}</div>
@@ -233,7 +234,7 @@ function drawPos() {
 }
 function drawTop() {
   const T = $("#top"); if (!T) return; const ty = S.cart.type;
-  T.innerHTML = `<div class="t-brand"><b><img src="icons/logo.png" alt=""></b><span>${esc(S.config.store.name)}</span></div>
+  T.innerHTML = `<div class="t-brand"><b><img src="icons/logo.png" alt=""></b><span>${APP_NAME}</span></div>
     <div class="seg">${TYPES.map(([k, l]) => `<button data-t="${k}" class="${ty === k ? "on" : ""} ${k}">${l}</button>`).join("")}</div>
     <div class="sp"></div>
     ${S.device.test ? `<span class="pill test">تجريبي</span>` : ""}
