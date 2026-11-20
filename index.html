@@ -144,11 +144,11 @@ input,select,textarea{font:inherit;color:inherit}
 /* modal */
 .ov{position:fixed;inset:0;background:rgba(20,16,16,.45);display:grid;place-items:center;padding:16px;z-index:50;animation:fade .15s}
 @keyframes fade{from{opacity:0}}
-.mdl{background:#fff;border-radius:20px;width:min(520px,100%);max-height:calc(100% - 20px);display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.25)}
-.mdl.wide{width:min(980px,100%);height:calc(100% - 20px)}
+.mdl{background:#fff;border-radius:20px;width:min(520px,100%);max-height:calc(100vh - 32px);max-height:calc(100dvh - 32px);display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.25)}
+.mdl.wide{width:min(980px,100%);height:calc(100vh - 32px);height:calc(100dvh - 32px)}
 .mdl-h{display:flex;align-items:center;justify-content:space-between;padding:16px 18px;border-bottom:1px solid var(--line);gap:10px}
 .mdl-h h3{margin:0;font-size:19px}
-.mdl-b{padding:18px;overflow-y:auto;flex:1}
+.mdl-b{padding:18px;overflow-y:auto;flex:1;min-height:0}
 .mdl-f{display:flex;gap:10px;padding:14px 18px;border-top:1px solid var(--line);justify-content:flex-end;flex-wrap:wrap}
 .x{width:42px;height:42px;border-radius:12px;background:var(--bg);font-size:22px}
 .big-amt{font-size:44px;font-weight:800;text-align:center;margin:4px 0 12px}
@@ -223,7 +223,7 @@ table.t tfoot td{font-weight:800}
 <div id="app"><div class="center"><div class="brand"><div class="logo">ع</div><h1>شاورما العقيله</h1><p>جارٍ التحميل…</p></div></div></div>
 <div id="print"></div>
 <noscript>يحتاج الكاشير إلى تفعيل JavaScript.</noscript>
-<script type="module" src="app.js?v=1.0.1"></script>
+<script type="module" src="app.js?v=1.1.0"></script>
 <script>
 if ("serviceWorker" in navigator) addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(() => {}));
 </script>

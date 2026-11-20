@@ -4,7 +4,7 @@
 import * as F from "./fb.js";
 import { firebaseConfig } from "./firebase-config.js";
 
-const VERSION = "1.0.1";
+const VERSION = "1.1.0";
 const ADMIN_EMAIL = "abuabraj@gmail.com";
 const DEVICE_EMAIL = "cashier@aqeela-pos.app";
 
@@ -63,7 +63,7 @@ const bizDay = (t = Date.now()) => ymd(new Date(t - (S.config?.cutoff ?? 4) * 36
 /* ---------- state ---------- */
 const S = {
   user: null, role: null, config: null, menu: [], menuReady: false, configReady: false,
-  cashier: ls.get("cashier", null), view: "boot",
+  cashier: ls.get("cashier", null), view: "boot", shift: ls.get("shift", null), shiftOrders: [],
   cart: { type: "take", lines: [], discount: null, sel: null }, cat: "chicken",
   today: [], pending: 0, online: navigator.onLine,
   dev: ls.get("dev", null) || (() => { const d = rid(4); ls.set("dev", d); return d; })(),
@@ -87,13 +87,19 @@ addEventListener("online", () => { S.online = true; drawTop(); });
 addEventListener("offline", () => { S.online = false; drawTop(); });
 
 F.onAuthStateChanged(auth, u => {
-  S.unsub.forEach(f => f()); S.unsub = [];
+  S.unsub.forEach(f => f()); S.unsub = []; shiftSub?.(); shiftSub = null; shiftSubId = "";
   S.user = u; S.role = !u ? null : u.email === ADMIN_EMAIL ? "admin" : u.email === DEVICE_EMAIL ? "device" : "other";
   if (!u) return render("login");
   if (S.role === "other") return render("login", "هذا الحساب غير مصرّح له بالكاشير.");
   S.configReady = S.menuReady = false; render("boot");
+  if (S.shift) { shiftSubId = ""; setShift(S.shift); }
   S.unsub.push(F.onSnapshot(D("config", "main"), s => { S.config = s.exists() ? s.data() : null; S.configReady = true; route(); },
     e => { console.error(e); render("login", "تعذّر قراءة الإعدادات: " + (e.code || e.message)); }));
+  /* الوردية المفتوحة على هذا الجهاز (لاسترجاعها إن فُقدت من ذاكرة الجهاز) */
+  S.unsub.push(F.onSnapshot(F.query(C("shifts"), F.where("device", "==", S.dev), F.where("status", "==", "open")), s => {
+    const open = s.docs.map(d => d.data()).sort((a, b) => b.openedAt - a.openedAt)[0];
+    if (!S.shift && open) { setShift(open); route(); }
+  }, e => console.error(e)));
   S.unsub.push(F.onSnapshot(C("menu"), s => { S.menu = s.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (a.sort ?? 0) - (b.sort ?? 0)); S.menuReady = true; route(); },
     e => console.error(e)));
 });
@@ -113,9 +119,9 @@ function route() {
   if (!S.config || !S.menu.length) return render(isAdmin() ? "setup" : "notready");
   const c = S.cashier && S.config.cashiers.find(x => x.id === S.cashier.id && x.active);
   if (!c) { S.cashier = null; ls.set("cashier", null); }
-  if (S.view === "pos" && S.cashier) { drawMenu(); drawCart(); drawTop(); return; }
+  if (S.view === "pos" && S.cashier && S.shift) { drawMenu(); drawCart(); drawTop(); return; }
   if (S.view === "pin" || !S.cashier) return render("pin");
-  render("pos");
+  render(S.shift ? "pos" : "openshift");
 }
 
 /* ---------- screens ---------- */
@@ -127,7 +133,8 @@ function render(view, msg) {
   if (view === "notready") A.innerHTML = `<div class="center"><div class="panel"><div class="brand"><div class="logo">ع</div><h1>الكاشير غير مُجهّز بعد</h1><p>يجب أن يدخل المدير مرة واحدة من حسابه لتجهيز المنيو والإعدادات.</p></div>
     <button class="btn ghost block" id="lo">تسجيل الخروج</button></div></div>`, $("#lo").onclick = () => F.signOut(auth);
   if (view === "pin") return drawPin();
-  if (view === "pos") return drawPos();
+  if (view === "pos") { if (!S.shift) return render("openshift"); return drawPos(); }
+  if (view === "openshift") return drawOpenShift();
 }
 
 function drawLogin(msg) {
@@ -187,13 +194,13 @@ function drawPin() {
   $$("[data-c]").forEach(b => b.onclick = () => { who = b.dataset.c; pin = ""; sel(); dots(); });
   const check = async () => {
     const c = list.find(x => x.id === who); if (!c) { toast("اختر اسمك أولاً"); pin = ""; return dots(); }
-    if (c.pinHash && await sha(S.config.salt + ":" + pin) === c.pinHash) { S.cashier = { id: c.id, name: c.name }; ls.set("cashier", S.cashier); render("pos"); }
+    if (c.pinHash && await sha(S.config.salt + ":" + pin) === c.pinHash) { S.cashier = { id: c.id, name: c.name }; ls.set("cashier", S.cashier); render(S.shift ? "pos" : "openshift"); }
     else { $("#dots").classList.add("shake"); setTimeout(() => { $("#dots")?.classList.remove("shake"); pin = ""; dots(); }, 380); }
   };
   $$("[data-k]").forEach(b => b.onclick = () => { const k = b.dataset.k;
     if (k === "c") pin = ""; else if (k === "b") pin = pin.slice(0, -1); else if (pin.length < 4) pin += k;
     dots(); if (pin.length === 4) check(); });
-  $("#lo").onclick = () => askManager("خروج الجهاز من الحساب", () => F.signOut(auth));
+  $("#lo").onclick = () => { if (S.shift) return toast("قفّل الوردية المفتوحة أولاً", true); askManager("خروج الجهاز من الحساب", () => F.signOut(auth)); };
   if ($("#toadm")) $("#toadm").onclick = openAdmin;
 }
 
@@ -213,11 +220,13 @@ function drawTop() {
     <div class="sp"></div>
     ${S.device.test ? `<span class="pill test">تجريبي</span>` : ""}
     ${!S.online ? `<span class="pill off"><i class="d"></i>بدون إنترنت</span>` : S.pending ? `<span class="pill pend"><i class="d" style="background:var(--warn)"></i>يُرسل ${S.pending}</span>` : `<span class="pill"><i class="d"></i>متصل</span>`}
+    <button class="pill" id="sh" title="الوردية">🕘 الوردية <span class="num">${S.shift ? hm(S.shift.openedAt) : ""}</span></button>
     <button class="pill" id="me" title="تبديل الكاشير">👤 ${esc(S.cashier?.name || "")}</button>
     <button class="iconbtn" id="ord" title="طلبات اليوم">🧾</button>
     <button class="iconbtn" id="more" title="القائمة">☰</button>`;
   $$("[data-t]").forEach(b => b.onclick = () => setType(b.dataset.t));
-  $("#me").onclick = () => { if (S.cart.lines.length && !confirm("في السلة أصناف. تبديل الكاشير يفرّغها، هل تريد المتابعة؟")) return; resetCart(); S.cashier = null; ls.set("cashier", null); render("pin"); };
+  $("#me").onclick = switchCashier;
+  $("#sh").onclick = openShift;
   $("#ord").onclick = openOrders;
   $("#more").onclick = openMore;
 }
@@ -379,11 +388,12 @@ async function complete(method, given, change) {
     lines: S.cart.lines.map(l => ({ id: l.id, ref: l.ref, name: l.name, price: l.price, qty: l.qty, mods: l.mods.map(m => ({ id: m.id, ref: m.ref, name: m.name, price: m.price })), total: lineTotal(l) })),
     subtotal: st, discount: S.cart.discount ? { ...S.cart.discount, amount: da } : null, total: r2(st - da),
     given: method === "cash" ? r2(given) : null, change: method === "cash" ? r2(change) : 0,
-    cashierId: S.cashier.id, cashierName: S.cashier.name, device: S.dev, status: "paid", test: !!S.device.test, v: 1, app: VERSION,
+    cashierId: S.cashier.id, cashierName: S.cashier.name, device: S.dev, shiftId: S.shift?.id || null, status: "paid", test: !!S.device.test, v: 1, app: VERSION,
   };
   o.code = await receiptCode(o);
   fire(F.setDoc(D("orders", o.id), { ...o, savedAt: F.serverTimestamp() }), "الطلب");
   if (!S.today.some(x => x.id === o.id)) S.today = [{ ...o, _pending: true }, ...S.today];
+  if (!S.shiftOrders.some(x => x.id === o.id)) S.shiftOrders = [o, ...S.shiftOrders];
   resetCart();
   showDone(o);
   if (S.device.autoPrint) printOrder(o);
@@ -425,7 +435,7 @@ function orderDetail(o) {
 function openOrder(o) {
   if (!o) return;
   modal(`${mh(`طلب رقم <span class="num">${pad(o.no, 4)}</span>`)}<div class="mdl-b">${orderDetail(o)}</div>
-    <div class="mdl-f">${o.status !== "void" ? `<button class="btn ghost" id="vd" style="margin-inline-end:auto;color:var(--bad)">إلغاء الطلب</button>` : ""}<button class="btn ghost" id="bk">رجوع</button><button class="btn" id="rp">🖨 إعادة الطباعة</button></div>`);
+    <div class="mdl-f">${o.status !== "void" && (!o.shiftId || o.shiftId === S.shift?.id) ? `<button class="btn ghost" id="vd" style="margin-inline-end:auto;color:var(--bad)">إلغاء الطلب</button>` : o.status !== "void" ? `<span class="small muted" style="margin-inline-end:auto;align-self:center">لا يُلغى: الطلب من وردية أخرى${o.device !== S.dev ? " أو جهاز آخر" : " مقفلة"}</span>` : ""}<button class="btn ghost" id="bk">رجوع</button><button class="btn" id="rp">🖨 إعادة الطباعة</button></div>`);
   $("#bk").onclick = openOrders; $("#rp").onclick = () => printOrder(o, true);
   $("#vd") && ($("#vd").onclick = () => askManager(`إلغاء الطلب ${pad(o.no, 4)} بمبلغ ${m2(o.total)}`, () => {
     modal(`${mh("سبب الإلغاء")}<div class="mdl-b"><div class="f"><label for="vr">السبب (يظهر في التقرير)</label><input id="vr" placeholder="مثال: خطأ في الطلب، العميل ألغى"></div>
@@ -443,13 +453,14 @@ function openOrder(o) {
 function openMore() {
   modal(`${mh("القائمة")}<div class="mdl-b"><div class="list">
     <button class="row" id="m-ord"><span style="font-size:24px">🧾</span><span><b>طلبات اليوم</b><br><span class="meta">عرض، إعادة طباعة، إلغاء</span></span><span></span></button>
+    <button class="row" id="m-sh"><span style="font-size:24px">🕘</span><span><b>الوردية</b><br><span class="meta">مفتوحة منذ <span class="num">${S.shift ? hm(S.shift.openedAt) : ""}</span> · إيداع، صرف، تقفيل</span></span><span></span></button>
     <button class="row" id="m-sw"><span style="font-size:24px">👤</span><span><b>تبديل الكاشير</b><br><span class="meta">الكاشير الحالي: ${esc(S.cashier.name)}</span></span><span></span></button>
     <button class="row" id="m-dev"><span style="font-size:24px">⚙️</span><span><b>إعدادات الجهاز والطابعة</b><br><span class="meta">تحتاج رمز المدير</span></span><span></span></button>
     ${isAdmin() ? `<button class="row" id="m-adm"><span style="font-size:24px">📊</span><span><b>لوحة المدير</b><br><span class="meta">التقرير، المنيو، الكاشيرون، الإعدادات</span></span><span></span></button>` : ""}
     <button class="row" id="m-up"><span style="font-size:24px">🔄</span><span><b>تحديث الكاشير</b><br><span class="meta">الإصدار <span class="num">${VERSION}</span></span></span><span></span></button>
   </div></div>`);
-  $("#m-ord").onclick = openOrders;
-  $("#m-sw").onclick = () => { closeModal(); $("#me").click(); };
+  $("#m-ord").onclick = openOrders; $("#m-sh").onclick = openShift;
+  $("#m-sw").onclick = switchCashier;
   $("#m-dev").onclick = () => askManager("إعدادات الجهاز", openDevice);
   $("#m-adm") && ($("#m-adm").onclick = openAdmin);
   $("#m-up").onclick = async () => { if (S.pending && !confirm("هناك طلبات لم تُرسل بعد. ستبقى محفوظة في الجهاز وتُرسل لاحقاً. هل تريد التحديث؟")) return;
@@ -553,6 +564,9 @@ function showReceipt(cv, msg) {
 /* returns true | error message */
 async function printOrder(o, manual, quiet) {
   let cv; try { cv = await drawReceipt(o); } catch (e) { console.error(e); toast("تعذّر تجهيز الإيصال", true); return "تعذّر تجهيز الإيصال"; }
+  return printCanvas(cv, manual, quiet);
+}
+async function printCanvas(cv, manual, quiet) {
   const mode = S.device.printMode, st = $("#prs");
   if (mode === "none") { if (manual) showReceipt(cv); return true; }
   if (mode === "browser") { if (!manual && !quiet) return true; await browserPrint(cv); return true; }
@@ -563,15 +577,201 @@ async function printOrder(o, manual, quiet) {
     if (st) st.textContent = m; else if (!quiet) toast(m, true); return m; }
 }
 
+/* ---------- الوردية (المرحلة الثانية) ----------
+   تُفتح الوردية على الجهاز بمبلغ الدرج، وتبقى مفتوحة عند تبديل الكاشير. تُقفل بعدّ الكاش «أعمى»:
+   الكاشير يعدّ الدرج أولاً، ثم يرى المتوقع والفرق. كل حركة نقدية (إيداع/صرف) تُسجّل بالسبب والوقت. */
+const DENOMS = [500, 200, 100, 50, 20, 10, 5, 1, 0.5];
+let shiftSub = null, shiftSubId = "";
+function setShift(sh) {
+  S.shift = sh; ls.set("shift", sh);
+  if (!sh) { shiftSub?.(); shiftSub = null; shiftSubId = ""; S.shiftOrders = []; return; }
+  if (shiftSubId === sh.id) return; shiftSub?.(); shiftSubId = sh.id;
+  shiftSub = F.onSnapshot(F.query(C("orders"), F.where("shiftId", "==", sh.id)), s => {
+    S.shiftOrders = s.docs.map(d => d.data()); if ($("#shift-sum")) drawShiftSum();
+  }, e => console.error(e));
+}
+function saveShift() { const sh = { ...S.shift, updatedAt: Date.now() }; S.shift = sh; ls.set("shift", sh); fire(F.setDoc(D("shifts", sh.id), sh), "الوردية"); }
+
+function drawOpenShift() {
+  const last = ls.get("lastFloat", 0); let fl = String(last || "");
+  $("#app").innerHTML = `${S.device.test ? `<div class="testbar">وضع تجريبي — الطلبات لا تُحسب في المبيعات</div>` : ""}<div class="center"><div class="panel" style="width:min(480px,100%)">
+    <div class="brand"><div class="logo">🕘</div><h1>فتح الوردية</h1><p>${esc(S.cashier.name)} · <span class="num">${dmy(bizDay())}</span></p></div>
+    <div class="f"><label for="fl">المبلغ الموجود في الدرج الآن (فكّة بداية الوردية)</label><input id="fl" type="number" inputmode="decimal" min="0" step="0.5" dir="ltr" value="${fl}" placeholder="0"></div>
+    <div class="quick" style="grid-template-columns:repeat(5,1fr)">${[0, 50, 100, 200, 300].map(x => `<button data-fl="${x}">${x}</button>`).join("")}</div>
+    <p class="small muted" style="margin:0 0 14px;line-height:1.7">عُدّ الدرج قبل البدء. هذا المبلغ يُطرح عند التقفيل، فالمتوقع في الدرج = الفكّة + مبيعات الكاش + الإيداعات − المصروفات.</p>
+    <button class="btn block" id="go">فتح الوردية</button>
+    <button class="link" id="bk" style="display:block;margin:12px auto 0;color:var(--mut)">تبديل الكاشير</button></div></div>`;
+  $$("[data-fl]").forEach(b => b.onclick = () => { $("#fl").value = b.dataset.fl; });
+  $("#bk").onclick = () => { S.cashier = null; ls.set("cashier", null); render("pin"); };
+  $("#go").onclick = () => {
+    const v = $("#fl").value === "" ? 0 : r2($("#fl").value); if (v < 0) return toast("المبلغ غير صحيح", true);
+    const t = Date.now(), sh = { id: `${bizDay(t)}-${S.dev}-${rid(5)}`, day: bizDay(t), device: S.dev, status: "open", openedAt: t,
+      openedBy: { ...S.cashier }, float: v, moves: [], cashiers: [S.cashier.name], test: !!S.device.test, app: VERSION };
+    ls.set("lastFloat", v); setShift(sh); saveShift(); toast("تم فتح الوردية ✓"); render("pos");
+  };
+}
+
+function switchCashier() {
+  if (S.cart.lines.length && !confirm("في السلة أصناف. تبديل الكاشير يفرّغها، هل تريد المتابعة؟")) return;
+  modal(`${mh("تبديل الكاشير")}<div class="mdl-b"><p style="margin:0 0 14px;line-height:1.7">الكاشير الحالي: <b>${esc(S.cashier.name)}</b>. إذا كان الكاشير التالي سيستلم الدرج ويُحاسَب عليه، قفّل الوردية أولاً ليُعدّ الدرج ويُسجّل الفرق على صاحبه.</p>
+    <div class="list"><button class="row" id="sw1"><span style="font-size:24px">👤</span><span><b>تبديل فقط</b><br><span class="meta">نفس الوردية والدرج، والطلبات تُسجّل باسم الكاشير الجديد</span></span><span></span></button>
+    <button class="row" id="sw2"><span style="font-size:24px">🔒</span><span><b>تقفيل الوردية ثم التبديل</b><br><span class="meta">عدّ الدرج وتسليمه</span></span><span></span></button></div></div>`);
+  $("#sw1").onclick = () => { resetCart(); S.cashier = null; ls.set("cashier", null); render("pin"); };
+  $("#sw2").onclick = () => { resetCart(); closeShiftFlow(); };
+}
+
+/* حسابات الوردية من طلباتها */
+function shiftCalc(sh, orders) {
+  const ok = orders.filter(o => o.status !== "void"), voids = orders.filter(o => o.status === "void");
+  const sum = a => r2(a.reduce((s, o) => s + o.total, 0)), m = {}, n = {}, ty = {}, items = {};
+  Object.keys(METHODS).forEach(k => { const a = ok.filter(o => o.method === k); m[k] = sum(a); n[k] = a.length; });
+  TYPES.forEach(([k]) => ty[k] = sum(ok.filter(o => o.type === k)));
+  ok.forEach(o => o.lines.forEach(l => { items[l.name] = (items[l.name] || 0) + l.qty; l.mods.forEach(md => items[md.name] = (items[md.name] || 0) + l.qty); }));
+  const moves = sh.moves || [], cin = r2(moves.filter(x => x.kind === "in").reduce((s, x) => s + x.amount, 0)), cout = r2(moves.filter(x => x.kind === "out").reduce((s, x) => s + x.amount, 0));
+  const expected = r2((sh.float || 0) + m.cash + cin - cout);
+  return { count: ok.length, total: sum(ok), m, n, ty, items, disc: r2(ok.reduce((s, o) => s + (o.discount?.amount || 0), 0)), discN: ok.filter(o => o.discount).length,
+    voidN: voids.length, voidT: sum(voids), cin, cout, expected, cards: r2(m.mada + m.visa) };
+}
+
+function openShift() {
+  if (!S.shift) return;
+  modal(`${mh(`الوردية <span class="muted small">منذ <span class="num">${hm(S.shift.openedAt)}</span> · فتحها ${esc(S.shift.openedBy.name)}</span>`)}<div class="mdl-b" id="shift-sum"></div>
+    <div class="mdl-f"><button class="btn ghost" id="cin">＋ إيداع في الدرج</button><button class="btn ghost" id="cout">− صرف من الدرج</button><span class="sp"></span><button class="btn dark" id="cls">🔒 تقفيل الوردية</button></div>`, { wide: true });
+  drawShiftSum();
+  $("#cin").onclick = () => cashMove("in"); $("#cout").onclick = () => askManager("الصرف من الدرج يحتاج رمز المدير", () => cashMove("out"));
+  $("#cls").onclick = closeShiftFlow;
+}
+function drawShiftSum() {
+  const B = $("#shift-sum"); if (!B) return; const c = shiftCalc(S.shift, S.shiftOrders);
+  B.innerHTML = `<div class="kpis"><div class="kpi"><span>الطلبات</span><b class="num">${c.count}</b></div><div class="kpi"><span>المبيعات</span><b>${money(c.total)}</b></div>
+      ${Object.entries(METHODS).map(([k, l]) => `<div class="kpi"><span>${l}</span><b>${money(c.m[k])}</b><span>${c.n[k]} طلب</span></div>`).join("")}</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px">
+    <div><h4 style="margin:4px 0 6px">الدرج</h4><table class="t"><tbody><tr><td>فكّة بداية الوردية</td><td class="n">${money(S.shift.float)}</td></tr>
+      <tr><td>الإيداعات</td><td class="n">${money(c.cin)}</td></tr><tr><td>المصروفات من الدرج</td><td class="n">${money(c.cout)}</td></tr>
+      <tr><td>الخصومات</td><td class="n">${money(c.disc)} <span class="small muted">(${c.discN})</span></td></tr><tr><td>الإلغاءات</td><td class="n">${money(c.voidT)} <span class="small muted">(${c.voidN})</span></td></tr></tbody></table>
+      <p class="small muted" style="margin:8px 0 0">المبلغ المتوقع في الدرج يظهر بعد عدّ الكاش عند التقفيل.</p></div>
+    <div><h4 style="margin:4px 0 6px">حركات الدرج</h4>${(S.shift.moves || []).length ? `<table class="t"><tbody>${S.shift.moves.map(x => `<tr><td class="num">${hm(x.at)}</td><td>${x.kind === "in" ? `<span class="chip ok">إيداع</span>` : `<span class="chip bad">صرف</span>`} ${esc(x.reason)}<br><span class="small muted">${esc(x.by)}</span></td><td class="n">${money(x.amount)}</td></tr>`).join("")}</tbody></table>` : `<p class="muted small">لا توجد حركات.</p>`}</div></div>`;
+}
+function cashMove(kind) {
+  modal(`${mh(kind === "in" ? "إيداع في الدرج" : "صرف من الدرج")}<div class="mdl-b">
+    <div class="f"><label for="ma">المبلغ</label><input id="ma" type="number" inputmode="decimal" min="0" step="0.5" dir="ltr"></div>
+    <div class="f"><label for="mr">السبب</label><input id="mr" placeholder="${kind === "in" ? "مثال: فكّة إضافية من المدير" : "مثال: شراء خبز، ثلج، غاز"}"></div>
+    ${kind === "out" ? `<p class="small muted" style="margin:0">احتفظ بالفاتورة. المصروف يُسجّل في الوردية ويظهر في تقريرها، ويُدخل في برنامج المحاسبة كمصروف من الدرج.</p>` : ""}</div>
+    <div class="mdl-f"><button class="btn ghost" id="mb">رجوع</button><button class="btn" id="mok">حفظ</button></div>`);
+  $("#mb").onclick = openShift;
+  $("#mok").onclick = () => { const a = r2($("#ma").value), r = $("#mr").value.trim(); if (!(a > 0)) return toast("أدخل المبلغ", true); if (!r) return toast("اكتب السبب", true);
+    S.shift.moves = [...(S.shift.moves || []), { kind, amount: a, reason: r, at: Date.now(), by: S.cashier.name, approved: kind === "out" ? "manager" : null }];
+    saveShift(); toast(kind === "in" ? "تم تسجيل الإيداع" : "تم تسجيل الصرف"); openShift(); };
+}
+
+/* التقفيل: 1) عدّ الدرج بالفئات (بدون رؤية المتوقع) 2) النتيجة والفرق 3) التأكيد والطباعة */
+function closeShiftFlow() {
+  if (!S.shift) return; const q = {}; DENOMS.forEach(d => q[d] = "");
+  modal(`${mh("تقفيل الوردية — عدّ الدرج")}<div class="mdl-b">
+    <p class="small muted" style="margin:0 0 12px">عُدّ كل فئة في الدرج واكتب عددها. لا تكتب المبلغ المتوقع، اكتب الموجود فعلاً.</p>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px">${DENOMS.map(d => `<div class="f" style="margin:0"><label for="d${String(d).replace(".", "_")}">فئة ${d === 0.5 ? "نصف ريال" : d}</label><input id="d${String(d).replace(".", "_")}" data-d="${d}" type="number" inputmode="numeric" min="0" step="1" dir="ltr" placeholder="العدد"></div>`).join("")}</div>
+    <div class="chg" style="background:var(--bg);color:var(--ink)"><span>مجموع الكاش المعدود</span><span class="money" id="ct">0.00</span></div>
+    <div class="f" style="margin-top:14px"><label for="tm">إجمالي تقرير جهاز الشبكة (مدى + فيزا) — اختياري</label><input id="tm" type="number" inputmode="decimal" min="0" step="0.01" dir="ltr" placeholder="من تقرير التسوية في جهاز الدفع"></div></div>
+    <div class="mdl-f"><button class="btn ghost" data-close>إلغاء</button><button class="btn" id="nx">التالي</button></div>`);
+  const tot = () => r2(DENOMS.reduce((s, d) => s + d * (+$(`[data-d="${d}"]`).value || 0), 0));
+  $$("#ov [data-d]").forEach(i => i.oninput = () => { $("#ct").textContent = m2(tot()); });
+  $("#nx").onclick = () => {
+    if ($$("#ov [data-d]").some(i => i.value !== "" && (+i.value < 0 || !Number.isInteger(+i.value)))) return toast("العدد يجب أن يكون رقماً صحيحاً", true);
+    const counted = tot(), den = {}; DENOMS.forEach(d => { const v = +$(`[data-d="${d}"]`).value || 0; if (v) den[d] = v; });
+    const term = $("#tm").value === "" ? null : r2($("#tm").value);
+    if (!counted && !confirm("مجموع الكاش المعدود صفر. هل الدرج فارغ فعلاً؟")) return;
+    closeShiftResult(counted, den, term);
+  };
+}
+function closeShiftResult(counted, den, term) {
+  const c = shiftCalc(S.shift, S.shiftOrders), diff = r2(counted - c.expected), tdiff = term == null ? null : r2(term - c.cards);
+  const lab = d => Math.abs(d) < 0.005 ? `<span class="chip ok">مطابق</span>` : d < 0 ? `<span class="chip bad">عجز ${m2(-d)}</span>` : `<span class="chip warn">زيادة ${m2(d)}</span>`;
+  modal(`${mh("تقفيل الوردية — النتيجة")}<div class="mdl-b">
+    <table class="t"><tbody><tr><td>فكّة البداية</td><td class="n">${money(S.shift.float)}</td></tr><tr><td>+ مبيعات الكاش (${c.n.cash} طلب)</td><td class="n">${money(c.m.cash)}</td></tr>
+      <tr><td>+ الإيداعات</td><td class="n">${money(c.cin)}</td></tr><tr><td>− المصروفات من الدرج</td><td class="n">${money(c.cout)}</td></tr>
+      <tr><td><b>المتوقع في الدرج</b></td><td class="n"><b>${money(c.expected)}</b></td></tr><tr><td><b>المعدود فعلاً</b></td><td class="n"><b>${money(counted)}</b></td></tr></tbody></table>
+    <div class="chg ${diff < -0.005 ? "neg" : ""}" style="${diff > 0.005 ? "background:var(--warnbg);color:var(--warn)" : ""}"><span>${Math.abs(diff) < 0.005 ? "الدرج مطابق ✓" : diff < 0 ? "عجز في الدرج" : "زيادة في الدرج"}</span><span class="money">${m2(Math.abs(diff))}</span></div>
+    <table class="t" style="margin-top:12px"><tbody><tr><td>مدى</td><td class="n">${money(c.m.mada)}</td></tr><tr><td>فيزا / ماستركارد</td><td class="n">${money(c.m.visa)}</td></tr>
+      ${term != null ? `<tr><td>جهاز الشبكة ${lab(tdiff)}</td><td class="n">${money(term)}</td></tr>` : ""}<tr><td>لوكيت</td><td class="n">${money(c.m.lokit)}</td></tr>
+      <tr><td><b>إجمالي المبيعات (${c.count} طلب)</b></td><td class="n"><b>${money(c.total)}</b></td></tr></tbody></table>
+    <div class="f" style="margin-top:14px"><label for="nt">ملاحظة ${Math.abs(diff) >= 1 || (tdiff != null && Math.abs(tdiff) >= 1) ? "(مطلوبة لوجود فرق)" : "(اختياري)"}</label><textarea id="nt" placeholder="سبب الفرق إن وُجد"></textarea></div></div>
+    <div class="mdl-f"><button class="btn ghost" id="rb">رجوع للعدّ</button><button class="btn dark" id="ok">🔒 تأكيد التقفيل</button></div>`);
+  $("#rb").onclick = closeShiftFlow;
+  $("#ok").onclick = async () => {
+    const note = $("#nt").value.trim(); if ((Math.abs(diff) >= 1 || (tdiff != null && Math.abs(tdiff) >= 1)) && !note) return toast("اكتب سبب الفرق", true);
+    $("#ok").disabled = true;
+    const sh = { ...S.shift, status: "closed", closedAt: Date.now(), closedBy: { ...S.cashier }, counted, denoms: den, terminal: term, note,
+      cashiers: [...new Set([...(S.shift.cashiers || []), ...S.shiftOrders.map(o => o.cashierName)])],
+      summary: { count: c.count, total: c.total, m: c.m, n: c.n, ty: c.ty, disc: c.disc, voidN: c.voidN, voidT: c.voidT, cin: c.cin, cout: c.cout, expected: c.expected, diff, tdiff, items: c.items } };
+    S.shift = sh; saveShift(); const orders = S.shiftOrders;
+    setShift(null); S.cashier = null; ls.set("cashier", null);
+    const cv = await drawShiftReport(sh, orders); render("pin");
+    modal(`${mh("تم تقفيل الوردية ✓")}<div class="mdl-b"><img class="rcpt" src="${cv.toDataURL("image/png")}" alt="تقرير الوردية" style="width:300px"></div>
+      <div class="mdl-f"><button class="btn ghost" id="zp">🖨 طباعة التقرير</button><button class="btn" data-close>تم</button></div>`);
+    $("#zp").onclick = () => printCanvas(cv, true);
+    if (S.device.printMode === "epos") printCanvas(cv, false, true);
+  };
+}
+
+/* تقرير الوردية (Z) بنفس عرض الإيصال */
+async function drawShiftReport(sh, orders) {
+  const c = sh.summary || shiftCalc(sh, orders), W = 576, M = 16, FONT = `-apple-system,"SF Arabic","Geeza Pro",Tahoma,sans-serif`;
+  const cv = document.createElement("canvas"); cv.width = W; cv.height = 3000; const g = cv.getContext("2d"); g.fillStyle = "#fff"; g.fillRect(0, 0, W, cv.height); g.fillStyle = "#000"; let y = 10;
+  const font = (px, w = 600) => g.font = `${w} ${px}px ${FONT}`;
+  const ctr = (t, px, w) => { font(px, w); g.direction = "rtl"; g.textAlign = "center"; y += px * 1.25; g.fillText(t, W / 2, y); y += px * .25; };
+  const lr = (r, l, px = 25, w = 600) => { font(px, w); y += px * 1.25; g.direction = "rtl"; g.textAlign = "right"; g.fillText(r, W - M, y); if (l != null) { g.direction = "ltr"; g.textAlign = "left"; g.fillText(String(l), M, y); } y += px * .3; };
+  const hr = () => { y += 8; g.fillRect(M, y, W - 2 * M, 2); y += 10; };
+  const dt = t => { const d = new Date(t); return `${pad(d.getDate())}/${pad(d.getMonth() + 1)} ${hm(t)}`; };
+  ctr(S.config.store.name, 36, 800); ctr("تقرير الوردية", 30, 800);
+  if (sh.test) { y += 6; g.fillRect(M, y, W - 2 * M, 38); g.fillStyle = "#fff"; ctr("تجريبي", 24, 800); g.fillStyle = "#000"; y += 6; }
+  hr(); lr("اليوم", dmy(sh.day), 24, 500); lr("الفتح", `${dt(sh.openedAt)}`, 24, 500); lr(`  ${sh.openedBy.name}`, null, 22, 500);
+  if (sh.closedAt) { lr("التقفيل", dt(sh.closedAt), 24, 500); lr(`  ${sh.closedBy.name}`, null, 22, 500); }
+  if ((sh.cashiers || []).length) lr(`الكاشيرون: ${sh.cashiers.join("، ")}`, null, 22, 500);
+  hr(); lr(`المبيعات (${c.count} طلب)`, m2(c.total), 28, 800);
+  Object.entries(METHODS).forEach(([k, l]) => lr(`  ${l} (${c.n[k]})`, m2(c.m[k]), 24, 500));
+  TYPES.forEach(([k, l]) => lr(`  ${l}`, m2(c.ty[k]), 22, 500));
+  lr("الخصومات", m2(c.disc), 24, 500); lr(`الإلغاءات (${c.voidN})`, m2(c.voidT), 24, 500);
+  hr(); lr("الدرج", null, 28, 800); lr("  فكّة البداية", m2(sh.float), 24, 500); lr("  + مبيعات الكاش", m2(c.m.cash), 24, 500);
+  lr("  + الإيداعات", m2(c.cin), 24, 500); lr("  − المصروفات", m2(c.cout), 24, 500); lr("المتوقع", m2(c.expected), 26, 700);
+  if (sh.counted != null) { lr("المعدود", m2(sh.counted), 26, 700); const d = r2(sh.counted - c.expected); lr(Math.abs(d) < 0.005 ? "الفرق: مطابق" : d < 0 ? "الفرق: عجز" : "الفرق: زيادة", m2(Math.abs(d)), 28, 800); }
+  if (sh.terminal != null) { lr("جهاز الشبكة", m2(sh.terminal), 24, 500); lr("  مدى + فيزا في النظام", m2(c.m.mada + c.m.visa), 22, 500); }
+  if ((sh.moves || []).length) { hr(); lr("حركات الدرج", null, 26, 800); sh.moves.forEach(x => lr(`  ${hm(x.at)} ${x.kind === "in" ? "إيداع" : "صرف"}: ${x.reason}`.slice(0, 34), m2(x.amount), 22, 500)); }
+  const it = Object.entries(c.items || {}).sort((a, b) => b[1] - a[1]); if (it.length) { hr(); lr("الأصناف", null, 26, 800); it.forEach(([k, v]) => lr(`  ${k}`, v, 22, 500)); }
+  if (sh.note) { hr(); lr(`ملاحظة: ${sh.note}`.slice(0, 40), null, 22, 500); }
+  y += 30; const out = document.createElement("canvas"); out.width = W; out.height = Math.ceil(y); out.getContext("2d").drawImage(cv, 0, 0); return out;
+}
+
+/* لوحة المدير: الورديات */
+let shf = { a: null, b: null };
+async function admShifts() {
+  const A = $("#adm"); shf.a ||= addDays(bizDay(), -6); shf.b ||= bizDay();
+  A.innerHTML = `<div class="toolbar"><div class="f"><label for="sa1">من</label><input id="sa1" type="date" value="${shf.a}"></div><div class="f"><label for="sb1">إلى</label><input id="sb1" type="date" value="${shf.b}"></div></div><div id="sbody"><p class="muted">جارٍ التحميل…</p></div>`;
+  const go = () => { shf.a = $("#sa1").value; shf.b = $("#sb1").value < shf.a ? shf.a : $("#sb1").value; admShifts(); };
+  $("#sa1").onchange = go; $("#sb1").onchange = go;
+  let L; try { L = (await F.getDocs(F.query(C("shifts"), F.where("day", ">=", shf.a), F.where("day", "<=", shf.b)))).docs.map(d => d.data()).sort((a, b) => b.openedAt - a.openedAt); }
+  catch (e) { $("#sbody").innerHTML = `<div class="err">تعذّر التحميل: ${esc(e.code || e.message)}</div>`; return; }
+  const d = sh => sh.summary ? r2(sh.counted - sh.summary.expected) : null;
+  $("#sbody").innerHTML = L.length ? `<table class="t"><thead><tr><th>اليوم</th><th>الوقت</th><th>الكاشيرون</th><th class="n">المبيعات</th><th class="n">كاش</th><th class="n">المتوقع</th><th class="n">المعدود</th><th>الفرق</th><th></th></tr></thead><tbody>
+    ${L.map((sh, i) => `<tr><td class="num">${dmy(sh.day)}${sh.test ? ` <span class="chip test">تجريبي</span>` : ""}</td><td class="small">فتح <span class="num">${hm(sh.openedAt)}</span><br>${sh.closedAt ? `قفل <span class="num">${hm(sh.closedAt)}</span>` : `<span class="chip warn">مفتوحة</span>`}</td>
+      <td>${esc((sh.cashiers || [sh.openedBy?.name]).join("، "))}</td><td class="n">${sh.summary ? money(sh.summary.total) : "—"}</td><td class="n">${sh.summary ? money(sh.summary.m.cash) : "—"}</td>
+      <td class="n">${sh.summary ? money(sh.summary.expected) : "—"}</td><td class="n">${sh.summary ? money(sh.counted) : "—"}</td>
+      <td>${d(sh) == null ? "" : Math.abs(d(sh)) < 0.005 ? `<span class="chip ok">مطابق</span>` : d(sh) < 0 ? `<span class="chip bad">عجز ${m2(-d(sh))}</span>` : `<span class="chip warn">زيادة ${m2(d(sh))}</span>`}${sh.note ? `<br><span class="small muted">${esc(sh.note)}</span>` : ""}</td>
+      <td>${sh.summary ? `<button class="btn ghost sm" data-z="${i}">التقرير</button>` : ""}</td></tr>`).join("")}</tbody></table>` : `<div class="empty" style="padding:30px">لا توجد ورديات في هذه الفترة</div>`;
+  $$("[data-z]").forEach(b => b.onclick = async () => { const cv = await drawShiftReport(L[+b.dataset.z], []);
+    modal(`${mh("تقرير الوردية")}<div class="mdl-b"><img class="rcpt" src="${cv.toDataURL("image/png")}" alt="تقرير الوردية" style="width:300px"></div>
+      <div class="mdl-f"><button class="btn ghost" id="zb">رجوع للورديات</button><button class="btn" id="zp">🖨 طباعة</button></div>`);
+    $("#zb").onclick = openAdmin; $("#zp").onclick = () => printCanvas(cv, true); });
+}
+
 /* ---------- admin ---------- */
 let admTab = "report";
 function openAdmin() {
   if (!isAdmin()) return;
-  modal(`${mh("لوحة المدير")}<nav class="tabs">${[["report", "التقرير"], ["menu", "المنيو والأسعار"], ["staff", "الكاشيرون والرموز"], ["store", "الإيصال والإعدادات"], ["verify", "التحقق من إيصال"]].map(([k, l]) => `<button data-at="${k}" class="${admTab === k ? "on" : ""}">${l}</button>`).join("")}</nav><div class="mdl-b" id="adm"></div>`, { wide: true });
+  modal(`${mh("لوحة المدير")}<nav class="tabs">${[["report", "التقرير"], ["shifts", "الورديات"], ["menu", "المنيو والأسعار"], ["staff", "الكاشيرون والرموز"], ["store", "الإيصال والإعدادات"], ["verify", "التحقق من إيصال"]].map(([k, l]) => `<button data-at="${k}" class="${admTab === k ? "on" : ""}">${l}</button>`).join("")}</nav><div class="mdl-b" id="adm"></div>`, { wide: true });
   $$("[data-at]").forEach(b => b.onclick = () => { admTab = b.dataset.at; $$("[data-at]").forEach(x => x.classList.toggle("on", x === b)); drawAdm(); });
   drawAdm();
 }
-function drawAdm() { ({ report: admReport, menu: admMenu, staff: admStaff, store: admStore, verify: admVerify })[admTab](); }
+function drawAdm() { ({ report: admReport, shifts: admShifts, menu: admMenu, staff: admStaff, store: admStore, verify: admVerify })[admTab](); }
 
 let rep = { a: null, b: null, test: false };
 async function admReport() {
@@ -729,4 +929,4 @@ function admVerify() {
 }
 
 /* expose for tests */
-window.__aq = { S, render, total, bizDay, drawReceipt, raster };
+window.__aq = { S, render, total, bizDay, drawReceipt, raster, shiftCalc, drawShiftReport };
