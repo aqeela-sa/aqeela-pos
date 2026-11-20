@@ -133,7 +133,8 @@ input,select,textarea{font:inherit;color:inherit}
 .ln .notes span.free{background:#EEF;font-weight:600}
 .ln .ctl .nt{width:auto;padding:0 10px;font-size:14px;color:var(--blue);background:var(--bluebg)}
 .ln .ctl .nt.on{background:var(--blue);color:#fff}
-.nchips{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:8px}
+.nchips{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+@media (max-width:600px){.nchips{grid-template-columns:repeat(2,1fr)}}
 .nchips button{min-height:52px;border-radius:12px;border:2px solid var(--line);background:#fff;font-weight:700;font-size:16px}
 .nchips button.on{border-color:var(--blue);background:var(--bluebg);color:var(--blue)}
 .prep-pill.has{background:#FFF0E0;color:#A04A00}
@@ -249,7 +250,7 @@ table.t tfoot td{font-weight:800}
 <div id="app"><div class="center"><div class="brand"><div class="logo"><img src="icons/logo.png" alt=""></div><h1 dir="ltr">Cashier AQ</h1><p>جارٍ التحميل…</p></div></div></div>
 <div id="print"></div>
 <noscript>يحتاج الكاشير إلى تفعيل JavaScript.</noscript>
-<script type="module" src="app.js?v=1.3.0"></script>
+<script type="module" src="app.js?v=1.3.1"></script>
 <script>
 if ("serviceWorker" in navigator) addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(() => {}));
 </script>

@@ -4,7 +4,7 @@
 import * as F from "./fb.js";
 import { firebaseConfig } from "./firebase-config.js";
 
-const VERSION = "1.3.0";
+const VERSION = "1.3.1";
 const ADMIN_EMAIL = "abuabraj@gmail.com";
 const DEVICE_EMAIL = "cashier@aqeela-pos.app";
 const APP_NAME = `<span dir="ltr">Cashier AQ</span>`;
@@ -41,7 +41,8 @@ const DEFAULT_COSTS = { "sk-0001": 2.53, "sk-0002": 3.75, "sk-0003": 4, "sk-0004
 const BOX_REFS = ["sk-0009", "sk-0010", "sk-0011", "sk-0012", "sk-0013"];
 const DEFAULT_PACK = { boxPrice: 1.4, bagKgPrice: 9, bagsPerKg: 60, perBag: 3 };
 /* ملاحظات الأصناف السريعة (مجانية) — يعدّلها المدير من «الإيصال والإعدادات» */
-const DEFAULT_NOTES = ["بدون ثوم", "زيادة ثوم", "بدون مخلل", "زيادة مخلل", "بدون بطاطس", "زيادة بطاطس", "حار", "بدون حار", "بدون صوص", "زيادة صوص", "بدون طماطم", "بدون بصل"];
+const INGREDIENTS = ["ثوم", "طحينة", "سبايسي", "بطاطس", "كاتشب", "مخلل", "خس", "طماطم", "بصل"];
+const DEFAULT_NOTES = INGREDIENTS.flatMap(x => [`بدون ${x}`, `زيادة ${x}`]);
 const noteList = () => (S.config?.notes?.length ? S.config.notes : DEFAULT_NOTES);
 const hasNotes = l => (l.notes && l.notes.length) || l.note;
 const DEFAULT_CONFIG = {
