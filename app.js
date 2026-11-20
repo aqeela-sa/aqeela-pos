@@ -4,7 +4,7 @@
 import * as F from "./fb.js";
 import { firebaseConfig } from "./firebase-config.js";
 
-const VERSION = "1.3.1";
+const VERSION = "1.3.2";
 const ADMIN_EMAIL = "abuabraj@gmail.com";
 const DEVICE_EMAIL = "cashier@aqeela-pos.app";
 const APP_NAME = `<span dir="ltr">Cashier AQ</span>`;
@@ -315,7 +315,8 @@ function drawCart() {
   $("#last").onclick = () => { const o = S.today.find(x => x.device === S.dev) || S.today[0]; if (!o) return toast("لا توجد طلبات اليوم"); printJob(o, { receipt: true }, true); };
   $$("[data-pay]").forEach(b => b.onclick = () => openPay(b.dataset.pay));
 }
-function resetCart() { S.cart = { type: S.cart.type === "lokit" ? "take" : S.cart.type, lines: [], discount: null, sel: null }; drawTop(); drawCart(); drawMenu(); }
+/* بعد كل طلب يرجع النوع إلى «سفري» (الأكثر شيوعاً)، فلا ينتقل نوع الطلب السابق إلى التالي بالخطأ */
+function resetCart() { S.cart = { type: "take", lines: [], discount: null, sel: null }; drawTop(); drawCart(); drawMenu(); }
 function setType(t) {
   if (t === S.cart.type) return;
   const bad = S.cart.lines.filter(l => { const it = S.menu.find(m => m.id === l.id); return !it || !avail(it, t) || l.mods.some(md => { const mi = S.menu.find(m => m.id === md.id); return !mi || !avail(mi, t); }); });
@@ -370,20 +371,24 @@ function openDiscount() {
 }
 
 /* ----- payment ----- */
+/* نوع الطلب ظاهر في شاشة الدفع: تبديل محلي/سفري (نفس السعر) قبل التأكيد */
+const typeBar = () => S.cart.type === "lokit" ? `<div class="paytype"><span class="chip lk" style="font-size:15px;padding:6px 14px">لوكيت</span></div>`
+  : `<div class="paytype"><span class="muted small">نوع الطلب:</span><div class="seg">${TYPES.filter(t => t[0] !== "lokit").map(([k, l]) => `<button data-pt="${k}" class="${S.cart.type === k ? "on" : ""}">${l}</button>`).join("")}</div></div>`;
+const bindTypeBar = () => $$("#ov [data-pt]").forEach(b => b.onclick = () => { S.cart.type = b.dataset.pt; $$("#ov [data-pt]").forEach(x => x.classList.toggle("on", x === b)); drawTop(); });
 function openPay(method) {
   if (!S.cart.lines.length) return; const T = total();
   if (method !== "cash") {
     modal(`${mh(method === "lokit" ? "تأكيد طلب لوكيت" : `الدفع بـ${METHODS[method]}`)}<div class="mdl-b" style="text-align:center">
-      <div class="big-amt">${money(T)} <small style="font-size:18px">ر.س</small></div>
+      ${typeBar()}<div class="big-amt">${money(T)} <small style="font-size:18px">ر.س</small></div>
       <p class="muted" style="margin:0">${method === "lokit" ? "تأكد أن الطلب مطابق لطلب لوكيت في التطبيق." : "أدخل المبلغ في جهاز الدفع، وبعد نجاح العملية اضغط تأكيد."}</p></div>
       <div class="mdl-f"><button class="btn ghost" data-close>رجوع</button><button class="btn ${method === "lokit" ? "pay-lokit" : "ok"}" id="pok" style="min-width:180px">${method === "lokit" ? "تأكيد الطلب" : "تمت العملية ✓"}</button></div>`);
-    $("#pok").onclick = () => { $("#pok").disabled = true; complete(method, T, 0); };
+    bindTypeBar(); $("#pok").onclick = () => { $("#pok").disabled = true; complete(method, T, 0); };
     return;
   }
   let given = "";
   const notes = [...new Set([T, Math.ceil(T / 5) * 5, Math.ceil(T / 10) * 10, Math.ceil(T / 50) * 50, Math.ceil(T / 100) * 100, 200, 500].filter(x => x >= T))].slice(0, 8);
   modal(`${mh("الدفع كاش")}<div class="mdl-b">
-    <div class="big-amt">${money(T)} <small style="font-size:18px">ر.س</small></div>
+    ${typeBar()}<div class="big-amt">${money(T)} <small style="font-size:18px">ر.س</small></div>
     <div class="quick">${notes.map(x => `<button data-q="${x}">${x === T ? "المبلغ تماماً" : m2(x).replace(".00", "")}</button>`).join("")}</div>
     <div class="f"><label for="gv">المبلغ المستلم من العميل</label><input id="gv" type="number" inputmode="decimal" dir="ltr" min="0" step="0.5" placeholder="${m2(T)}"></div>
     <div id="chg"></div></div>
@@ -392,7 +397,7 @@ function openPay(method) {
     $("#chg").innerHTML = `<div class="chg ${c < 0 ? "neg" : ""}"><span>${c < 0 ? "المبلغ ناقص" : "الباقي للعميل"}</span><span class="money">${m2(Math.abs(c))}</span></div>`;
     $("#pok").disabled = c < 0; $$("#ov [data-q]").forEach(b => b.classList.toggle("on", given !== "" && +b.dataset.q === r2(given))); };
   $$("#ov [data-q]").forEach(b => b.onclick = () => { given = b.dataset.q; $("#gv").value = given; upd(); });
-  $("#gv").oninput = () => { given = $("#gv").value; upd(); }; upd();
+  $("#gv").oninput = () => { given = $("#gv").value; upd(); }; upd(); bindTypeBar();
   $("#pok").onclick = () => { const g = given === "" ? T : r2(given); if (g < T) return; $("#pok").disabled = true; complete("cash", g, r2(g - T)); };
 }
 
@@ -522,8 +527,11 @@ function orderDetail(o) {
 function openOrder(o) {
   if (!o) return;
   modal(`${mh(`طلب رقم <span class="num">${pad(o.no, 4)}</span>`)}<div class="mdl-b">${orderDetail(o)}</div>
-    <div class="mdl-f">${o.status !== "void" && (!o.shiftId || o.shiftId === S.shift?.id) ? `<button class="btn ghost" id="vd" style="margin-inline-end:auto;color:var(--bad)">إلغاء الطلب</button>` : o.status !== "void" ? `<span class="small muted" style="margin-inline-end:auto;align-self:center">لا يُلغى: الطلب من وردية أخرى${o.device !== S.dev ? " أو جهاز آخر" : " مقفلة"}</span>` : ""}<button class="btn ghost" id="bk">رجوع</button><button class="btn ghost" id="rk">🍳 المطبخ</button><button class="btn" id="rp">🖨 الإيصال</button></div>`);
+    <div class="mdl-f">${o.status !== "void" && (!o.shiftId || o.shiftId === S.shift?.id) ? `<button class="btn ghost" id="vd" style="margin-inline-end:auto;color:var(--bad)">إلغاء الطلب</button>` : o.status !== "void" ? `<span class="small muted" style="margin-inline-end:auto;align-self:center">لا يُلغى: الطلب من وردية أخرى${o.device !== S.dev ? " أو جهاز آخر" : " مقفلة"}</span>` : ""}${o.status !== "void" && o.type !== "lokit" ? `<button class="btn ghost" id="ct">↔ تغيير إلى ${o.type === "dine" ? "سفري" : "محلي"}</button>` : ""}<button class="btn ghost" id="bk">رجوع</button><button class="btn ghost" id="rk">🍳 المطبخ</button><button class="btn" id="rp">🖨 الإيصال</button></div>`);
   $("#bk").onclick = openOrders; $("#rp").onclick = () => printJob(o, { receipt: true }, true); $("#rk").onclick = () => printJob(o, { kitchen: true }, true);
+  $("#ct") && ($("#ct").onclick = () => { const to = o.type === "dine" ? "take" : "dine", ch = { from: o.type, to, at: Date.now(), by: S.cashier?.name || "" };
+    const u = { type: to, typeChanges: [...(o.typeChanges || []), ch] }; Object.assign(o, u); fire(F.updateDoc(D("orders", o.id), u), "نوع الطلب");
+    toast(`صار الطلب ${pad(o.no, 4)} ${TYPES.find(t => t[0] === to)[1]}`); if (o.prep === "open") printJob(o, { kitchen: true }, true); openOrder(o); });
   $("#vd") && ($("#vd").onclick = () => askManager(`إلغاء الطلب ${pad(o.no, 4)} بمبلغ ${m2(o.total)}`, () => {
     modal(`${mh("سبب الإلغاء")}<div class="mdl-b"><div class="f"><label for="vr">السبب (يظهر في التقرير)</label><input id="vr" placeholder="مثال: خطأ في الطلب، العميل ألغى"></div>
       <p class="small muted" style="margin:0">${o.method === "cash" ? `أعِد ${m2(o.total)} ر.س للعميل من الدرج.` : o.method === "lokit" ? "تأكد من إلغاء الطلب في لوكيت أيضاً." : "إن كان المبلغ قد خُصم من بطاقة العميل فأعِده من جهاز الدفع."}</p></div>
@@ -655,7 +663,7 @@ function browserPrint(cvs) {
 }
 function showReceipt(cvs, msg) {
   cvs = [].concat(cvs);
-  modal(`${mh(cvs.length > 1 ? "الإيصال وورقة المطبخ" : "الإيصال")}<div class="mdl-b">${msg ? `<div class="note warn" style="margin-bottom:10px">${esc(msg)}</div>` : ""}<div style="display:flex;gap:16px;flex-wrap:wrap;justify-content:center;align-items:flex-start">${cvs.map(cv => `<img class="rcpt" src="${cv.toDataURL("image/png")}" alt="" style="width:280px;margin:0">`).join("")}</div></div>
+  modal(`${mh(cvs.length > 1 ? "الإيصال وورقة المطبخ" : cvs[0]?.dataset?.kind === "kitchen" ? "ورقة المطبخ" : "الإيصال")}<div class="mdl-b">${msg ? `<div class="note warn" style="margin-bottom:10px">${esc(msg)}</div>` : ""}<div style="display:flex;gap:16px;flex-wrap:wrap;justify-content:center;align-items:flex-start">${cvs.map(cv => `<img class="rcpt" src="${cv.toDataURL("image/png")}" alt="" style="width:280px;margin:0">`).join("")}</div></div>
     <div class="mdl-f"><button class="btn" data-close>إغلاق</button></div>`);
 }
 /* returns true | error message */
@@ -697,7 +705,7 @@ async function drawKitchen(o) {
     y += 6;
   }
   hr(); ctr(`عدد الأصناف: ${n}`, 30, 800);
-  y += 30; const out = document.createElement("canvas"); out.width = W; out.height = Math.ceil(y); out.getContext("2d").drawImage(cv, 0, 0); return out;
+  y += 30; const out = document.createElement("canvas"); out.width = W; out.height = Math.ceil(y); out.getContext("2d").drawImage(cv, 0, 0); out.dataset.kind = "kitchen"; return out;
 }
 async function printCanvas(cv, manual, quiet) { /* cv: لوحة أو أكثر */
   const mode = S.device.printMode, st = $("#prs");
