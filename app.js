@@ -4,7 +4,7 @@
 import * as F from "./fb.js";
 import { firebaseConfig } from "./firebase-config.js";
 
-const VERSION = "1.3.2";
+const VERSION = "1.4.0";
 const ADMIN_EMAIL = "abuabraj@gmail.com";
 const DEVICE_EMAIL = "cashier@aqeela-pos.app";
 const APP_NAME = `<span dir="ltr">Cashier AQ</span>`;
@@ -960,15 +960,63 @@ async function admShifts() {
     $("#zb").onclick = openAdmin; $("#zp").onclick = () => printCanvas(cv, true); });
 }
 
+/* ---------- لوحة المتابعة (مثل ملخص فودكس) ---------- */
+let dsh = { p: "day", d: null, cmp: true };
+const pctTxt = (a, b) => !b ? "" : `<span class="dl ${a >= b ? "up" : "dn"}">${a >= b ? "▲" : "▼"} ${Math.abs((a - b) / b * 100).toFixed(1)}%</span>`;
+function dshRange(p, d) {
+  if (p === "day") return [d, d];
+  if (p === "week") { const x = new Date(d + "T12:00:00"), k = (x.getDay() + 1) % 7; const a = addDays(d, -k); return [a, addDays(a, 6)]; } /* الأسبوع يبدأ السبت */
+  return [d.slice(0, 8) + "01", ymd(new Date(+d.slice(0, 4), +d.slice(5, 7), 0))];
+}
+function dshPrev(p, [a, b]) { if (p === "month") { const x = new Date(a + "T12:00:00"); x.setMonth(x.getMonth() - 1); const s = ymd(x); return dshRange("month", s); } const n = (new Date(b) - new Date(a)) / 864e5 + 1; return [addDays(a, -n), addDays(b, -n)]; }
+async function dshLoad([a, b]) { const s = await F.getDocs(F.query(C("orders"), F.where("day", ">=", a), F.where("day", "<=", b))); return s.docs.map(x => x.data()).filter(o => !o.test); }
+function dshCalc(L) {
+  const ok = L.filter(o => o.status !== "void"), vd = L.filter(o => o.status === "void"), sum = a => r2(a.reduce((s, o) => s + o.total, 0));
+  const tot = sum(ok), cg = ok.reduce((s, o) => { const c = o.cogs || orderCogs(o); return s + c.food + c.pack; }, 0);
+  const hours = Array(24).fill(0); ok.forEach(o => hours[new Date(o.ts).getHours()] += o.total);
+  const items = {}; ok.forEach(o => { const f = o.subtotal ? o.total / o.subtotal : 1; o.lines.forEach(l => { const it = items[l.name] ||= { q: 0, v: 0 }; it.q += l.qty; it.v += l.qty * l.price * f; }); });
+  const by = k => { const m = {}; ok.forEach(o => { m[o[k]] = (m[o[k]] || 0) + o.total; }); return m; };
+  const prepT = ok.filter(o => o.deliveredAt).map(o => (o.deliveredAt - o.ts) / 60000);
+  return { n: ok.length, tot, avg: ok.length ? tot / ok.length : 0, cogs: r2(cg), gp: r2(tot - cg), disc: r2(ok.reduce((s, o) => s + (o.discount?.amount || 0), 0)), vN: vd.length, vT: sum(vd),
+    hours, items, pay: by("method"), typ: by("type"), cash: by("cashierName"), prep: prepT.length ? prepT.reduce((a, b) => a + b, 0) / prepT.length : null };
+}
+const bars = (vals, labels) => { const mx = Math.max(1, ...vals); return `<div class="bars">${vals.map((v, i) => `<div class="bar" title="${labels[i]}: ${m2(v)}"><i style="height:${v / mx * 100}%"></i><span>${labels[i]}</span></div>`).join("")}</div>`; };
+const share = (m, names) => { const t = Object.values(m).reduce((a, b) => a + b, 0) || 1; return `<div class="shr">${Object.entries(m).sort((a, b) => b[1] - a[1]).map(([k, v]) => `<div class="sr"><span>${esc(names?.[k] || k)}</span><div class="sb"><i style="width:${v / t * 100}%"></i></div><b class="num">${m2(v)}</b><small class="num">${(v / t * 100).toFixed(0)}%</small></div>`).join("") || `<p class="muted small">—</p>`}</div>`; };
+async function admDash() {
+  const A = $("#adm"); dsh.d ||= bizDay(); const R = dshRange(dsh.p, dsh.d), P = dshPrev(dsh.p, R);
+  A.innerHTML = `<div class="toolbar"><div class="seg">${[["day", "يوم"], ["week", "أسبوع"], ["month", "شهر"]].map(([k, l]) => `<button data-dp="${k}" class="${dsh.p === k ? "on" : ""}">${l}</button>`).join("")}</div>
+    <div class="f"><input id="dd" type="date" value="${dsh.d}"></div><label class="small" style="display:flex;gap:6px;align-items:center;min-height:42px"><input type="checkbox" id="dcp" ${dsh.cmp ? "checked" : ""}> مقارنة بالفترة السابقة</label>
+    <span class="sp"></span><span class="small muted num">${dmy(R[0])}${R[1] !== R[0] ? " – " + dmy(R[1]) : ""}</span></div><div id="dbody"><p class="muted">جارٍ التحميل…</p></div>`;
+  $$("[data-dp]").forEach(b => b.onclick = () => { dsh.p = b.dataset.dp; admDash(); }); $("#dd").onchange = e => { dsh.d = e.target.value || bizDay(); admDash(); }; $("#dcp").onchange = e => { dsh.cmp = e.target.checked; admDash(); };
+  let c, p; try { [c, p] = await Promise.all([dshLoad(R).then(dshCalc), dsh.cmp ? dshLoad(P).then(dshCalc) : null]); } catch (e) { $("#dbody").innerHTML = `<div class="err">تعذّر التحميل: ${esc(e.code || e.message)}</div>`; return; }
+  const k = (l, v, pv, fmt = money) => `<div class="kpi"><span>${l}</span><b>${fmt(v)}</b>${dsh.cmp && p ? `<span>${pctTxt(v, pv)} <span class="muted">السابق ${fmt(pv)}</span></span>` : ""}</div>`, num = v => `<span class="num">${Math.round(v)}</span>`;
+  const hrs = [...Array(24).keys()].map(h => (h + (S.config?.cutoff ?? 4)) % 24);
+  const top = Object.entries(c.items).sort((a, b) => b[1].v - a[1].v).slice(0, 8);
+  $("#dbody").innerHTML = `<div class="kpis">${k("صافي المبيعات", c.tot, p?.tot)}${k("الطلبات", c.n, p?.n, num)}${k("متوسط الطلب", c.avg, p?.avg)}${k("مجمل الربح", c.gp, p?.gp)}
+      ${k("الخصومات", c.disc, p?.disc)}${k("الإلغاءات", c.vT, p?.vT)}<div class="kpi"><span>نسبة التكلفة</span><b class="num">${c.tot ? (c.cogs / c.tot * 100).toFixed(1) + "%" : "—"}</b></div><div class="kpi"><span>متوسط التحضير</span><b>${c.prep == null ? "—" : `<span class="num">${c.prep.toFixed(1)}</span> د`}</b></div></div>
+    <div class="dcard"><h4>المبيعات لكل ساعة</h4>${bars(hrs.map(h => c.hours[h]), hrs.map(h => pad(h)))}</div>
+    <div class="dgrid"><div class="dcard"><h4>أعلى الأصناف حسب صافي البيع</h4>${share(Object.fromEntries(top.map(([n, v]) => [n, v.v])))}</div>
+      <div class="dcard"><h4>طرق الدفع</h4>${share(c.pay, METHODS)}<h4 style="margin-top:14px">نوع الطلب</h4>${share(c.typ, Object.fromEntries(TYPES))}</div>
+      <div class="dcard"><h4>الكاشيرون</h4>${share(c.cash)}</div></div>`;
+}
+/* ترتيب أي جدول بالضغط على عنوان العمود (من الأكبر للأصغر ثم العكس) */
+document.addEventListener("click", e => {
+  const th = e.target.closest("table.t thead th"); if (!th) return; const tb = th.closest("table").tBodies[0]; if (!tb) return;
+  const i = [...th.parentNode.children].indexOf(th), dir = th.dataset.sd === "d" ? "a" : "d";
+  th.parentNode.querySelectorAll("th").forEach(x => { delete x.dataset.sd; x.classList.remove("sa", "sd"); }); th.dataset.sd = dir; th.classList.add(dir === "d" ? "sd" : "sa");
+  const val = r => { const t = (r.children[i]?.innerText || "").replace(/[,٬%]/g, "").trim(), n = parseFloat(t.replace(/[^\d.\-]/g, "")); return isNaN(n) ? t : n; };
+  [...tb.rows].sort((x, y) => { const a = val(x), b = val(y); const c = typeof a === "number" && typeof b === "number" ? a - b : String(a).localeCompare(String(b), "ar"); return dir === "d" ? -c : c; }).forEach(r => tb.append(r));
+});
+
 /* ---------- admin ---------- */
-let admTab = "report";
+let admTab = "dash";
 function openAdmin() {
   if (!isAdmin()) return;
-  modal(`${mh("لوحة المدير")}<nav class="tabs">${[["report", "التقرير"], ["shifts", "الورديات"], ["stock", "المخزون"], ["menu", "المنيو والأسعار"], ["staff", "الكاشيرون والرموز"], ["store", "الإيصال والإعدادات"], ["verify", "التحقق من إيصال"]].map(([k, l]) => `<button data-at="${k}" class="${admTab === k ? "on" : ""}">${l}</button>`).join("")}</nav><div class="mdl-b" id="adm"></div>`, { wide: true });
+  modal(`${mh("لوحة المدير")}<nav class="tabs">${[["dash", "لوحة المتابعة"], ["report", "التقرير"], ["shifts", "الورديات"], ["stock", "المخزون"], ["menu", "المنيو والأسعار"], ["staff", "الكاشيرون والرموز"], ["store", "الإيصال والإعدادات"], ["verify", "التحقق من إيصال"]].map(([k, l]) => `<button data-at="${k}" class="${admTab === k ? "on" : ""}">${l}</button>`).join("")}</nav><div class="mdl-b" id="adm"></div>`, { wide: true });
   $$("[data-at]").forEach(b => b.onclick = () => { admTab = b.dataset.at; $$("[data-at]").forEach(x => x.classList.toggle("on", x === b)); drawAdm(); });
   drawAdm();
 }
-function drawAdm() { ({ report: admReport, shifts: admShifts, stock: admStock, menu: admMenu, staff: admStaff, store: admStore, verify: admVerify })[admTab](); }
+function drawAdm() { ({ dash: admDash, report: admReport, shifts: admShifts, stock: admStock, menu: admMenu, staff: admStaff, store: admStore, verify: admVerify })[admTab](); }
 
 let rep = { a: null, b: null, test: false };
 function download(rows, name) {
