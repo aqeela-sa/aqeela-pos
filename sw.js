@@ -1,6 +1,6 @@
 /* يحفظ ملفات الكاشير في الآيباد ليعمل بدون إنترنت. الشبكة أولاً (لتصل التحديثات فوراً)، والمحفوظ عند انقطاعها. */
-const CACHE = "aq-pos-v4";
-const SHELL = ["./", "index.html", "app.js", "fb.js", "firebase-config.js", "vendor/firebase.js", "manifest.webmanifest", "icons/icon-192.png", "icons/icon-512.png", "icons/apple-touch-icon.png"];
+const CACHE = "aq-pos-v5";
+const SHELL = ["./", "index.html", "app.js", "fb.js", "firebase-config.js", "vendor/firebase.js", "manifest.webmanifest", "icons/icon-192.png", "icons/icon-512.png", "icons/apple-touch-icon.png", "icons/logo.png"];
 self.addEventListener("install", e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting())); });
 self.addEventListener("activate", e => { e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== CACHE).map(k => caches.delete(k)))).then(() => self.clients.claim())); });
 self.addEventListener("fetch", e => {
