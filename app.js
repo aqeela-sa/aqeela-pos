@@ -4,7 +4,7 @@
 import * as F from "./fb.js";
 import { firebaseConfig } from "./firebase-config.js";
 
-const VERSION = "1.6.0";
+const VERSION = "1.7.0";
 const ADMIN_EMAIL = "abuabraj@gmail.com";
 const DEVICE_EMAIL = "cashier@aqeela-pos.app";
 const APP_NAME = `<span dir="ltr">Cashier AQ</span>`;
@@ -985,13 +985,13 @@ function dshCalc(L) {
 const bars = (vals, labels) => { const mx = Math.max(1, ...vals); return `<div class="bars">${vals.map((v, i) => `<div class="bar" title="${labels[i]}: ${m2(v)}"><i style="height:${v / mx * 100}%"></i><span>${labels[i]}</span></div>`).join("")}</div>`; };
 const share = (m, names) => { const t = Object.values(m).reduce((a, b) => a + b, 0) || 1; return `<div class="shr">${Object.entries(m).sort((a, b) => b[1] - a[1]).map(([k, v]) => `<div class="sr"><span>${esc(names?.[k] || k)}</span><div class="sb"><i style="width:${v / t * 100}%"></i></div><b class="num">${m2(v)}</b><small class="num">${(v / t * 100).toFixed(0)}%</small></div>`).join("") || `<p class="muted small">—</p>`}</div>`; };
 /* رسم خطي خلال ساعات اليوم التشغيلي */
-function spark(vals, color = "var(--red)") {
+function spark(vals, color = "var(--red)", labs) {
   const W = 300, H = 90, mx = Math.max(1, ...vals), n = vals.length, x = i => 6 + i * (W - 12) / (n - 1), y = v => H - 8 - v / mx * (H - 20);
   const pts = vals.map((v, i) => `${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(" ");
   return `<svg class="spark" viewBox="0 0 ${W} ${H + 16}" preserveAspectRatio="none"><line x1="6" x2="${W - 6}" y1="${H - 8}" y2="${H - 8}" stroke="#E6E3E1"/>
     <polygon points="6,${H - 8} ${pts} ${W - 6},${H - 8}" fill="${color}" opacity=".08"/><polyline points="${pts}" fill="none" stroke="${color}" stroke-width="2.2" stroke-linejoin="round"/>
     ${vals.map((v, i) => v ? `<circle cx="${x(i).toFixed(1)}" cy="${y(v).toFixed(1)}" r="2.6" fill="${color}"/>` : "").join("")}
-    ${[0, 6, 12, 18, 23].map(i => `<text x="${x(i)}" y="${H + 12}" font-size="9" fill="#8a8a93" text-anchor="middle">${pad((i + (S.config?.cutoff ?? 4)) % 24)}:00</text>`).join("")}</svg>`;
+    ${(labs ? [...new Set([0, Math.round((n - 1) / 4), Math.round((n - 1) / 2), Math.round((n - 1) * 3 / 4), n - 1])] : [0, 6, 12, 18, 23]).map(i => `<text x="${x(i)}" y="${H + 12}" font-size="9" fill="#8a8a93" text-anchor="middle">${labs ? labs[i] : pad((i + (S.config?.cutoff ?? 4)) % 24) + ":00"}</text>`).join("")}</svg>`;
 }
 function donut(m, names) {
   const cols = ["#C1121F", "#1F4E9E", "#F28C28", "#2A9D8F", "#7B2CBF", "#6B6B76", "#E9C46A", "#264653"], e = Object.entries(m).filter(x => x[1] > 0).sort((a, b) => b[1] - a[1]), t = e.reduce((s, x) => s + x[1], 0);
@@ -1004,14 +1004,16 @@ function donut(m, names) {
 async function admDash() {
   const A = $("#adm"); dsh.d ||= bizDay(); const R = dshRange(dsh.p, dsh.d), P = dshPrev(dsh.p, R);
   A.innerHTML = `<div class="dtool"><div class="seg">${[["day", "يوم"], ["week", "الأسبوع"], ["month", "شهر"]].map(([k, l]) => `<button data-dp="${k}" class="${dsh.p === k ? "on" : ""}">${l}</button>`).join("")}</div>
-    <input id="dd" class="dinp" type="date" value="${dsh.d}"><label class="dsw"><button class="sw ${dsh.cmp ? "on" : ""}" id="dcp" aria-label="مقارنة"></button> مقارنة</label>
-    <span class="sp"></span><span class="small muted num">${dmy(R[0])}${R[1] !== R[0] ? " – " + dmy(R[1]) : ""}</span></div><div id="dbody"><p class="muted">جارٍ التحميل…</p></div>`;
-  $$("[data-dp]").forEach(b => b.onclick = () => { dsh.p = b.dataset.dp; admDash(); }); $("#dd").onchange = e => { dsh.d = e.target.value || bizDay(); admDash(); }; $("#dcp").onclick = () => { dsh.cmp = !dsh.cmp; admDash(); };
+    <button class="dpbtn" id="dd">📅 <span class="num" dir="ltr">${fmtRange(R[0], R[1])}</span></button><label class="dsw"><button class="sw ${dsh.cmp ? "on" : ""}" id="dcp" aria-label="مقارنة"></button> مقارنة</label>
+    </div><div id="dbody"><p class="muted">جارٍ التحميل…</p></div>`;
+  $$("[data-dp]").forEach(b => b.onclick = () => { dsh.p = b.dataset.dp; admDash(); }); $("#dd").onclick = e => openPicker(e.currentTarget, { mode: dsh.p, a: R[0], b: R[1], onPick: a => { dsh.d = a; admDash(); } }); $("#dcp").onclick = () => { dsh.cmp = !dsh.cmp; admDash(); };
   let L, c, p; try { L = await dshLoad(R); c = dshCalc(L); p = dsh.cmp ? dshCalc(await dshLoad(P)) : null; } catch (e) { $("#dbody").innerHTML = `<div class="err">تعذّر التحميل: ${esc(e.code || e.message)}</div>`; return; }
   const ok = L.filter(o => o.status !== "void"), hrs = [...Array(24).keys()].map(h => (h + (S.config?.cutoff ?? 4)) % 24);
-  const series = f => hrs.map(h => ok.filter(o => new Date(o.ts).getHours() === h).reduce((s, o) => s + f(o), 0));
+  const days = []; for (let d = R[0]; d <= R[1]; d = addDays(d, 1)) days.push(d);
+  const byDay = dsh.p !== "day", series = f => byDay ? days.map(d => ok.filter(o => o.day === d).reduce((s, o) => s + f(o), 0)) : hrs.map(h => ok.filter(o => new Date(o.ts).getHours() === h).reduce((s, o) => s + f(o), 0));
+  const xl = byDay ? days.map(d => `${+d.slice(8)} ${AR_M[+d.slice(5, 7) - 1].slice(0, 3)}`) : null;
   const card = (title, val, pv, ser, go, isNum) => `<div class="dc"><div class="dch"><h3>${title}</h3>${go ? `<button class="dlink" data-go="${go}">عرض التقرير</button>` : ""}</div>
-    <div class="dcv">${isNum ? `<span class="num">${Math.round(val)}</span>` : `${money(val)} <small>ر.س</small>`}</div>${dsh.cmp && p ? `<div class="dcp">${pctTxt(val, pv)} <span class="muted">السابق ${isNum ? Math.round(pv) : m2(pv)}</span></div>` : `<div class="dcp"></div>`}${ser ? spark(ser) : ""}</div>`;
+    <div class="dcv">${isNum ? `<span class="num">${Math.round(val)}</span>` : `${money(val)} <small>ر.س</small>`}</div>${dsh.cmp && p ? `<div class="dcp">${pctTxt(val, pv)} <span class="muted">السابق ${isNum ? Math.round(pv) : m2(pv)}</span></div>` : `<div class="dcp"></div>`}${ser ? spark(ser, undefined, xl) : ""}</div>`;
   const top = Object.fromEntries(Object.entries(c.items).sort((a, b) => b[1].v - a[1].v).slice(0, 6).map(([n, v]) => [n, v.v]));
   $("#dbody").innerHTML = `<div class="dgrid3">
     ${card("الطلبات", c.n, p?.n, series(() => 1), "orders", true)}
@@ -1023,7 +1025,7 @@ async function admDash() {
     <div class="dc"><div class="dch"><h3>نسبة التكلفة</h3></div><div class="dcv num">${c.tot ? (c.cogs / c.tot * 100).toFixed(1) + "%" : "—"}</div><div class="dcp muted small">تكلفة البضاعة ${m2(c.cogs)} ر.س</div></div>
     <div class="dc"><div class="dch"><h3>متوسط مدة التحضير</h3></div><div class="dcv">${c.prep == null ? "—" : `<span class="num">${c.prep.toFixed(1)}</span> <small>دقيقة</small>`}</div><div class="dcp muted small">من الطلب حتى التسليم</div></div>
     <div class="dc"><div class="dch"><h3>عدد الإلغاءات</h3></div><div class="dcv num">${c.vN}</div><div class="dcp muted small">طلب ملغى برمز المدير</div></div>
-    <div class="dc w2"><div class="dch"><h3>المبيعات لكل ساعة</h3></div>${bars(hrs.map(h => c.hours[h]), hrs.map(h => pad(h)))}</div>
+    <div class="dc w2"><div class="dch"><h3>${byDay ? "المبيعات لكل يوم" : "المبيعات لكل ساعة"}</h3></div>${byDay ? bars(series(o => o.total), days.map(d => +d.slice(8))) : bars(hrs.map(h => c.hours[h]), hrs.map(h => pad(h)))}</div>
     <div class="dc"><div class="dch"><h3>أنواع الطلب</h3></div>${donut(c.typ, Object.fromEntries(TYPES))}</div>
     <div class="dc"><div class="dch"><h3>أعلى المنتجات حسب صافي البيع</h3><button class="dlink" data-go="items">عرض التقرير</button></div>${donut(top)}</div>
     <div class="dc"><div class="dch"><h3>أعلى المدفوعات</h3><button class="dlink" data-go="pays">عرض التقرير</button></div>${donut(c.pay, METHODS)}</div>
@@ -1041,19 +1043,84 @@ document.addEventListener("click", e => {
 
 /* ---------- admin ---------- */
 let admTab = "dash";
+/* ---------- منتقي التاريخ (مثل فودكس) ---------- */
+const AR_M = ["يناير", "فبراير", "مارس", "أبريل", "مايو", "يونيو", "يوليو", "أغسطس", "سبتمبر", "أكتوبر", "نوفمبر", "ديسمبر"];
+const fmtRange = (a, b) => a === b ? a : `${a} - ${b}`;
+function closePicker() { $(".dpk")?.remove(); document.removeEventListener("pointerdown", pkOut, true); }
+function pkOut(e) { if (!e.target.closest(".dpk") && !e.target.closest(".dpbtn")) closePicker(); }
+function openPicker(anchor, o) {
+  closePicker(); const t = bizDay(); let ym = (o.a || t).slice(0, 7), y = +ym.slice(0, 4), m = +ym.slice(5, 7) - 1, a = o.a, b = o.b, half = null;
+  const el = document.createElement("div"); el.className = "dpk"; document.body.append(el);
+  const r = anchor.getBoundingClientRect(); el.style.top = (r.bottom + 6 + scrollY) + "px"; el.style.left = Math.max(8, Math.min(r.left, innerWidth - 560)) + "px";
+  const presets = [["اليوم", t, t], ["الأمس", addDays(t, -1), addDays(t, -1)], ["هذا الأسبوع", ...dshRange("week", t)], ["الأسبوع السابق", ...dshRange("week", addDays(t, -7))], ["هذا الشهر", ...dshRange("month", t)], ["الشهر السابق", ...dshRange("month", addDays(t.slice(0, 8) + "01", -1))]];
+  const done = (x, z) => { closePicker(); o.onPick(x, z); };
+  const draw = () => {
+    const head = (title, prev, next) => `<div class="pkh"><button data-pn="1" aria-label="التالي">‹</button><b>${title}</b><button data-pn="-1" aria-label="السابق">›</button></div>`;
+    let body = "";
+    if (o.mode === "month") {
+      body = head(y) + `<div class="pkm">${AR_M.map((n, i) => { const k = `${y}-${pad(i + 1)}`; return `<button data-mo="${k}" class="${a?.slice(0, 7) === k ? "on" : ""}">${n}</button>`; }).join("")}</div>`;
+    } else if (o.mode === "week") {
+      const first = `${y}-${pad(m + 1)}-01`, last = ymd(new Date(y, m + 1, 0)); let w = dshRange("week", first)[0], L = [];
+      while (w <= last) { L.push([w, addDays(w, 6)]); w = addDays(w, 7); }
+      const lab = d => `${d.slice(8)} ${AR_M[+d.slice(5, 7) - 1]}`;
+      body = head(`${AR_M[m]} ${y}`) + `<div class="pkw">${L.map(([s, e]) => `<button data-wk="${s}|${e}" class="${a === s ? "on" : ""}">${lab(s)} - ${lab(e)}</button>`).join("")}</div>`;
+    } else {
+      const f = new Date(y, m, 1), start = addDays(ymd(f), -f.getDay()), cells = [...Array(42).keys()].map(i => addDays(start, i));
+      const lo = half || a, hi = half ? null : b;
+      body = head(`${AR_M[m]} ${y}`) + `<div class="pkd">${["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"].map(d => `<i>${d}</i>`).join("")}${cells.map(d => { const out = +d.slice(5, 7) !== m + 1, inR = lo && hi && d >= lo && d <= hi, end = d === lo || d === hi;
+        return `<button data-dy="${d}" class="${out ? "out" : ""} ${inR ? "in" : ""} ${end ? "end" : ""} ${d === t ? "today" : ""}">${+d.slice(8)}</button>`; }).join("")}</div>`;
+      if (o.mode === "range") body = `<div class="pkr"><div>${body}${half ? `<p class="small muted" style="margin:6px 4px 0">اختر يوم النهاية</p>` : ""}</div><div class="pkp">${presets.map(([l, x, z]) => `<button data-pr="${x}|${z}" class="${a === x && b === z ? "on" : ""}">${l}</button>`).join("")}</div></div>`;
+    }
+    el.innerHTML = body;
+    el.querySelectorAll("[data-pn]").forEach(x => x.onclick = () => { const s = -(+x.dataset.pn); if (o.mode === "month") y += s; else { m += s; if (m < 0) { m = 11; y--; } if (m > 11) { m = 0; y++; } } draw(); });
+    el.querySelectorAll("[data-mo]").forEach(x => x.onclick = () => { const [s, e] = dshRange("month", x.dataset.mo + "-01"); done(s, e); });
+    el.querySelectorAll("[data-wk]").forEach(x => x.onclick = () => done(...x.dataset.wk.split("|")));
+    el.querySelectorAll("[data-pr]").forEach(x => x.onclick = () => done(...x.dataset.pr.split("|")));
+    el.querySelectorAll("[data-dy]").forEach(x => x.onclick = () => { const d = x.dataset.dy;
+      if (o.mode === "day") return done(d, d);
+      if (!half) { half = d; draw(); } else { const [s, e] = d < half ? [d, half] : [half, d]; done(s, e); } });
+  };
+  draw(); setTimeout(() => document.addEventListener("pointerdown", pkOut, true), 0);
+}
+
+/* ---------- التصدير: CSV أو Excel من جداول الصفحة الحالية ---------- */
+function pageRows() {
+  const rows = [], A = $("#adm"); const ttl = ADM_NAV.find(x => x[0] === admTab)?.[2] || "";
+  rows.push([ttl], [`الفترة: ${fmtRange(rf.a || "", rf.b || "")}`], []);
+  const cards = [...A.querySelectorAll(".rc")]; if (cards.length) { cards.forEach(c => rows.push([c.children[0]?.innerText.trim(), c.children[1]?.innerText.replace(/[^\d.\-%]/g, "") || c.children[1]?.innerText.trim(), c.children[2]?.innerText.trim() || ""])); rows.push([]); }
+  A.querySelectorAll("table.t").forEach(tb => { const h = tb.closest(".rpanel")?.querySelector(".rh")?.innerText; if (h) rows.push([h]);
+    tb.querySelectorAll("tr").forEach(tr => rows.push([...tr.children].map(td => { const s = td.innerText.trim(), n = s.replace(/,/g, ""); return /^-?\d+(\.\d+)?%?$/.test(n) && !n.endsWith("%") ? +n : s; }))); rows.push([]); });
+  return rows;
+}
+let xlsxP = null;
+function loadXlsx() { return xlsxP ||= new Promise((res, rej) => { const s = document.createElement("script"); s.src = "https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"; s.onload = () => res(window.XLSX); s.onerror = () => { xlsxP = null; rej(new Error("net")); }; document.head.append(s); }); }
+async function exportPage(kind, extra) {
+  const rows = pageRows(), name = `${ADM_NAV.find(x => x[0] === admTab)?.[2] || "تقرير"}-${rf.a || ""}${rf.b && rf.b !== rf.a ? "_" + rf.b : ""}`;
+  if (kind === "csv") return download(rows, name + ".csv");
+  try { const X = await loadXlsx(); const ws = X.utils.aoa_to_sheet(rows); ws["!cols"] = [{ wch: 26 }, { wch: 16 }, { wch: 16 }, { wch: 16 }, { wch: 16 }, { wch: 16 }, { wch: 16 }, { wch: 16 }];
+    const wb = X.utils.book_new(); wb.Workbook = { Views: [{ RTL: true }] }; X.utils.book_append_sheet(wb, ws, "التقرير"); X.writeFile(wb, name + ".xlsx"); }
+  catch { toast("تصدير Excel يحتاج إنترنت. جرّب CSV", true); }
+}
+function exportBtn(extra = []) {
+  return `<div class="xmenu"><button class="btn sm ghost dpbtn" data-xm>⬇ تصدير ▾</button><div class="xlist" hidden><button data-xp="csv">في ملف CSV</button><button data-xp="xlsx">في ملف إكسل</button>${extra.map(([id, l]) => `<hr><button data-xid="${id}">${l}</button>`).join("")}</div></div>`;
+}
+function bindExport(handlers = {}) {
+  const m = $("[data-xm]"); if (!m) return; const L = m.nextElementSibling;
+  m.onclick = () => { L.hidden = !L.hidden; }; document.addEventListener("pointerdown", e => { if (!e.target.closest(".xmenu")) L.hidden = true; }, { once: true });
+  L.querySelectorAll("[data-xp]").forEach(b => b.onclick = () => { L.hidden = true; exportPage(b.dataset.xp); });
+  L.querySelectorAll("[data-xid]").forEach(b => b.onclick = () => { L.hidden = true; handlers[b.dataset.xid]?.(); });
+}
+
 /* ---------- التقارير المستقلة (مثل فودكس) ---------- */
 let rf = { a: null, b: null, test: false, q: "", st: "all" };
 function rfBar(extra = "") {
   rf.a ||= bizDay(); rf.b ||= rf.a; const t = bizDay();
   const q = [["اليوم", t, t], ["أمس", addDays(t, -1), addDays(t, -1)], ["هذا الأسبوع", ...dshRange("week", t)], ["هذا الشهر", ...dshRange("month", t)]];
-  return `<div class="rbar"><div class="rq">${q.map(([l, a, b]) => `<button data-rq="${a}|${b}" class="${rf.a === a && rf.b === b ? "on" : ""}">${l}</button>`).join("")}</div>
-    <input type="date" id="rfa" class="dinp" value="${rf.a}"><span class="muted">إلى</span><input type="date" id="rfb" class="dinp" value="${rf.b}">
+  return `<div class="rbar"><button class="dpbtn" id="rfd">📅 <span class="num" dir="ltr">${fmtRange(rf.a, rf.b)}</span></button>
     <label class="dsw small"><input type="checkbox" id="rft" ${rf.test ? "checked" : ""}> التجريبي</label>${extra}</div>`;
 }
 function rfBind(redraw) {
-  $$("[data-rq]").forEach(b => b.onclick = () => { [rf.a, rf.b] = b.dataset.rq.split("|"); redraw(); });
-  $("#rfa").onchange = e => { rf.a = e.target.value; if (rf.b < rf.a) rf.b = rf.a; redraw(); };
-  $("#rfb").onchange = e => { rf.b = e.target.value < rf.a ? rf.a : e.target.value; redraw(); };
+  $("#rfd").onclick = e => openPicker(e.currentTarget, { mode: "range", a: rf.a, b: rf.b, onPick: (a, b) => { rf.a = a; rf.b = b; redraw(); } });
   $("#rft").onchange = e => { rf.test = e.target.checked; redraw(); };
 }
 async function rfLoad() { const s = await F.getDocs(F.query(C("orders"), F.where("day", ">=", rf.a), F.where("day", "<=", rf.b))); return s.docs.map(d => d.data()).filter(o => rf.test || !o.test).sort((a, b) => b.ts - a.ts); }
@@ -1061,7 +1128,7 @@ const rCard = (l, v, sub = "") => `<div class="rc"><span>${l}</span><b>${v}</b>$
 
 /* الطلبات: قائمة بحث وتصفية، والضغط يفتح التفاصيل */
 async function admOrders() {
-  const A = $("#adm"); A.innerHTML = rfBar(`<input id="rfq" class="dinp" placeholder="رقم الطلب" inputmode="numeric" value="${esc(rf.q)}" style="width:130px">
+  const A = $("#adm"); A.innerHTML = rfBar(`<span class="sp"></span>${exportBtn()}<input id="rfq" class="dinp" placeholder="رقم الطلب" inputmode="numeric" value="${esc(rf.q)}" style="width:130px">
     <select id="rfs" class="dinp"><option value="all">كل الحالات</option><option value="paid" ${rf.st === "paid" ? "selected" : ""}>مدفوع</option><option value="void" ${rf.st === "void" ? "selected" : ""}>ملغي</option><option value="disc" ${rf.st === "disc" ? "selected" : ""}>عليه خصم</option></select>`) + `<div id="rbody" class="rpanel"><p class="muted">جارٍ التحميل…</p></div>`;
   rfBind(admOrders); $("#rfq").oninput = e => { rf.q = e.target.value.trim(); draw(); }; $("#rfs").onchange = e => { rf.st = e.target.value; draw(); };
   let L; try { L = await rfLoad(); } catch (e) { $("#rbody").innerHTML = `<div class="err">${esc(e.code || e.message)}</div>`; return; }
@@ -1072,7 +1139,7 @@ async function admOrders() {
         <td>${o.status === "void" ? `<span class="chip bad">ملغي</span>` : `<span class="chip ok">مدفوع</span>`}${o.discount ? ` <span class="chip warn">خصم</span>` : ""}${o.test ? ` <span class="chip test">تجريبي</span>` : ""}</td><td class="n money"><b>${m2(o.total)}</b></td></tr>`).join("") || `<tr><td colspan="8" class="muted" style="text-align:center;padding:30px">لا توجد طلبات</td></tr>`}</tbody></table></div>`;
     $$("#rbody [data-oid]").forEach(r => r.onclick = () => showOrderDetail(L.find(o => o.id === r.dataset.oid)));
   }
-  draw();
+  draw(); bindExport();
 }
 function showOrderDetail(o) {
   if (!o) return; const pk = o.pack || packOf(o.lines), cg = o.cogs || orderCogs(o);
@@ -1086,7 +1153,7 @@ function showOrderDetail(o) {
 
 /* تقرير المبيعات: مؤشرات فقط */
 async function admSales() {
-  const A = $("#adm"); A.innerHTML = rfBar(`<span class="sp"></span><button class="btn sm" id="xs">⬇ المبيعات للمحاسبة</button>`) + `<div id="rbody"><p class="muted">جارٍ التحميل…</p></div>`; rfBind(admSales);
+  const A = $("#adm"); A.innerHTML = rfBar(`<span class="sp"></span>${exportBtn([["xs", "ملف المبيعات للمحاسبة"]])}`) + `<div id="rbody"><p class="muted">جارٍ التحميل…</p></div>`; rfBind(admSales);
   let L; try { L = await rfLoad(); } catch (e) { $("#rbody").innerHTML = `<div class="err">${esc(e.code || e.message)}</div>`; return; }
   const ok = L.filter(o => o.status !== "void"), vd = L.filter(o => o.status === "void"), sum = (a, f) => r2(a.reduce((s, o) => s + f(o), 0));
   const gross = sum(ok, o => o.subtotal), disc = sum(ok, o => o.discount?.amount || 0), net = sum(ok, o => o.total), food = sum(ok, o => (o.cogs || orderCogs(o)).food), pack = sum(ok, o => (o.cogs || orderCogs(o)).pack), qty = ok.reduce((s, o) => s + o.lines.reduce((x, l) => x + l.qty, 0), 0);
@@ -1096,14 +1163,15 @@ async function admSales() {
     ${rCard("مبلغ الإلغاء", money(sum(vd, o => o.total)), `${vd.length} طلب`)}</div>
     <div class="rpanel" style="margin-top:18px"><h3 class="rh">حسب اليوم</h3><div class="tw2"><table class="t"><thead><tr><th>اليوم</th><th class="n">الطلبات</th><th class="n">صافي المبيعات</th><th class="n">متوسط الطلب</th><th class="n">الربح</th></tr></thead><tbody>
     ${[...new Set(ok.map(o => o.day))].sort().reverse().map(d => { const a = ok.filter(o => o.day === d), n = sum(a, o => o.total), c = sum(a, o => { const g = o.cogs || orderCogs(o); return g.food + g.pack; }); return `<tr><td class="num">${dmy(d)}</td><td class="n num">${a.length}</td><td class="n money">${m2(n)}</td><td class="n money">${m2(n / a.length)}</td><td class="n money">${m2(n - c)}</td></tr>`; }).join("") || `<tr><td colspan="5" class="muted">—</td></tr>`}</tbody></table></div></div>`;
-  $("#xs").onclick = () => { const rows = [["التاريخ", "طريقة الدفع", "المبلغ الصافي", "العدد"]];
+  const xs = () => { const rows = [["التاريخ", "طريقة الدفع", "المبلغ الصافي", "العدد"]];
     [...new Set(ok.map(o => o.day))].sort().forEach(d => Object.entries(METHODS).forEach(([k, l]) => { const os = ok.filter(o => o.day === d && o.method === k && !o.test); if (os.length) rows.push([d, l, m2(sum(os, o => o.total)), os.length]); }));
     if (rows.length < 2) return toast("لا توجد مبيعات"); download(rows, `مبيعات-الكاشير-${rf.a}${rf.b !== rf.a ? "_" + rf.b : ""}.csv`); };
+  bindExport({ xs });
 }
 
 /* تقرير المدفوعات */
 async function admPays() {
-  const A = $("#adm"); A.innerHTML = rfBar() + `<div id="rbody" class="rpanel"><p class="muted">جارٍ التحميل…</p></div>`; rfBind(admPays);
+  const A = $("#adm"); A.innerHTML = rfBar(`<span class="sp"></span>${exportBtn()}`) + `<div id="rbody" class="rpanel"><p class="muted">جارٍ التحميل…</p></div>`; rfBind(admPays); bindExport();
   let L; try { L = await rfLoad(); } catch (e) { $("#rbody").innerHTML = `<div class="err">${esc(e.code || e.message)}</div>`; return; }
   const ok = L.filter(o => o.status !== "void"), tot = r2(ok.reduce((s, o) => s + o.total, 0)), vd = L.filter(o => o.status === "void");
   $("#rbody").innerHTML = `<div class="tw2"><table class="t"><thead><tr><th>طريقة الدفع</th><th class="n">العدد</th><th class="n">القيمة</th><th class="n">النسبة</th><th class="n">الملغي</th><th class="n">المبلغ الصافي</th></tr></thead><tbody>
@@ -1114,7 +1182,7 @@ async function admPays() {
 
 /* تحليل القائمة */
 async function admItems() {
-  const A = $("#adm"); A.innerHTML = rfBar(`<span class="sp"></span><button class="btn sm ghost" id="xi">⬇ تقرير الأصناف للمحاسبة</button>`) + `<div id="rbody" class="rpanel"><p class="muted">جارٍ التحميل…</p></div>`; rfBind(admItems);
+  const A = $("#adm"); A.innerHTML = rfBar(`<span class="sp"></span>${exportBtn([["xi", "ملف الأصناف للمحاسبة"]])}`) + `<div id="rbody" class="rpanel"><p class="muted">جارٍ التحميل…</p></div>`; rfBind(admItems);
   let L; try { L = await rfLoad(); } catch (e) { $("#rbody").innerHTML = `<div class="err">${esc(e.code || e.message)}</div>`; return; }
   const ok = L.filter(o => o.status !== "void"), items = {};
   ok.forEach(o => { const f = o.subtotal ? o.total / o.subtotal : 1; const add = (n, ref, q, g, c) => { const it = items[ref || n] ||= { name: n, ref, q: 0, v: 0, net: 0, cost: 0, nc: false }; it.q += q; it.v += g; it.net += g * f; if (c == null) it.nc = true; else it.cost += c * q; };
@@ -1124,8 +1192,9 @@ async function admItems() {
     ${V.map(x => { const pc = x.net && !x.nc ? x.cost / x.net * 100 : null; return `<tr><td><b>${esc(x.name)}</b></td><td class="n num">${x.q}</td><td class="n money">${m2(x.net)}</td><td class="n num">${T ? (x.net / T * 100).toFixed(1) : 0}%</td><td class="n money">${x.nc ? "—" : m2(x.cost)}</td>
       <td class="n">${pc == null ? "—" : `<span class="chip ${pc > 45 ? "bad" : pc > 35 ? "warn" : "ok"} num">${pc.toFixed(1)}%</span>`}</td><td class="n money">${x.nc ? "—" : m2(x.net - x.cost)}</td></tr>`; }).join("") || `<tr><td colspan="7" class="muted">—</td></tr>`}</tbody>
     <tfoot><tr><td>المجموع</td><td class="n num">${V.reduce((s, x) => s + x.q, 0)}</td><td class="n money">${m2(T)}</td><td></td><td class="n money">${m2(V.reduce((s, x) => s + x.cost, 0))}</td><td></td><td class="n money">${m2(T - V.reduce((s, x) => s + x.cost, 0))}</td></tr></tfoot></table></div>`;
-  $("#xi").onclick = () => { if (!V.length) return toast("لا توجد مبيعات"); const vq = {}; L.filter(o => o.status === "void").forEach(o => o.lines.forEach(l => { vq[l.ref || l.name] = (vq[l.ref || l.name] || 0) + l.qty; }));
+  const xi = () => { if (!V.length) return toast("لا توجد مبيعات"); const vq = {}; L.filter(o => o.status === "void").forEach(o => o.lines.forEach(l => { vq[l.ref || l.name] = (vq[l.ref || l.name] || 0) + l.qty; }));
     download([["المنتج", "كود تعريف المنتج", "صافي الكمية", "صافي المبيعات", "إجمالي المبيعات", "كمية الإلغاء"], ...V.map(x => [x.name, x.ref || "", x.q, m2(x.net), m2(x.v), vq[x.ref || x.name] || 0])], `أصناف-الكاشير-${rf.a}${rf.b !== rf.a ? "_" + rf.b : ""}.csv`); };
+  bindExport({ xi });
 }
 
 const ADM_NAV = [["dash", "📊", "الملخص"], ["orders", "🧾", "الطلبات"], ["sec", "", "التقارير"], ["sales", "📈", "تقرير المبيعات"], ["pays", "💳", "تقرير المدفوعات"], ["items", "🍽️", "تحليل القائمة"], ["shifts", "🕘", "الورديات"], ["sec", "", "الإدارة"], ["stock", "📦", "المخزون"], ["menu", "📋", "المنيو والأسعار"], ["staff", "👥", "الكاشيرون والرموز"], ["store", "⚙️", "الإيصال والإعدادات"], ["verify", "🔎", "التحقق من إيصال"]];

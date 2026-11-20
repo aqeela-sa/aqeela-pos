@@ -207,6 +207,18 @@ table.t thead th{cursor:pointer;user-select:none}table.t thead th.sd::after{cont
 .rh{margin:0 0 10px;font-size:16px}.rtop{display:flex;gap:12px;align-items:baseline;margin-bottom:10px}
 .tw2{overflow-x:auto}.rt tbody tr{cursor:pointer}.rt tbody tr:hover{background:#FDF3F3}
 .abody table.t td,.abody table.t th{padding:12px 10px}
+.dpbtn{display:inline-flex;align-items:center;gap:8px;min-height:44px;padding:0 14px;border:1.5px solid var(--line);border-radius:12px;background:#fff;font-weight:600;font-size:15px}
+.dpk{position:absolute;z-index:80;background:#fff;border:1px solid var(--line);border-radius:14px;box-shadow:0 14px 40px rgba(0,0,0,.16);padding:12px;direction:rtl}
+.pkh{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px}.pkh b{border:1.5px solid var(--line);border-radius:9px;padding:4px 12px}.pkh button{width:34px;height:34px;border-radius:9px;font-size:22px}
+.pkd{display:grid;grid-template-columns:repeat(7,40px);gap:2px;direction:ltr}.pkd i{font-style:normal;text-align:center;font-size:12px;color:var(--mut);padding:4px 0}
+.pkd button{height:36px;border-radius:8px;font-size:14px}.pkd button.out{color:#bbb}.pkd button.in{background:#FDECEC;border-radius:0}.pkd button.end{background:var(--red);color:#fff;border-radius:8px}.pkd button.today:not(.end){outline:1.5px solid var(--red)}
+.pkd button:hover:not(.end){background:#F3F3F5}
+.pkm{display:grid;grid-template-columns:repeat(3,96px);gap:6px}.pkm button,.pkw button{min-height:40px;border-radius:9px;font-weight:600}.pkm button.on,.pkw button.on{background:var(--red);color:#fff}
+.pkw{display:grid;grid-template-columns:repeat(2,minmax(150px,1fr));gap:6px}
+.pkr{display:flex;gap:12px}.pkp{display:grid;gap:6px;align-content:start;border-inline-start:1px solid var(--line);padding-inline-start:12px}.pkp button{min-height:40px;min-width:130px;border:1.5px solid var(--line);border-radius:10px;font-weight:600}.pkp button.on{background:var(--red);color:#fff;border-color:var(--red)}
+.xmenu{position:relative}.xlist{position:absolute;top:calc(100% + 6px);inset-inline-end:0;background:#fff;border:1px solid var(--line);border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,.14);padding:6px;z-index:30;min-width:190px;display:grid}
+.xlist button{text-align:right;padding:10px 12px;border-radius:8px;font-weight:600}.xlist button:hover{background:#F3F3F5}.xlist hr{border:0;border-top:1px solid var(--line);margin:4px 0}
+@media (max-width:600px){.pkr{flex-direction:column}.pkp{border:0;padding:0;grid-template-columns:repeat(2,1fr)}.pkd{grid-template-columns:repeat(7,1fr)}.dpk{left:8px!important;right:8px}}
 .tot{border-top:1px solid var(--line);padding:10px 14px;display:grid;gap:4px}
 .tot .r{display:flex;justify-content:space-between;font-size:15px;color:var(--mut)}
 .tot .r.big{font-size:26px;color:var(--ink);font-weight:800;align-items:baseline}
@@ -305,7 +317,7 @@ table.t tfoot td{font-weight:800}
 <div id="app"><div class="center"><div class="brand"><div class="logo"><img src="icons/logo.png" alt=""></div><h1 dir="ltr">Cashier AQ</h1><p>جارٍ التحميل…</p></div></div></div>
 <div id="print"></div>
 <noscript>يحتاج الكاشير إلى تفعيل JavaScript.</noscript>
-<script type="module" src="app.js?v=1.6.0"></script>
+<script type="module" src="app.js?v=1.7.0"></script>
 <script>
 if ("serviceWorker" in navigator) addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(() => {}));
 </script>
