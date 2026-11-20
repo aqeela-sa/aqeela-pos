@@ -4,7 +4,7 @@
 import * as F from "./fb.js";
 import { firebaseConfig } from "./firebase-config.js";
 
-const VERSION = "1.2.3";
+const VERSION = "1.3.0";
 const ADMIN_EMAIL = "abuabraj@gmail.com";
 const DEVICE_EMAIL = "cashier@aqeela-pos.app";
 const APP_NAME = `<span dir="ltr">Cashier AQ</span>`;
@@ -40,6 +40,10 @@ const DEFAULT_COSTS = { "sk-0001": 2.53, "sk-0002": 3.75, "sk-0003": 4, "sk-0004
   "sk-0009": 8.2, "sk-0010": 9.39, "sk-0011": 6.54, "sk-0012": 8.92, "sk-0013": 8.59, "sk-0014": 1.5, "sk-0015": 0.44, "sk-0016": 1.8, "sk-0017": 1.8, "sk-0018": 0.5 };
 const BOX_REFS = ["sk-0009", "sk-0010", "sk-0011", "sk-0012", "sk-0013"];
 const DEFAULT_PACK = { boxPrice: 1.4, bagKgPrice: 9, bagsPerKg: 60, perBag: 3 };
+/* ملاحظات الأصناف السريعة (مجانية) — يعدّلها المدير من «الإيصال والإعدادات» */
+const DEFAULT_NOTES = ["بدون ثوم", "زيادة ثوم", "بدون مخلل", "زيادة مخلل", "بدون بطاطس", "زيادة بطاطس", "حار", "بدون حار", "بدون صوص", "زيادة صوص", "بدون طماطم", "بدون بصل"];
+const noteList = () => (S.config?.notes?.length ? S.config.notes : DEFAULT_NOTES);
+const hasNotes = l => (l.notes && l.notes.length) || l.note;
 const DEFAULT_CONFIG = {
   cutoff: 4,
   store: { name: "شاورما العقيله", address: "القطيف – الإسكان – شارع زين العابدين", phone: "0549801873", thanks: "شكراً لزيارتكم" },
@@ -73,7 +77,7 @@ const S = {
   cart: { type: "take", lines: [], discount: null, sel: null }, cat: "chicken",
   today: [], pending: 0, online: navigator.onLine,
   dev: ls.get("dev", null) || (() => { const d = rid(4); ls.set("dev", d); return d; })(),
-  device: Object.assign({ printMode: "browser", printerIp: "", autoPrint: true, test: false }, ls.get("device", {})),
+  device: Object.assign({ printMode: "browser", printerIp: "", autoPrint: true, test: false, kitchenMode: "same", kitchenIp: "" }, ls.get("device", {})),
   unsub: [],
 };
 const saveDevice = () => ls.set("device", S.device);
@@ -115,7 +119,7 @@ function watchToday() {
   const d = bizDay(); if (todayKey === d && todaySub) return; todaySub?.(); todayKey = d;
   todaySub = F.onSnapshot(F.query(C("orders"), F.where("day", "==", d)), { includeMetadataChanges: true }, s => {
     S.today = s.docs.map(x => ({ ...x.data(), _pending: x.metadata.hasPendingWrites })).sort((a, b) => b.ts - a.ts);
-    S.pending = S.today.filter(o => o._pending).length; drawTop(); if ($("#orders-list")) drawOrdersList();
+    S.pending = S.today.filter(o => o._pending).length; drawTop(); if ($("#orders-list")) drawOrdersList(); if ($("#prep-list")) drawPrep();
   }, e => console.error(e));
 }
 setInterval(() => { if (S.view === "pos") watchToday(); }, 60e3);
@@ -241,12 +245,13 @@ function drawTop() {
     ${!S.online ? `<span class="pill off"><i class="d"></i>بدون إنترنت</span>` : S.pending ? `<span class="pill pend"><i class="d" style="background:var(--warn)"></i>يُرسل ${S.pending}</span>` : `<span class="pill"><i class="d"></i>متصل</span>`}
     <button class="pill" id="sh" title="الوردية">🕘 الوردية <span class="num">${S.shift ? hm(S.shift.openedAt) : ""}</span></button>
     <button class="pill" id="me" title="تبديل الكاشير">👤 ${esc(S.cashier?.name || "")}</button>
+    <button class="pill prep-pill ${prepOpen().length ? "has" : ""}" id="prp" title="طلبات قيد التحضير">🔥 <span class="pt">قيد التحضير</span> <b class="num">${prepOpen().length}</b></button>
     <button class="iconbtn" id="ord" title="طلبات اليوم">🧾</button>
     <button class="iconbtn" id="more" title="القائمة">☰</button>`;
   $$("[data-t]").forEach(b => b.onclick = () => setType(b.dataset.t));
   $("#me").onclick = switchCashier;
   $("#sh").onclick = openShift;
-  $("#ord").onclick = openOrders;
+  $("#ord").onclick = openOrders; $("#prp").onclick = openPrep;
   $("#more").onclick = openMore;
 }
 const priceOf = (it, type = S.cart.type) => type === "lokit" ? it.lokit : it.price;
@@ -273,9 +278,9 @@ function addItem(id) {
     if (!tgt) return toast("اختر الصنف أولاً ثم أضف الجبن");
     tgt.mods.push({ id: it.id, name: it.name, price: priceOf(it), ref: it.ref || null }); S.cart.sel = tgt.key;
   } else {
-    const ex = L.find(l => l.id === id && !l.mods.length);
+    const ex = L.find(l => l.id === id && !l.mods.length && !hasNotes(l));
     if (ex) { ex.qty++; S.cart.sel = ex.key; }
-    else { const key = rid(5); L.push({ key, id, name: it.name, price: priceOf(it), qty: 1, mods: [], ref: it.ref || null }); S.cart.sel = key; }
+    else { const key = rid(5); L.push({ key, id, name: it.name, price: priceOf(it), qty: 1, mods: [], notes: [], note: "", ref: it.ref || null }); S.cart.sel = key; }
   }
   drawCart(); drawMenu();
 }
@@ -289,7 +294,8 @@ function drawCart() {
     <div class="lines">${L.length ? L.map(l => `<div class="ln ${S.cart.sel === l.key ? "sel" : ""}" data-l="${l.key}">
         <div><div class="n1">${esc(l.name)}</div><div class="unit">${money(l.price)} × ${l.qty}</div></div><div class="p1">${money(lineTotal(l))}</div>
         ${l.mods.length ? `<div class="mods">${l.mods.map((m, i) => `<span>+ ${esc(m.name)} ${money(m.price)} <button data-rm="${l.key}:${i}" aria-label="حذف الإضافة">✕</button></span>`).join("")}</div>` : ""}
-        <div class="ctl"><button data-dec="${l.key}" aria-label="إنقاص">−</button><span class="qn num">${l.qty}</span><button data-inc="${l.key}" aria-label="زيادة">+</button><button class="del" data-del="${l.key}">حذف</button></div></div>`).join("")
+        ${hasNotes(l) ? `<div class="notes">${(l.notes || []).map(n => `<span>${esc(n)}</span>`).join("")}${l.note ? `<span class="free">${esc(l.note)}</span>` : ""}</div>` : ""}
+        <div class="ctl"><button data-dec="${l.key}" aria-label="إنقاص">−</button><span class="qn num">${l.qty}</span><button data-inc="${l.key}" aria-label="زيادة">+</button><button class="nt ${hasNotes(l) ? "on" : ""}" data-nt="${l.key}">📝 ملاحظة</button><button class="del" data-del="${l.key}">حذف</button></div></div>`).join("")
       : `<div class="empty"><span>اضغط على الأصناف لإضافتها${lk ? "<br><b style=\"color:#5B2A86\">بأسعار لوكيت</b>" : ""}</span></div>`}</div>
     <div class="tot">${S.cart.discount ? `<div class="r"><span>المجموع</span>${money(subtotal())}</div><div class="r disc"><span>خصم ${S.cart.discount.kind === "pct" ? `${S.cart.discount.value}%` : ""}</span><span>−${money(discAmt())}</span></div>` : ""}
       <div class="r big"><span>الإجمالي</span><span>${money(total())} <small style="font-size:14px;color:var(--mut)">ر.س</small></span></div></div>
@@ -301,10 +307,11 @@ function drawCart() {
   $$("[data-inc]").forEach(b => b.onclick = () => { find(b.dataset.inc).qty++; drawCart(); drawMenu(); });
   $$("[data-dec]").forEach(b => b.onclick = () => { const l = find(b.dataset.dec); if (l.qty > 1) l.qty--; else S.cart.lines = L.filter(x => x !== l); drawCart(); drawMenu(); });
   $$("[data-del]").forEach(b => b.onclick = () => { S.cart.lines = L.filter(x => x.key !== b.dataset.del); if (!S.cart.lines.length) S.cart.discount = null; drawCart(); drawMenu(); });
+  $$("[data-nt]").forEach(b => b.onclick = () => openNotes(b.dataset.nt));
   $$("[data-rm]").forEach(b => b.onclick = () => { const [k, i] = b.dataset.rm.split(":"); find(k).mods.splice(+i, 1); drawCart(); drawMenu(); });
   $("#clr") && ($("#clr").onclick = () => { if (confirm("تفريغ الطلب؟")) { resetCart(); } });
   $("#disc").onclick = () => askManager("الخصم يحتاج رمز المدير", openDiscount);
-  $("#last").onclick = () => { const o = S.today.find(x => x.device === S.dev) || S.today[0]; if (!o) return toast("لا توجد طلبات اليوم"); printOrder(o, true); };
+  $("#last").onclick = () => { const o = S.today.find(x => x.device === S.dev) || S.today[0]; if (!o) return toast("لا توجد طلبات اليوم"); printJob(o, { receipt: true }, true); };
   $$("[data-pay]").forEach(b => b.onclick = () => openPay(b.dataset.pay));
 }
 function resetCart() { S.cart = { type: S.cart.type === "lokit" ? "take" : S.cart.type, lines: [], discount: null, sel: null }; drawTop(); drawCart(); drawMenu(); }
@@ -423,10 +430,10 @@ async function complete(method, given, change) {
   const ts = Date.now(), day = bizDay(ts), no = nextNo(day), st = subtotal(), da = discAmt();
   const o = {
     id: `${day}-${S.dev}-${pad(no, 4)}-${rid(3)}`, no, day, ts, type: S.cart.type, method,
-    lines: S.cart.lines.map(l => ({ id: l.id, ref: l.ref, name: l.name, price: l.price, qty: l.qty, cost: itemCost(l.id), mods: l.mods.map(m => ({ id: m.id, ref: m.ref, name: m.name, price: m.price, cost: itemCost(m.id) })), total: lineTotal(l) })),
+    lines: S.cart.lines.map(l => ({ id: l.id, ref: l.ref, name: l.name, price: l.price, qty: l.qty, cost: itemCost(l.id), mods: l.mods.map(m => ({ id: m.id, ref: m.ref, name: m.name, price: m.price, cost: itemCost(m.id) })), notes: l.notes || [], note: l.note || "", total: lineTotal(l) })),
     subtotal: st, discount: S.cart.discount ? { ...S.cart.discount, amount: da } : null, total: r2(st - da),
     given: method === "cash" ? r2(given) : null, change: method === "cash" ? r2(change) : 0,
-    cashierId: S.cashier.id, cashierName: S.cashier.name, device: S.dev, shiftId: S.shift?.id || null, status: "paid", test: !!S.device.test, v: 1, app: VERSION,
+    cashierId: S.cashier.id, cashierName: S.cashier.name, device: S.dev, shiftId: S.shift?.id || null, status: "paid", prep: "open", test: !!S.device.test, v: 1, app: VERSION,
   };
   o.pack = packOf(o.lines); o.cogs = orderCogs(o);
   o.code = await receiptCode(o);
@@ -435,17 +442,57 @@ async function complete(method, given, change) {
   if (!S.shiftOrders.some(x => x.id === o.id)) S.shiftOrders = [o, ...S.shiftOrders];
   resetCart();
   showDone(o);
-  if (S.device.autoPrint) printOrder(o);
+  if (S.device.autoPrint) printJob(o, { receipt: true, kitchen: true });
 }
 function showDone(o) {
   modal(`<div class="mdl-b"><div class="done"><div class="ck">✓</div><div class="muted">طلب رقم</div><div class="no num">${pad(o.no, 4)}</div>
     <div class="muted" style="margin:6px 0 4px">${TYPES.find(t => t[0] === o.type)[1]} · ${METHODS[o.method]} · ${money(o.total)} ر.س</div>
     ${o.method === "cash" && o.change > 0 ? `<div class="chg" style="margin:12px 0 0"><span>الباقي للعميل</span><span class="money">${m2(o.change)}</span></div>` : ""}
     <p id="prs" class="small muted" style="margin:10px 0 0;min-height:18px"></p></div></div>
-    <div class="mdl-f" style="justify-content:stretch"><button class="btn ghost" id="rp" style="flex:1">🖨 طباعة الإيصال</button><button class="btn" data-close style="flex:1.4">طلب جديد</button></div>`);
-  $("#rp").onclick = () => printOrder(o, true);
+    <div class="mdl-f" style="justify-content:stretch"><button class="btn ghost" id="rp" style="flex:1">🖨 الإيصال</button><button class="btn ghost" id="rk" style="flex:1">🍳 ورقة المطبخ</button><button class="btn" data-close style="flex:1.3">طلب جديد</button></div>`);
+  $("#rp").onclick = () => printJob(o, { receipt: true }, true);
+  $("#rk").onclick = () => printJob(o, { kitchen: true }, true);
   if (!(o.method === "cash" && o.change > 0)) S.doneTimer = setTimeout(closeModal, 6000);
 }
+
+/* ----- ملاحظات الصنف (مجانية) ----- */
+function openNotes(key) {
+  const l = S.cart.lines.find(x => x.key === key); if (!l) return;
+  const sel = new Set(l.notes || []);
+  modal(`${mh(`ملاحظات: ${esc(l.name)}${l.qty > 1 ? ` <span class="muted small">(× ${l.qty})</span>` : ""}`)}<div class="mdl-b">
+    <p class="small muted" style="margin:0 0 10px">اختر ما يطلبه العميل. الملاحظات مجانية وتُطبع في ورقة المطبخ. الإضافات المدفوعة مثل الجبن من قسم «الإضافات».</p>
+    <div class="nchips">${noteList().map(n => `<button data-n="${esc(n)}" class="${sel.has(n) ? "on" : ""}">${esc(n)}</button>`).join("")}</div>
+    <div class="f" style="margin-top:14px"><label for="nfree">ملاحظة أخرى (اختياري)</label><input id="nfree" maxlength="60" value="${esc(l.note || "")}" placeholder="مثال: الخبز محمّص زيادة"></div>
+    ${l.qty > 1 ? `<p class="small muted" style="margin:0">الملاحظة تشمل الـ ${l.qty} حبات. إن كانت لحبة واحدة فقط، أنقص الكمية وأضف الصنف مرة ثانية بملاحظته.</p>` : ""}</div>
+    <div class="mdl-f">${hasNotes(l) ? `<button class="btn ghost" id="nclr" style="margin-inline-end:auto;color:var(--bad)">مسح الملاحظات</button>` : ""}<button class="btn ghost" data-close>إلغاء</button><button class="btn" id="nok">حفظ</button></div>`);
+  $$("#ov [data-n]").forEach(b => b.onclick = () => { const n = b.dataset.n; sel.has(n) ? sel.delete(n) : sel.add(n); b.classList.toggle("on", sel.has(n)); });
+  $("#nclr") && ($("#nclr").onclick = () => { l.notes = []; l.note = ""; closeModal(); drawCart(); });
+  $("#nok").onclick = () => { l.notes = noteList().filter(n => sel.has(n)); l.note = $("#nfree").value.trim(); S.cart.sel = l.key; closeModal(); drawCart(); };
+}
+
+/* ----- طلبات قيد التحضير ----- */
+const prepOpen = () => S.today.filter(o => o.prep === "open" && o.status !== "void" && !!o.test === !!S.device.test).sort((a, b) => a.ts - b.ts);
+function openPrep() {
+  modal(`${mh("طلبات قيد التحضير")}<div class="mdl-b" id="prep-list"></div>`, { wide: true });
+  drawPrep();
+}
+function drawPrep() {
+  const B = $("#prep-list"); if (!B) return; const L = prepOpen(), now = Date.now();
+  const done = S.today.filter(o => o.prep === "done" && o.status !== "void" && !!o.test === !!S.device.test).sort((a, b) => (b.deliveredAt || 0) - (a.deliveredAt || 0)).slice(0, 5);
+  B.innerHTML = (L.length ? `<div class="prepgrid">${L.map(o => { const mn = Math.floor((now - o.ts) / 60000), lv = mn >= 12 ? "bad" : mn >= 7 ? "warn" : "ok";
+      return `<div class="prep ${lv}"><div class="ph"><span class="no num">${pad(o.no, 4)}</span><span class="chip ${o.type === "lokit" ? "lk" : ""}">${TYPES.find(t => t[0] === o.type)[1]}</span><span class="sp"></span><span class="tm"><span class="num">${mn}</span> د</span></div>
+        <ul>${o.lines.map(l => `<li><b>${l.qty} × ${esc(l.name)}</b>${l.mods.map(m => `<div class="pm">+ ${esc(m.name)}</div>`).join("")}${[...(l.notes || []), ...(l.note ? [l.note] : [])].map(t => `<div class="pn">● ${esc(t)}</div>`).join("")}</li>`).join("")}</ul>
+        <div class="pf"><button class="btn ghost sm" data-pk="${esc(o.id)}">🍳</button><button class="btn ok" data-dv="${esc(o.id)}" style="flex:1">✓ تم التسليم</button></div></div>`; }).join("")}</div>`
+    : `<div class="empty" style="padding:40px">لا توجد طلبات قيد التحضير 👌</div>`) +
+    (done.length ? `<h4 style="margin:18px 0 8px" class="muted">آخر الطلبات المسلّمة</h4><div class="list">${done.map(o => `<div class="row" style="cursor:default"><span class="no num">${pad(o.no, 4)}</span><span class="meta">سُلّم <span class="num">${o.deliveredAt ? hm(o.deliveredAt) : ""}</span>${o.deliveredBy ? ` · ${esc(o.deliveredBy)}` : ""}</span><button class="btn ghost sm" data-un="${esc(o.id)}">إرجاع للتحضير</button></div>`).join("")}</div>` : "");
+  const setPrep = (id, v) => { const o = S.today.find(x => x.id === id); if (!o) return;
+    const u = v === "done" ? { prep: "done", deliveredAt: Date.now(), deliveredBy: S.cashier?.name || "" } : { prep: "open", deliveredAt: null, deliveredBy: null };
+    Object.assign(o, u); fire(F.updateDoc(D("orders", id), u), "حالة الطلب"); drawPrep(); drawTop(); };
+  $$("#prep-list [data-dv]").forEach(b => b.onclick = () => setPrep(b.dataset.dv, "done"));
+  $$("#prep-list [data-un]").forEach(b => b.onclick = () => setPrep(b.dataset.un, "open"));
+  $$("#prep-list [data-pk]").forEach(b => b.onclick = () => { const o = S.today.find(x => x.id === b.dataset.pk); if (o) printJob(o, { kitchen: true }, true); });
+}
+setInterval(() => { if ($("#prep-list")) drawPrep(); }, 30e3);
 
 /* ----- orders today ----- */
 function openOrders() {
@@ -465,7 +512,7 @@ function drawOrdersList() {
   $$("#orders-list [data-o]").forEach(b => b.onclick = () => openOrder(S.today.find(o => o.id === b.dataset.o)));
 }
 function orderDetail(o) {
-  return `<table class="t"><tbody>${o.lines.map(l => `<tr><td>${l.qty} × ${esc(l.name)}${l.mods.map(m => `<br><span class="small muted">+ ${esc(m.name)} ${m2(m.price)}</span>`).join("")}</td><td class="n">${money(l.total)}</td></tr>`).join("")}</tbody>
+  return `<table class="t"><tbody>${o.lines.map(l => `<tr><td>${l.qty} × ${esc(l.name)}${l.mods.map(m => `<br><span class="small muted">+ ${esc(m.name)} ${m2(m.price)}</span>`).join("")}${(l.notes || []).length || l.note ? `<br><span class="small" style="color:var(--blue);font-weight:700">• ${esc([...(l.notes || []), ...(l.note ? [l.note] : [])].join(" · "))}</span>` : ""}</td><td class="n">${money(l.total)}</td></tr>`).join("")}</tbody>
     <tfoot>${o.discount ? `<tr><td>خصم (${esc(o.discount.reason)})</td><td class="n">−${money(o.discount.amount)}</td></tr>` : ""}<tr><td>الإجمالي · ${METHODS[o.method]}</td><td class="n">${money(o.total)}</td></tr>
     ${o.method === "cash" && o.given ? `<tr><td class="muted">المستلم / الباقي</td><td class="n muted">${m2(o.given)} / ${m2(o.change)}</td></tr>` : ""}</tfoot></table>
     <p class="small muted" style="margin:10px 0 0">${dmy(o.day)} <span class="num">${hm(o.ts)}</span> · الكاشير: ${esc(o.cashierName)} · ${TYPES.find(t => t[0] === o.type)[1]} · رمز التحقق <span class="num">${esc(o.code)}</span></p>
@@ -474,8 +521,8 @@ function orderDetail(o) {
 function openOrder(o) {
   if (!o) return;
   modal(`${mh(`طلب رقم <span class="num">${pad(o.no, 4)}</span>`)}<div class="mdl-b">${orderDetail(o)}</div>
-    <div class="mdl-f">${o.status !== "void" && (!o.shiftId || o.shiftId === S.shift?.id) ? `<button class="btn ghost" id="vd" style="margin-inline-end:auto;color:var(--bad)">إلغاء الطلب</button>` : o.status !== "void" ? `<span class="small muted" style="margin-inline-end:auto;align-self:center">لا يُلغى: الطلب من وردية أخرى${o.device !== S.dev ? " أو جهاز آخر" : " مقفلة"}</span>` : ""}<button class="btn ghost" id="bk">رجوع</button><button class="btn" id="rp">🖨 إعادة الطباعة</button></div>`);
-  $("#bk").onclick = openOrders; $("#rp").onclick = () => printOrder(o, true);
+    <div class="mdl-f">${o.status !== "void" && (!o.shiftId || o.shiftId === S.shift?.id) ? `<button class="btn ghost" id="vd" style="margin-inline-end:auto;color:var(--bad)">إلغاء الطلب</button>` : o.status !== "void" ? `<span class="small muted" style="margin-inline-end:auto;align-self:center">لا يُلغى: الطلب من وردية أخرى${o.device !== S.dev ? " أو جهاز آخر" : " مقفلة"}</span>` : ""}<button class="btn ghost" id="bk">رجوع</button><button class="btn ghost" id="rk">🍳 المطبخ</button><button class="btn" id="rp">🖨 الإيصال</button></div>`);
+  $("#bk").onclick = openOrders; $("#rp").onclick = () => printJob(o, { receipt: true }, true); $("#rk").onclick = () => printJob(o, { kitchen: true }, true);
   $("#vd") && ($("#vd").onclick = () => askManager(`إلغاء الطلب ${pad(o.no, 4)} بمبلغ ${m2(o.total)}`, () => {
     modal(`${mh("سبب الإلغاء")}<div class="mdl-b"><div class="f"><label for="vr">السبب (يظهر في التقرير)</label><input id="vr" placeholder="مثال: خطأ في الطلب، العميل ألغى"></div>
       <p class="small muted" style="margin:0">${o.method === "cash" ? `أعِد ${m2(o.total)} ر.س للعميل من الدرج.` : o.method === "lokit" ? "تأكد من إلغاء الطلب في لوكيت أيضاً." : "إن كان المبلغ قد خُصم من بطاقة العميل فأعِده من جهاز الدفع."}</p></div>
@@ -514,22 +561,27 @@ function openDevice() {
       <option value="none" ${d.printMode === "none" ? "selected" : ""}>بدون طباعة (عرض الإيصال على الشاشة)</option></select></div>
     <div class="f" id="ipf"><label for="ip">عنوان الطابعة (IP)</label><input id="ip" dir="ltr" inputmode="decimal" placeholder="192.168.1.50" value="${esc(d.printerIp)}">
       <span class="hint">أول مرة: افتح في Safari العنوان https://<span class="num">IP</span> واقبل الشهادة، ثم ارجع هنا. يجب أن يكون «ePOS-Print» مفعّلاً في إعدادات الطابعة.</span></div>
-    <div class="setrow"><div><b>طباعة تلقائية بعد كل طلب</b><span>وإلا تُطبع بزر «طباعة الإيصال»</span></div><button class="sw ${d.autoPrint ? "on" : ""}" id="ap" aria-label="طباعة تلقائية"></button></div>
+    <div class="f" style="margin-top:6px"><label for="km">ورقة المطبخ</label><select id="km">
+      <option value="same" ${d.kitchenMode === "same" ? "selected" : ""}>تُطبع من نفس الطابعة بعد إيصال العميل</option>
+      <option value="ip" ${d.kitchenMode === "ip" ? "selected" : ""}>طابعة مطبخ مستقلة (عنوان IP آخر)</option>
+      <option value="none" ${d.kitchenMode === "none" ? "selected" : ""}>بدون ورقة مطبخ</option></select></div>
+    <div class="f" id="kipf"><label for="kip">عنوان طابعة المطبخ (IP)</label><input id="kip" dir="ltr" inputmode="decimal" placeholder="192.168.1.51" value="${esc(d.kitchenIp || "")}"><span class="hint">تعمل بطابعة إبسون عبر الشبكة فقط، بنفس خطوات الطابعة الأولى.</span></div>
+    <div class="setrow"><div><b>طباعة تلقائية بعد كل طلب</b><span>إيصال العميل وورقة المطبخ، وإلا تُطبع بالأزرار</span></div><button class="sw ${d.autoPrint ? "on" : ""}" id="ap" aria-label="طباعة تلقائية"></button></div>
     <div class="setrow"><div><b>وضع تجريبي</b><span>الطلبات تُعلَّم «تجريبي» ولا تدخل في التقارير ولا المحاسبة</span></div><button class="sw ${d.test ? "on" : ""}" id="tm" aria-label="وضع تجريبي"></button></div>
     <div class="setrow"><div><b>رمز هذا الجهاز</b><span>يظهر في أرقام الطلبات الداخلية</span></div><span class="num chip">${esc(S.dev)}</span></div>
     <p id="pt" class="small muted"></p></div>
     <div class="mdl-f"><button class="btn ghost" id="tp" style="margin-inline-end:auto">🖨 طباعة تجربة</button><button class="btn ghost" data-close>إغلاق</button><button class="btn" id="sv">حفظ</button></div>`);
   const t = { ap: d.autoPrint, tm: d.test };
-  const ipv = () => $("#ipf").style.display = $("#pm").value === "epos" ? "" : "none"; ipv(); $("#pm").onchange = ipv;
+  const ipv = () => { $("#ipf").style.display = $("#pm").value === "epos" ? "" : "none"; $("#kipf").style.display = $("#km").value === "ip" ? "" : "none"; }; ipv(); $("#pm").onchange = ipv; $("#km").onchange = ipv;
   $("#ap").onclick = () => { t.ap = !t.ap; $("#ap").classList.toggle("on", t.ap); };
   $("#tm").onclick = () => { t.tm = !t.tm; $("#tm").classList.toggle("on", t.tm); };
-  const apply = () => { Object.assign(S.device, { printMode: $("#pm").value, printerIp: $("#ip").value.trim(), autoPrint: t.ap, test: t.tm }); saveDevice(); };
+  const apply = () => { Object.assign(S.device, { printMode: $("#pm").value, printerIp: $("#ip").value.trim(), autoPrint: t.ap, test: t.tm, kitchenMode: $("#km").value, kitchenIp: $("#kip").value.trim() }); saveDevice(); };
   $("#tp").onclick = async () => { apply(); $("#pt").textContent = "جارٍ الطباعة…";
-    const res = await printOrder(sampleOrder(), true, true); $("#pt").textContent = res === true ? "✓ تمت الطباعة" : res || ""; };
+    const res = await printJob(sampleOrder(), { receipt: true, kitchen: true }, true, true); $("#pt").textContent = res === true ? "✓ تمت الطباعة" : res || ""; };
   $("#sv").onclick = () => { const was = S.view; apply(); closeModal(); toast("تم حفظ إعدادات الجهاز"); render(was === "pin" ? "pin" : "pos"); };
 }
 function sampleOrder() {
-  return { id: "test", no: 0, day: bizDay(), ts: Date.now(), type: "take", method: "cash", lines: [{ name: "كلاسيك دجاج", qty: 2, price: 8, mods: [], total: 16 }, { name: "عراقيات لحم", qty: 1, price: 27, mods: [{ name: "جبن للبوكس", price: 2 }], total: 29 }],
+  return { id: "test", no: 0, day: bizDay(), ts: Date.now(), type: "take", method: "cash", lines: [{ name: "كلاسيك دجاج", qty: 2, price: 8, mods: [], notes: ["بدون ثوم"], note: "", total: 16 }, { name: "عراقيات لحم", qty: 1, price: 27, mods: [{ name: "جبن للبوكس", price: 2 }], notes: [], note: "", total: 29 }],
     subtotal: 45, discount: null, total: 45, given: 50, change: 5, cashierName: S.cashier?.name || "تجربة", code: "TEST00", test: true, sample: true };
 }
 
@@ -562,6 +614,7 @@ async function drawReceipt(o) {
     while (g.measureText(name).width > maxW && name.length > 4) name = name.slice(0, -2) + "…";
     lr(name, m2(l.qty * l.price), 28, 700);
     for (const m of l.mods) lr(`    + ${m.name}${l.qty > 1 ? ` × ${l.qty}` : ""}`, m2(m.price * l.qty), 24, 500);
+    const nts = [...(l.notes || []), ...(l.note ? [l.note] : [])]; if (nts.length) lr(`    • ${nts.join("، ")}`.slice(0, 44), null, 21, 500);
   }
   hr();
   if (o.discount) { lr("المجموع", m2(o.subtotal), 26, 500); lr("خصم", "-" + m2(o.discount.amount), 26, 500); }
@@ -582,9 +635,10 @@ function raster(cv) {
     if (px[i + 3] > 128 && lum < 140) out[y * bw + (x >> 3)] |= 0x80 >> (x & 7); }
   let s = ""; for (let i = 0; i < out.length; i += 0x8000) s += String.fromCharCode.apply(null, out.subarray(i, i + 0x8000)); return btoa(s);
 }
-async function eposPrint(cv, ip) {
+async function eposPrint(cvs, ip) {
+  cvs = [].concat(cvs);
   const xml = `<?xml version="1.0" encoding="utf-8"?><s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"><s:Body><epos-print xmlns="http://www.epson-pos.com/schemas/2011/03/epos-print">` +
-    `<image width="${cv.width}" height="${cv.height}" color="color_1" mode="mono">${raster(cv)}</image><feed line="3"/><cut type="feed"/></epos-print></s:Body></s:Envelope>`;
+    cvs.map(cv => `<image width="${cv.width}" height="${cv.height}" color="color_1" mode="mono">${raster(cv)}</image><feed line="3"/><cut type="feed"/>`).join("") + `</epos-print></s:Body></s:Envelope>`;
   const ac = new AbortController(), tm = setTimeout(() => ac.abort(), 12000);
   try {
     const r = await fetch(`https://${ip}/cgi-bin/epos/service.cgi?devid=local_printer&timeout=10000`, { method: "POST", headers: { "Content-Type": "text/xml; charset=utf-8", "SOAPAction": '""' }, body: xml, signal: ac.signal });
@@ -593,19 +647,58 @@ async function eposPrint(cv, ip) {
     return true;
   } finally { clearTimeout(tm); }
 }
-function browserPrint(cv) {
-  return new Promise(res => { $("#print").innerHTML = `<img alt="">`; const im = $("#print img"); im.onload = () => { setTimeout(() => { window.print(); res(true); }, 50); }; im.src = cv.toDataURL("image/png"); });
+function browserPrint(cvs) {
+  cvs = [].concat(cvs);
+  return new Promise(res => { $("#print").innerHTML = cvs.map(() => `<img alt="" style="display:block;page-break-after:always">`).join("");
+    const ims = $$("#print img"); let n = 0; ims.forEach((im, i) => { im.onload = () => { if (++n === ims.length) setTimeout(() => { window.print(); res(true); }, 50); }; im.src = cvs[i].toDataURL("image/png"); }); });
 }
-function showReceipt(cv, msg) {
-  modal(`${mh("الإيصال")}<div class="mdl-b">${msg ? `<div class="note warn" style="margin-bottom:10px">${esc(msg)}</div>` : ""}<img class="rcpt" src="${cv.toDataURL("image/png")}" alt="الإيصال" style="width:300px"></div>
+function showReceipt(cvs, msg) {
+  cvs = [].concat(cvs);
+  modal(`${mh(cvs.length > 1 ? "الإيصال وورقة المطبخ" : "الإيصال")}<div class="mdl-b">${msg ? `<div class="note warn" style="margin-bottom:10px">${esc(msg)}</div>` : ""}<div style="display:flex;gap:16px;flex-wrap:wrap;justify-content:center;align-items:flex-start">${cvs.map(cv => `<img class="rcpt" src="${cv.toDataURL("image/png")}" alt="" style="width:280px;margin:0">`).join("")}</div></div>
     <div class="mdl-f"><button class="btn" data-close>إغلاق</button></div>`);
 }
 /* returns true | error message */
-async function printOrder(o, manual, quiet) {
-  let cv; try { cv = await drawReceipt(o); } catch (e) { console.error(e); toast("تعذّر تجهيز الإيصال", true); return "تعذّر تجهيز الإيصال"; }
-  return printCanvas(cv, manual, quiet);
+async function printOrder(o, manual, quiet) { return printJob(o, { receipt: true }, manual, quiet); }
+/* إيصال العميل و/أو ورقة المطبخ حسب إعدادات الجهاز. يعيد true أو رسالة الخطأ */
+async function printJob(o, what, manual, quiet) {
+  const d = S.device, wantK = what.kitchen && d.kitchenMode !== "none";
+  let rc = null, kc = null;
+  try { if (what.receipt) rc = await drawReceipt(o); if (wantK) kc = await drawKitchen(o); }
+  catch (e) { console.error(e); toast("تعذّر تجهيز الطباعة", true); return "تعذّر تجهيز الطباعة"; }
+  if (!rc && !kc) { if (what.kitchen && !what.receipt && manual) toast("ورقة المطبخ مطفأة في إعدادات الجهاز"); return true; }
+  if (d.printMode !== "epos" || d.kitchenMode !== "ip" || !kc) return printCanvas([rc, kc].filter(Boolean), manual, quiet);
+  /* طابعة مطبخ مستقلة */
+  const r1 = rc ? await printCanvas(rc, manual, quiet) : true;
+  if (!d.kitchenIp) { const m = "لم يُحدَّد عنوان طابعة المطبخ"; if (!quiet) toast(m, true); return m; }
+  try { await eposPrint(kc, d.kitchenIp); return r1; }
+  catch (e) { const m = "تعذّرت طباعة ورقة المطبخ: " + (e.name === "AbortError" ? "طابعة المطبخ لا ترد" : e.message === "Failed to fetch" ? "لا يمكن الوصول لطابعة المطبخ (افتح https://" + d.kitchenIp + " في Safari واقبل الشهادة)" : e.message); if (!quiet) toast(m, true); return m; }
 }
-async function printCanvas(cv, manual, quiet) {
+/* ورقة المطبخ: رقم الطلب كبير، النوع، الأصناف والإضافات والملاحظات، بدون أسعار */
+async function drawKitchen(o) {
+  const W = 576, M = 16, FONT = `-apple-system,"SF Arabic","Geeza Pro",Tahoma,sans-serif`;
+  const cv = document.createElement("canvas"); cv.width = W; cv.height = 3000; const g = cv.getContext("2d");
+  g.fillStyle = "#fff"; g.fillRect(0, 0, W, cv.height); g.fillStyle = "#000"; let y = 10;
+  const font = (px, w = 700) => g.font = `${w} ${px}px ${FONT}`;
+  const ctr = (t, px, w) => { font(px, w); g.direction = "rtl"; g.textAlign = "center"; y += px * 1.2; g.fillText(t, W / 2, y); y += px * .25; };
+  const rt = (t, px, w, indent = 0) => { font(px, w); g.direction = "rtl"; g.textAlign = "right"; y += px * 1.25; g.fillText(t, W - M - indent, y); y += px * .25; };
+  const hr = () => { y += 8; g.fillRect(M, y, W - 2 * M, 3); y += 12; };
+  const typ = TYPES.find(t => t[0] === o.type)?.[1] || "";
+  g.fillRect(0, y, W, 120); g.fillStyle = "#fff"; y -= 4; ctr(`طلب ${pad(o.no, 4)}`, 64, 900); g.fillStyle = "#000"; y = 140;
+  ctr(`${typ}${o.test ? " · تجريبي" : ""}`, 44, 900);
+  const d = new Date(o.ts); ctr(`${hm(o.ts)} · ${pad(d.getDate())}/${pad(d.getMonth() + 1)} · ${o.cashierName}`, 24, 500);
+  hr();
+  let n = 0;
+  for (const l of o.lines) {
+    n += l.qty; rt(`${l.qty} × ${l.name}`, 40, 900);
+    for (const m of l.mods) rt(`+ ${m.name}`, 30, 700, 30);
+    for (const t of l.notes || []) rt(`● ${t}`, 32, 800, 30);
+    if (l.note) rt(`● ${l.note}`.slice(0, 32), 32, 800, 30);
+    y += 6;
+  }
+  hr(); ctr(`عدد الأصناف: ${n}`, 30, 800);
+  y += 30; const out = document.createElement("canvas"); out.width = W; out.height = Math.ceil(y); out.getContext("2d").drawImage(cv, 0, 0); return out;
+}
+async function printCanvas(cv, manual, quiet) { /* cv: لوحة أو أكثر */
   const mode = S.device.printMode, st = $("#prs");
   if (mode === "none") { if (manual) showReceipt(cv); return true; }
   if (mode === "browser") { if (!manual && !quiet) return true; await browserPrint(cv); return true; }
@@ -1006,6 +1099,7 @@ function admStore() {
     <div class="f"><label for="sa">العنوان</label><input id="sa" value="${esc(st.address)}"></div>
     <div class="f"><label for="sp">رقم الطلبات</label><input id="sp" dir="ltr" inputmode="tel" value="${esc(st.phone)}"></div>
     <div class="f"><label for="st">عبارة الشكر</label><input id="st" value="${esc(st.thanks)}"></div>
+    <div class="f"><label for="snt">ملاحظات الأصناف السريعة (سطر لكل ملاحظة)</label><textarea id="snt" rows="6" style="min-height:140px">${esc(noteList().join("\n"))}</textarea><span class="hint">تظهر أزراراً عند الضغط على «📝 ملاحظة» في السلة، وتُطبع في ورقة المطبخ. مجانية دائماً.</span></div>
     <div class="f"><label for="sc">بداية اليوم التشغيلي (الساعة)</label><select id="sc">${[0, 1, 2, 3, 4, 5, 6].map(h => `<option value="${h}" ${(S.config.cutoff ?? 4) === h ? "selected" : ""}>${h === 0 ? "12 منتصف الليل" : `${h} فجراً`}</option>`).join("")}</select>
       <span class="hint">الطلبات قبل هذه الساعة تُحسب على اليوم السابق، مثل فودكس.</span></div>
     <div class="f"><label>الشعار في الإيصال (أسود على أبيض)</label><div style="display:flex;gap:8px;flex-wrap:wrap"><label class="btn ghost sm" for="lg">اختيار صورة الشعار</label><input id="lg" type="file" accept="image/*" hidden>${S.config.logo ? `<button class="btn ghost sm" id="lgx" style="color:var(--bad)">إزالة الشعار</button>` : ""}</div>
@@ -1021,7 +1115,8 @@ function admStore() {
   $("#ssv").onclick = async () => {
     const store = { name: $("#sn").value.trim(), address: $("#sa").value.trim(), phone: $("#sp").value.trim(), thanks: $("#st").value.trim() };
     if (!store.name) return toast("اسم المطعم مطلوب", true);
-    try { await F.updateDoc(D("config", "main"), { store, cutoff: +$("#sc").value, logo, updatedAt: Date.now() }); toast("تم الحفظ ✓"); } catch (e) { toast("تعذّر الحفظ: " + (e.code || e.message), true); }
+    const notes = [...new Set($("#snt").value.split("\n").map(x => x.trim()).filter(Boolean))].slice(0, 30);
+    try { await F.updateDoc(D("config", "main"), { store, cutoff: +$("#sc").value, logo, notes, updatedAt: Date.now() }); toast("تم الحفظ ✓"); } catch (e) { toast("تعذّر الحفظ: " + (e.code || e.message), true); }
   };
 }
 function toMonoLogo(file) {
@@ -1047,4 +1142,4 @@ function admVerify() {
 }
 
 /* expose for tests */
-window.__aq = { S, render, total, bizDay, drawReceipt, raster, shiftCalc, drawShiftReport, packOf, orderCogs };
+window.__aq = { S, render, total, bizDay, drawReceipt, drawKitchen, raster, shiftCalc, drawShiftReport, packOf, orderCogs };
