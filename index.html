@@ -196,6 +196,17 @@ table.t thead th{cursor:pointer;user-select:none}table.t thead th.sd::after{cont
 @media (max-width:1100px){.dgrid3{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media (max-width:800px){.ap{grid-template-columns:1fr}.aside{position:fixed;inset:0 0 0 auto;width:270px;z-index:40;transform:translateX(100%);transition:.2s;box-shadow:0 0 40px rgba(0,0,0,.2)}
   .ap.navopen .aside{transform:none}.amenu{display:grid}.amain{padding:0 14px 30px}.ahead h1{font-size:21px}.dgrid3{grid-template-columns:1fr}.dc.w2{grid-column:auto}.donut{grid-template-columns:120px 1fr}.donut svg{width:120px;height:120px}}
+.asec{font-size:12px;font-weight:800;color:#9a9aa3;padding:14px 14px 4px;letter-spacing:.3px}
+.rbar{display:flex;flex-wrap:wrap;align-items:center;gap:10px;background:#fff;padding:12px 14px;border-radius:14px;box-shadow:0 1px 3px rgba(0,0,0,.05);margin-bottom:16px}
+.rq{display:flex;gap:4px;background:var(--bg);padding:4px;border-radius:11px}.rq button{min-height:38px;padding:0 12px;border-radius:8px;font-weight:700;color:var(--mut);font-size:14px}.rq button.on{background:var(--red);color:#fff}
+.rbar .dinp{min-height:40px;font-size:15px}
+.rgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:14px}
+.rc{background:#fff;border-radius:14px;padding:16px 18px;box-shadow:0 1px 3px rgba(0,0,0,.05),0 6px 16px rgba(0,0,0,.03);display:grid;gap:4px}
+.rc > span{font-size:14px;color:var(--mut);font-weight:700}.rc > b{font-size:28px;font-weight:600;color:var(--ink)}.rc > small{font-size:13px;color:var(--mut)}
+.rpanel{background:#fff;border-radius:16px;padding:16px;box-shadow:0 1px 3px rgba(0,0,0,.05),0 6px 16px rgba(0,0,0,.03)}
+.rh{margin:0 0 10px;font-size:16px}.rtop{display:flex;gap:12px;align-items:baseline;margin-bottom:10px}
+.tw2{overflow-x:auto}.rt tbody tr{cursor:pointer}.rt tbody tr:hover{background:#FDF3F3}
+.abody table.t td,.abody table.t th{padding:12px 10px}
 .tot{border-top:1px solid var(--line);padding:10px 14px;display:grid;gap:4px}
 .tot .r{display:flex;justify-content:space-between;font-size:15px;color:var(--mut)}
 .tot .r.big{font-size:26px;color:var(--ink);font-weight:800;align-items:baseline}
@@ -294,7 +305,7 @@ table.t tfoot td{font-weight:800}
 <div id="app"><div class="center"><div class="brand"><div class="logo"><img src="icons/logo.png" alt=""></div><h1 dir="ltr">Cashier AQ</h1><p>جارٍ التحميل…</p></div></div></div>
 <div id="print"></div>
 <noscript>يحتاج الكاشير إلى تفعيل JavaScript.</noscript>
-<script type="module" src="app.js?v=1.5.0"></script>
+<script type="module" src="app.js?v=1.6.0"></script>
 <script>
 if ("serviceWorker" in navigator) addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(() => {}));
 </script>

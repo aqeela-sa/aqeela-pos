@@ -4,7 +4,7 @@
 import * as F from "./fb.js";
 import { firebaseConfig } from "./firebase-config.js";
 
-const VERSION = "1.5.0";
+const VERSION = "1.6.0";
 const ADMIN_EMAIL = "abuabraj@gmail.com";
 const DEVICE_EMAIL = "cashier@aqeela-pos.app";
 const APP_NAME = `<span dir="ltr">Cashier AQ</span>`;
@@ -1014,21 +1014,21 @@ async function admDash() {
     <div class="dcv">${isNum ? `<span class="num">${Math.round(val)}</span>` : `${money(val)} <small>ر.س</small>`}</div>${dsh.cmp && p ? `<div class="dcp">${pctTxt(val, pv)} <span class="muted">السابق ${isNum ? Math.round(pv) : m2(pv)}</span></div>` : `<div class="dcp"></div>`}${ser ? spark(ser) : ""}</div>`;
   const top = Object.fromEntries(Object.entries(c.items).sort((a, b) => b[1].v - a[1].v).slice(0, 6).map(([n, v]) => [n, v.v]));
   $("#dbody").innerHTML = `<div class="dgrid3">
-    ${card("الطلبات", c.n, p?.n, series(() => 1), "report", true)}
-    ${card("صافي المبيعات", c.tot, p?.tot, series(o => o.total), "report")}
-    ${card("مجمل الربح", c.gp, p?.gp, series(o => { const g = o.cogs || orderCogs(o); return o.total - g.food - g.pack; }), "report")}
-    ${card("متوسط الطلب", c.avg, p?.avg, null, "report")}
-    ${card("مبلغ الخصم", c.disc, p?.disc, series(o => o.discount?.amount || 0), "report")}
-    ${card("مبلغ الإلغاء", c.vT, p?.vT, null, "report")}
+    ${card("الطلبات", c.n, p?.n, series(() => 1), "orders", true)}
+    ${card("صافي المبيعات", c.tot, p?.tot, series(o => o.total), "sales")}
+    ${card("مجمل الربح", c.gp, p?.gp, series(o => { const g = o.cogs || orderCogs(o); return o.total - g.food - g.pack; }), "sales")}
+    ${card("متوسط الطلب", c.avg, p?.avg, null, "sales")}
+    ${card("مبلغ الخصم", c.disc, p?.disc, series(o => o.discount?.amount || 0), "sales")}
+    ${card("مبلغ الإلغاء", c.vT, p?.vT, null, "sales")}
     <div class="dc"><div class="dch"><h3>نسبة التكلفة</h3></div><div class="dcv num">${c.tot ? (c.cogs / c.tot * 100).toFixed(1) + "%" : "—"}</div><div class="dcp muted small">تكلفة البضاعة ${m2(c.cogs)} ر.س</div></div>
     <div class="dc"><div class="dch"><h3>متوسط مدة التحضير</h3></div><div class="dcv">${c.prep == null ? "—" : `<span class="num">${c.prep.toFixed(1)}</span> <small>دقيقة</small>`}</div><div class="dcp muted small">من الطلب حتى التسليم</div></div>
     <div class="dc"><div class="dch"><h3>عدد الإلغاءات</h3></div><div class="dcv num">${c.vN}</div><div class="dcp muted small">طلب ملغى برمز المدير</div></div>
     <div class="dc w2"><div class="dch"><h3>المبيعات لكل ساعة</h3></div>${bars(hrs.map(h => c.hours[h]), hrs.map(h => pad(h)))}</div>
     <div class="dc"><div class="dch"><h3>أنواع الطلب</h3></div>${donut(c.typ, Object.fromEntries(TYPES))}</div>
-    <div class="dc"><div class="dch"><h3>أعلى المنتجات حسب صافي البيع</h3><button class="dlink" data-go="report">عرض التقرير</button></div>${donut(top)}</div>
-    <div class="dc"><div class="dch"><h3>أعلى المدفوعات</h3><button class="dlink" data-go="report">عرض التقرير</button></div>${donut(c.pay, METHODS)}</div>
+    <div class="dc"><div class="dch"><h3>أعلى المنتجات حسب صافي البيع</h3><button class="dlink" data-go="items">عرض التقرير</button></div>${donut(top)}</div>
+    <div class="dc"><div class="dch"><h3>أعلى المدفوعات</h3><button class="dlink" data-go="pays">عرض التقرير</button></div>${donut(c.pay, METHODS)}</div>
     <div class="dc"><div class="dch"><h3>الكاشيرون</h3><button class="dlink" data-go="shifts">الورديات</button></div>${donut(c.cash)}</div></div>`;
-  $$("#dbody [data-go]").forEach(b => b.onclick = () => { if (b.dataset.go === "report") { rep.a = R[0]; rep.b = R[1]; } openAdmin(b.dataset.go); });
+  $$("#dbody [data-go]").forEach(b => b.onclick = () => { rf.a = R[0]; rf.b = R[1]; openAdmin(b.dataset.go); });
 }
 /* ترتيب أي جدول بالضغط على عنوان العمود (من الأكبر للأصغر ثم العكس) */
 document.addEventListener("click", e => {
@@ -1041,12 +1041,99 @@ document.addEventListener("click", e => {
 
 /* ---------- admin ---------- */
 let admTab = "dash";
-const ADM_NAV = [["dash", "📊", "الملخص"], ["report", "📈", "تقرير المبيعات"], ["shifts", "🕘", "الورديات"], ["stock", "📦", "المخزون"], ["menu", "🍽️", "المنيو والأسعار"], ["staff", "👥", "الكاشيرون والرموز"], ["store", "⚙️", "الإيصال والإعدادات"], ["verify", "🔎", "التحقق من إيصال"]];
+/* ---------- التقارير المستقلة (مثل فودكس) ---------- */
+let rf = { a: null, b: null, test: false, q: "", st: "all" };
+function rfBar(extra = "") {
+  rf.a ||= bizDay(); rf.b ||= rf.a; const t = bizDay();
+  const q = [["اليوم", t, t], ["أمس", addDays(t, -1), addDays(t, -1)], ["هذا الأسبوع", ...dshRange("week", t)], ["هذا الشهر", ...dshRange("month", t)]];
+  return `<div class="rbar"><div class="rq">${q.map(([l, a, b]) => `<button data-rq="${a}|${b}" class="${rf.a === a && rf.b === b ? "on" : ""}">${l}</button>`).join("")}</div>
+    <input type="date" id="rfa" class="dinp" value="${rf.a}"><span class="muted">إلى</span><input type="date" id="rfb" class="dinp" value="${rf.b}">
+    <label class="dsw small"><input type="checkbox" id="rft" ${rf.test ? "checked" : ""}> التجريبي</label>${extra}</div>`;
+}
+function rfBind(redraw) {
+  $$("[data-rq]").forEach(b => b.onclick = () => { [rf.a, rf.b] = b.dataset.rq.split("|"); redraw(); });
+  $("#rfa").onchange = e => { rf.a = e.target.value; if (rf.b < rf.a) rf.b = rf.a; redraw(); };
+  $("#rfb").onchange = e => { rf.b = e.target.value < rf.a ? rf.a : e.target.value; redraw(); };
+  $("#rft").onchange = e => { rf.test = e.target.checked; redraw(); };
+}
+async function rfLoad() { const s = await F.getDocs(F.query(C("orders"), F.where("day", ">=", rf.a), F.where("day", "<=", rf.b))); return s.docs.map(d => d.data()).filter(o => rf.test || !o.test).sort((a, b) => b.ts - a.ts); }
+const rCard = (l, v, sub = "") => `<div class="rc"><span>${l}</span><b>${v}</b>${sub ? `<small>${sub}</small>` : ""}</div>`;
+
+/* الطلبات: قائمة بحث وتصفية، والضغط يفتح التفاصيل */
+async function admOrders() {
+  const A = $("#adm"); A.innerHTML = rfBar(`<input id="rfq" class="dinp" placeholder="رقم الطلب" inputmode="numeric" value="${esc(rf.q)}" style="width:130px">
+    <select id="rfs" class="dinp"><option value="all">كل الحالات</option><option value="paid" ${rf.st === "paid" ? "selected" : ""}>مدفوع</option><option value="void" ${rf.st === "void" ? "selected" : ""}>ملغي</option><option value="disc" ${rf.st === "disc" ? "selected" : ""}>عليه خصم</option></select>`) + `<div id="rbody" class="rpanel"><p class="muted">جارٍ التحميل…</p></div>`;
+  rfBind(admOrders); $("#rfq").oninput = e => { rf.q = e.target.value.trim(); draw(); }; $("#rfs").onchange = e => { rf.st = e.target.value; draw(); };
+  let L; try { L = await rfLoad(); } catch (e) { $("#rbody").innerHTML = `<div class="err">${esc(e.code || e.message)}</div>`; return; }
+  function draw() {
+    const F2 = L.filter(o => (!rf.q || String(o.no).includes(rf.q.replace(/^0+/, ""))) && (rf.st === "all" || (rf.st === "disc" ? o.discount : o.status === rf.st)));
+    $("#rbody").innerHTML = `<div class="rtop"><b>${F2.length} طلب</b><span class="muted">اضغط على أي طلب لعرض تفاصيله</span></div><div class="tw2"><table class="t rt"><thead><tr><th>الرقم</th><th>اليوم</th><th>الوقت</th><th>النوع</th><th>الدفع</th><th>الكاشير</th><th>الحالة</th><th class="n">الإجمالي</th></tr></thead><tbody>
+      ${F2.map(o => `<tr data-oid="${esc(o.id)}"><td class="num"><b>${pad(o.no, 4)}</b></td><td class="num">${dmy(o.day)}</td><td class="num">${hm(o.ts)}</td><td>${TYPES.find(t => t[0] === o.type)?.[1] || ""}</td><td>${METHODS[o.method]}</td><td>${esc(o.cashierName)}</td>
+        <td>${o.status === "void" ? `<span class="chip bad">ملغي</span>` : `<span class="chip ok">مدفوع</span>`}${o.discount ? ` <span class="chip warn">خصم</span>` : ""}${o.test ? ` <span class="chip test">تجريبي</span>` : ""}</td><td class="n money"><b>${m2(o.total)}</b></td></tr>`).join("") || `<tr><td colspan="8" class="muted" style="text-align:center;padding:30px">لا توجد طلبات</td></tr>`}</tbody></table></div>`;
+    $$("#rbody [data-oid]").forEach(r => r.onclick = () => showOrderDetail(L.find(o => o.id === r.dataset.oid)));
+  }
+  draw();
+}
+function showOrderDetail(o) {
+  if (!o) return; const pk = o.pack || packOf(o.lines), cg = o.cogs || orderCogs(o);
+  modal(`${mh(`طلب رقم <span class="num">${pad(o.no, 4)}</span> ${o.status === "void" ? `<span class="chip bad">ملغي</span>` : ""}`)}<div class="mdl-b">${orderDetail(o)}
+    <div class="kpis" style="margin-top:14px"><div class="kpi"><span>تكلفة الطعام</span><b>${money(cg.food)}</b></div><div class="kpi"><span>التغليف</span><b>${money(cg.pack)}</b><span>${pk.boxes} علبة · ${pk.bags} كيس</span></div><div class="kpi"><span>الربح</span><b>${money(o.total - cg.food - cg.pack)}</b></div></div>
+    ${o.deliveredAt ? `<p class="small muted">سُلّم <span class="num">${hm(o.deliveredAt)}</span> (${Math.round((o.deliveredAt - o.ts) / 60000)} دقيقة)${o.deliveredBy ? ` · ${esc(o.deliveredBy)}` : ""}</p>` : ""}
+    ${(o.typeChanges || []).map(c => `<p class="small muted">غُيّر النوع من ${TYPES.find(t => t[0] === c.from)?.[1]} إلى ${TYPES.find(t => t[0] === c.to)?.[1]} · <span class="num">${hm(c.at)}</span> · ${esc(c.by)}</p>`).join("")}</div>
+    <div class="mdl-f"><button class="btn ghost" id="rk">🍳 ورقة المطبخ</button><button class="btn" id="rp">🖨 الإيصال</button></div>`);
+  $("#rp").onclick = () => printJob(o, { receipt: true }, true); $("#rk").onclick = () => printJob(o, { kitchen: true }, true);
+}
+
+/* تقرير المبيعات: مؤشرات فقط */
+async function admSales() {
+  const A = $("#adm"); A.innerHTML = rfBar(`<span class="sp"></span><button class="btn sm" id="xs">⬇ المبيعات للمحاسبة</button>`) + `<div id="rbody"><p class="muted">جارٍ التحميل…</p></div>`; rfBind(admSales);
+  let L; try { L = await rfLoad(); } catch (e) { $("#rbody").innerHTML = `<div class="err">${esc(e.code || e.message)}</div>`; return; }
+  const ok = L.filter(o => o.status !== "void"), vd = L.filter(o => o.status === "void"), sum = (a, f) => r2(a.reduce((s, o) => s + f(o), 0));
+  const gross = sum(ok, o => o.subtotal), disc = sum(ok, o => o.discount?.amount || 0), net = sum(ok, o => o.total), food = sum(ok, o => (o.cogs || orderCogs(o)).food), pack = sum(ok, o => (o.cogs || orderCogs(o)).pack), qty = ok.reduce((s, o) => s + o.lines.reduce((x, l) => x + l.qty, 0), 0);
+  $("#rbody").innerHTML = `<div class="rgrid">${rCard("إجمالي المبيعات", money(gross))}${rCard("مبلغ الخصم", money(disc), `${ok.filter(o => o.discount).length} طلب`)}${rCard("صافي المبيعات", money(net))}
+    ${rCard("عدد الطلبات", `<span class="num">${ok.length}</span>`)}${rCard("متوسط الطلب", money(ok.length ? net / ok.length : 0))}${rCard("صافي الكمية", `<span class="num">${qty}</span>`, "صنف مباع")}
+    ${rCard("تكلفة الطعام", money(food))}${rCard("التغليف", money(pack))}${rCard("مجمل الربح", money(net - food - pack), net ? `نسبة التكلفة ${((food + pack) / net * 100).toFixed(1)}%` : "")}
+    ${rCard("مبلغ الإلغاء", money(sum(vd, o => o.total)), `${vd.length} طلب`)}</div>
+    <div class="rpanel" style="margin-top:18px"><h3 class="rh">حسب اليوم</h3><div class="tw2"><table class="t"><thead><tr><th>اليوم</th><th class="n">الطلبات</th><th class="n">صافي المبيعات</th><th class="n">متوسط الطلب</th><th class="n">الربح</th></tr></thead><tbody>
+    ${[...new Set(ok.map(o => o.day))].sort().reverse().map(d => { const a = ok.filter(o => o.day === d), n = sum(a, o => o.total), c = sum(a, o => { const g = o.cogs || orderCogs(o); return g.food + g.pack; }); return `<tr><td class="num">${dmy(d)}</td><td class="n num">${a.length}</td><td class="n money">${m2(n)}</td><td class="n money">${m2(n / a.length)}</td><td class="n money">${m2(n - c)}</td></tr>`; }).join("") || `<tr><td colspan="5" class="muted">—</td></tr>`}</tbody></table></div></div>`;
+  $("#xs").onclick = () => { const rows = [["التاريخ", "طريقة الدفع", "المبلغ الصافي", "العدد"]];
+    [...new Set(ok.map(o => o.day))].sort().forEach(d => Object.entries(METHODS).forEach(([k, l]) => { const os = ok.filter(o => o.day === d && o.method === k && !o.test); if (os.length) rows.push([d, l, m2(sum(os, o => o.total)), os.length]); }));
+    if (rows.length < 2) return toast("لا توجد مبيعات"); download(rows, `مبيعات-الكاشير-${rf.a}${rf.b !== rf.a ? "_" + rf.b : ""}.csv`); };
+}
+
+/* تقرير المدفوعات */
+async function admPays() {
+  const A = $("#adm"); A.innerHTML = rfBar() + `<div id="rbody" class="rpanel"><p class="muted">جارٍ التحميل…</p></div>`; rfBind(admPays);
+  let L; try { L = await rfLoad(); } catch (e) { $("#rbody").innerHTML = `<div class="err">${esc(e.code || e.message)}</div>`; return; }
+  const ok = L.filter(o => o.status !== "void"), tot = r2(ok.reduce((s, o) => s + o.total, 0)), vd = L.filter(o => o.status === "void");
+  $("#rbody").innerHTML = `<div class="tw2"><table class="t"><thead><tr><th>طريقة الدفع</th><th class="n">العدد</th><th class="n">القيمة</th><th class="n">النسبة</th><th class="n">الملغي</th><th class="n">المبلغ الصافي</th></tr></thead><tbody>
+    ${Object.entries(METHODS).map(([k, l]) => { const a = ok.filter(o => o.method === k), v = r2(a.reduce((s, o) => s + o.total, 0)), x = r2(vd.filter(o => o.method === k).reduce((s, o) => s + o.total, 0));
+      return `<tr><td><b>${l}</b></td><td class="n num">${a.length}</td><td class="n money">${m2(v + x)}</td><td class="n num">${tot ? (v / tot * 100).toFixed(1) : 0}%</td><td class="n money">${m2(x)}</td><td class="n money"><b>${m2(v)}</b></td></tr>`; }).join("")}</tbody>
+    <tfoot><tr><td>المجموع</td><td class="n num">${ok.length}</td><td></td><td></td><td class="n money">${m2(vd.reduce((s, o) => s + o.total, 0))}</td><td class="n money">${m2(tot)}</td></tr></tfoot></table></div>`;
+}
+
+/* تحليل القائمة */
+async function admItems() {
+  const A = $("#adm"); A.innerHTML = rfBar(`<span class="sp"></span><button class="btn sm ghost" id="xi">⬇ تقرير الأصناف للمحاسبة</button>`) + `<div id="rbody" class="rpanel"><p class="muted">جارٍ التحميل…</p></div>`; rfBind(admItems);
+  let L; try { L = await rfLoad(); } catch (e) { $("#rbody").innerHTML = `<div class="err">${esc(e.code || e.message)}</div>`; return; }
+  const ok = L.filter(o => o.status !== "void"), items = {};
+  ok.forEach(o => { const f = o.subtotal ? o.total / o.subtotal : 1; const add = (n, ref, q, g, c) => { const it = items[ref || n] ||= { name: n, ref, q: 0, v: 0, net: 0, cost: 0, nc: false }; it.q += q; it.v += g; it.net += g * f; if (c == null) it.nc = true; else it.cost += c * q; };
+    o.lines.forEach(l => { add(l.name, l.ref, l.qty, l.qty * l.price, l.cost ?? itemCost(l.id)); l.mods.forEach(m => add(m.name, m.ref, l.qty, l.qty * m.price, m.cost ?? itemCost(m.id))); }); });
+  const V = Object.values(items).sort((a, b) => b.net - a.net), T = V.reduce((s, x) => s + x.net, 0);
+  $("#rbody").innerHTML = `<div class="tw2"><table class="t"><thead><tr><th>المنتج</th><th class="n">الكمية</th><th class="n">صافي المبيعات</th><th class="n">من المبيعات</th><th class="n">التكلفة</th><th class="n">نسبة التكلفة</th><th class="n">الربح</th></tr></thead><tbody>
+    ${V.map(x => { const pc = x.net && !x.nc ? x.cost / x.net * 100 : null; return `<tr><td><b>${esc(x.name)}</b></td><td class="n num">${x.q}</td><td class="n money">${m2(x.net)}</td><td class="n num">${T ? (x.net / T * 100).toFixed(1) : 0}%</td><td class="n money">${x.nc ? "—" : m2(x.cost)}</td>
+      <td class="n">${pc == null ? "—" : `<span class="chip ${pc > 45 ? "bad" : pc > 35 ? "warn" : "ok"} num">${pc.toFixed(1)}%</span>`}</td><td class="n money">${x.nc ? "—" : m2(x.net - x.cost)}</td></tr>`; }).join("") || `<tr><td colspan="7" class="muted">—</td></tr>`}</tbody>
+    <tfoot><tr><td>المجموع</td><td class="n num">${V.reduce((s, x) => s + x.q, 0)}</td><td class="n money">${m2(T)}</td><td></td><td class="n money">${m2(V.reduce((s, x) => s + x.cost, 0))}</td><td></td><td class="n money">${m2(T - V.reduce((s, x) => s + x.cost, 0))}</td></tr></tfoot></table></div>`;
+  $("#xi").onclick = () => { if (!V.length) return toast("لا توجد مبيعات"); const vq = {}; L.filter(o => o.status === "void").forEach(o => o.lines.forEach(l => { vq[l.ref || l.name] = (vq[l.ref || l.name] || 0) + l.qty; }));
+    download([["المنتج", "كود تعريف المنتج", "صافي الكمية", "صافي المبيعات", "إجمالي المبيعات", "كمية الإلغاء"], ...V.map(x => [x.name, x.ref || "", x.q, m2(x.net), m2(x.v), vq[x.ref || x.name] || 0])], `أصناف-الكاشير-${rf.a}${rf.b !== rf.a ? "_" + rf.b : ""}.csv`); };
+}
+
+const ADM_NAV = [["dash", "📊", "الملخص"], ["orders", "🧾", "الطلبات"], ["sec", "", "التقارير"], ["sales", "📈", "تقرير المبيعات"], ["pays", "💳", "تقرير المدفوعات"], ["items", "🍽️", "تحليل القائمة"], ["shifts", "🕘", "الورديات"], ["sec", "", "الإدارة"], ["stock", "📦", "المخزون"], ["menu", "📋", "المنيو والأسعار"], ["staff", "👥", "الكاشيرون والرموز"], ["store", "⚙️", "الإيصال والإعدادات"], ["verify", "🔎", "التحقق من إيصال"]];
 function openAdmin(tab) { if (!isAdmin()) return; if (typeof tab === "string") admTab = tab; closeModal(); render("admin"); }
 function drawAdminPage() {
   const nm = isAdmin() ? "عاطف" : (S.cashier?.name || "");
   $("#app").innerHTML = `<div class="ap"><aside class="aside"><div class="abrand"><img src="icons/logo.png" alt=""><b dir="ltr">Cashier AQ</b></div>
-    <nav>${ADM_NAV.map(([k, ic, l]) => `<button data-at="${k}" class="${admTab === k ? "on" : ""}"><span>${ic}</span>${l}</button>`).join("")}</nav>
+    <nav>${ADM_NAV.map(([k, ic, l]) => k === "sec" ? `<div class="asec">${l}</div>` : `<button data-at="${k}" class="${admTab === k ? "on" : ""}"><span>${ic}</span>${l}</button>`).join("")}</nav>
     <button class="aback" id="aback">↩ رجوع لشاشة البيع</button></aside>
     <main class="amain"><header class="ahead"><button class="iconbtn amenu" id="amenu" aria-label="القائمة">☰</button><h1>مرحباً، ${esc(nm)}</h1><span class="sp"></span><span class="pill ${S.online ? "" : "off"}"><i class="d"></i>${S.online ? "متصل" : "بدون إنترنت"}</span></header>
     <h2 class="atitle">${ADM_NAV.find(x => x[0] === admTab)[2]}</h2><div id="adm" class="abody"></div></main></div>`;
@@ -1055,7 +1142,7 @@ function drawAdminPage() {
   $("#amenu").onclick = () => $(".ap").classList.toggle("navopen");
   drawAdm();
 }
-function drawAdm() { ({ dash: admDash, report: admReport, shifts: admShifts, stock: admStock, menu: admMenu, staff: admStaff, store: admStore, verify: admVerify })[admTab](); }
+function drawAdm() { ({ dash: admDash, orders: admOrders, sales: admSales, pays: admPays, items: admItems, report: admReport, shifts: admShifts, stock: admStock, menu: admMenu, staff: admStaff, store: admStore, verify: admVerify })[admTab](); }
 
 let rep = { a: null, b: null, test: false };
 function download(rows, name) {
