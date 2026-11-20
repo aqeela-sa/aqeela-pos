@@ -4,7 +4,7 @@
 import * as F from "./fb.js";
 import { firebaseConfig } from "./firebase-config.js";
 
-const VERSION = "1.4.0";
+const VERSION = "1.5.0";
 const ADMIN_EMAIL = "abuabraj@gmail.com";
 const DEVICE_EMAIL = "cashier@aqeela-pos.app";
 const APP_NAME = `<span dir="ltr">Cashier AQ</span>`;
@@ -141,6 +141,7 @@ function migrate() {
 function route() {
   if (!S.configReady || !S.menuReady) return;
   if (!S.config || !S.menu.length) return render(isAdmin() ? "setup" : "notready");
+  if (S.view === "admin") return;
   const c = S.cashier && S.config.cashiers.find(x => x.id === S.cashier.id && x.active);
   if (!c) { S.cashier = null; ls.set("cashier", null); }
   if (S.view === "pos" && S.cashier && S.shift) { drawMenu(); drawCart(); drawTop(); return; }
@@ -157,6 +158,7 @@ function render(view, msg) {
   if (view === "notready") A.innerHTML = `<div class="center"><div class="panel"><div class="brand"><div class="logo"><img src="icons/logo.png" alt=""></div><h1>الكاشير غير مُجهّز بعد</h1><p>يجب أن يدخل المدير مرة واحدة من حسابه لتجهيز المنيو والإعدادات.</p></div>
     <button class="btn ghost block" id="lo">تسجيل الخروج</button></div></div>`, $("#lo").onclick = () => F.signOut(auth);
   if (view === "pin") return drawPin();
+  if (view === "admin") return drawAdminPage();
   if (view === "pos") { if (!S.shift) return render("openshift"); return drawPos(); }
   if (view === "openshift") return drawOpenShift();
 }
@@ -957,7 +959,7 @@ async function admShifts() {
   $$("[data-z]").forEach(b => b.onclick = async () => { const cv = await drawShiftReport(L[+b.dataset.z], []);
     modal(`${mh("تقرير الوردية")}<div class="mdl-b"><img class="rcpt" src="${cv.toDataURL("image/png")}" alt="تقرير الوردية" style="width:300px"></div>
       <div class="mdl-f"><button class="btn ghost" id="zb">رجوع للورديات</button><button class="btn" id="zp">🖨 طباعة</button></div>`);
-    $("#zb").onclick = openAdmin; $("#zp").onclick = () => printCanvas(cv, true); });
+    $("#zb").onclick = () => openAdmin("shifts"); $("#zp").onclick = () => printCanvas(cv, true); });
 }
 
 /* ---------- لوحة المتابعة (مثل ملخص فودكس) ---------- */
@@ -982,22 +984,51 @@ function dshCalc(L) {
 }
 const bars = (vals, labels) => { const mx = Math.max(1, ...vals); return `<div class="bars">${vals.map((v, i) => `<div class="bar" title="${labels[i]}: ${m2(v)}"><i style="height:${v / mx * 100}%"></i><span>${labels[i]}</span></div>`).join("")}</div>`; };
 const share = (m, names) => { const t = Object.values(m).reduce((a, b) => a + b, 0) || 1; return `<div class="shr">${Object.entries(m).sort((a, b) => b[1] - a[1]).map(([k, v]) => `<div class="sr"><span>${esc(names?.[k] || k)}</span><div class="sb"><i style="width:${v / t * 100}%"></i></div><b class="num">${m2(v)}</b><small class="num">${(v / t * 100).toFixed(0)}%</small></div>`).join("") || `<p class="muted small">—</p>`}</div>`; };
+/* رسم خطي خلال ساعات اليوم التشغيلي */
+function spark(vals, color = "var(--red)") {
+  const W = 300, H = 90, mx = Math.max(1, ...vals), n = vals.length, x = i => 6 + i * (W - 12) / (n - 1), y = v => H - 8 - v / mx * (H - 20);
+  const pts = vals.map((v, i) => `${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(" ");
+  return `<svg class="spark" viewBox="0 0 ${W} ${H + 16}" preserveAspectRatio="none"><line x1="6" x2="${W - 6}" y1="${H - 8}" y2="${H - 8}" stroke="#E6E3E1"/>
+    <polygon points="6,${H - 8} ${pts} ${W - 6},${H - 8}" fill="${color}" opacity=".08"/><polyline points="${pts}" fill="none" stroke="${color}" stroke-width="2.2" stroke-linejoin="round"/>
+    ${vals.map((v, i) => v ? `<circle cx="${x(i).toFixed(1)}" cy="${y(v).toFixed(1)}" r="2.6" fill="${color}"/>` : "").join("")}
+    ${[0, 6, 12, 18, 23].map(i => `<text x="${x(i)}" y="${H + 12}" font-size="9" fill="#8a8a93" text-anchor="middle">${pad((i + (S.config?.cutoff ?? 4)) % 24)}:00</text>`).join("")}</svg>`;
+}
+function donut(m, names) {
+  const cols = ["#C1121F", "#1F4E9E", "#F28C28", "#2A9D8F", "#7B2CBF", "#6B6B76", "#E9C46A", "#264653"], e = Object.entries(m).filter(x => x[1] > 0).sort((a, b) => b[1] - a[1]), t = e.reduce((s, x) => s + x[1], 0);
+  if (!t) return `<div class="empty" style="height:160px">لا توجد بيانات</div>`;
+  let a0 = 0; const R = 60, r = 36, arc = (a1, a2) => { const p = (a, rr) => [80 + rr * Math.sin(a), 80 - rr * Math.cos(a)], l = a2 - a1 > Math.PI ? 1 : 0, [x1, y1] = p(a1, R), [x2, y2] = p(a2, R), [x3, y3] = p(a2, r), [x4, y4] = p(a1, r);
+    return `M${x1} ${y1}A${R} ${R} 0 ${l} 1 ${x2} ${y2}L${x3} ${y3}A${r} ${r} 0 ${l} 0 ${x4} ${y4}Z`; };
+  const segs = e.map(([k, v], i) => { const a1 = a0, a2 = a0 + v / t * Math.PI * 2 - (e.length > 1 ? .015 : 0.0001); a0 += v / t * Math.PI * 2; return `<path d="${arc(a1, Math.min(a2, a1 + Math.PI * 2 - .0001))}" fill="${cols[i % cols.length]}"/>`; }).join("");
+  return `<div class="donut"><svg viewBox="0 0 160 160">${segs}</svg><ul>${e.map(([k, v], i) => `<li><i style="background:${cols[i % cols.length]}"></i><span>${esc(names?.[k] || k)}</span><b class="num">${m2(v)}</b><small class="num">${(v / t * 100).toFixed(0)}%</small></li>`).join("")}</ul></div>`;
+}
 async function admDash() {
   const A = $("#adm"); dsh.d ||= bizDay(); const R = dshRange(dsh.p, dsh.d), P = dshPrev(dsh.p, R);
-  A.innerHTML = `<div class="toolbar"><div class="seg">${[["day", "يوم"], ["week", "أسبوع"], ["month", "شهر"]].map(([k, l]) => `<button data-dp="${k}" class="${dsh.p === k ? "on" : ""}">${l}</button>`).join("")}</div>
-    <div class="f"><input id="dd" type="date" value="${dsh.d}"></div><label class="small" style="display:flex;gap:6px;align-items:center;min-height:42px"><input type="checkbox" id="dcp" ${dsh.cmp ? "checked" : ""}> مقارنة بالفترة السابقة</label>
+  A.innerHTML = `<div class="dtool"><div class="seg">${[["day", "يوم"], ["week", "الأسبوع"], ["month", "شهر"]].map(([k, l]) => `<button data-dp="${k}" class="${dsh.p === k ? "on" : ""}">${l}</button>`).join("")}</div>
+    <input id="dd" class="dinp" type="date" value="${dsh.d}"><label class="dsw"><button class="sw ${dsh.cmp ? "on" : ""}" id="dcp" aria-label="مقارنة"></button> مقارنة</label>
     <span class="sp"></span><span class="small muted num">${dmy(R[0])}${R[1] !== R[0] ? " – " + dmy(R[1]) : ""}</span></div><div id="dbody"><p class="muted">جارٍ التحميل…</p></div>`;
-  $$("[data-dp]").forEach(b => b.onclick = () => { dsh.p = b.dataset.dp; admDash(); }); $("#dd").onchange = e => { dsh.d = e.target.value || bizDay(); admDash(); }; $("#dcp").onchange = e => { dsh.cmp = e.target.checked; admDash(); };
-  let c, p; try { [c, p] = await Promise.all([dshLoad(R).then(dshCalc), dsh.cmp ? dshLoad(P).then(dshCalc) : null]); } catch (e) { $("#dbody").innerHTML = `<div class="err">تعذّر التحميل: ${esc(e.code || e.message)}</div>`; return; }
-  const k = (l, v, pv, fmt = money) => `<div class="kpi"><span>${l}</span><b>${fmt(v)}</b>${dsh.cmp && p ? `<span>${pctTxt(v, pv)} <span class="muted">السابق ${fmt(pv)}</span></span>` : ""}</div>`, num = v => `<span class="num">${Math.round(v)}</span>`;
-  const hrs = [...Array(24).keys()].map(h => (h + (S.config?.cutoff ?? 4)) % 24);
-  const top = Object.entries(c.items).sort((a, b) => b[1].v - a[1].v).slice(0, 8);
-  $("#dbody").innerHTML = `<div class="kpis">${k("صافي المبيعات", c.tot, p?.tot)}${k("الطلبات", c.n, p?.n, num)}${k("متوسط الطلب", c.avg, p?.avg)}${k("مجمل الربح", c.gp, p?.gp)}
-      ${k("الخصومات", c.disc, p?.disc)}${k("الإلغاءات", c.vT, p?.vT)}<div class="kpi"><span>نسبة التكلفة</span><b class="num">${c.tot ? (c.cogs / c.tot * 100).toFixed(1) + "%" : "—"}</b></div><div class="kpi"><span>متوسط التحضير</span><b>${c.prep == null ? "—" : `<span class="num">${c.prep.toFixed(1)}</span> د`}</b></div></div>
-    <div class="dcard"><h4>المبيعات لكل ساعة</h4>${bars(hrs.map(h => c.hours[h]), hrs.map(h => pad(h)))}</div>
-    <div class="dgrid"><div class="dcard"><h4>أعلى الأصناف حسب صافي البيع</h4>${share(Object.fromEntries(top.map(([n, v]) => [n, v.v])))}</div>
-      <div class="dcard"><h4>طرق الدفع</h4>${share(c.pay, METHODS)}<h4 style="margin-top:14px">نوع الطلب</h4>${share(c.typ, Object.fromEntries(TYPES))}</div>
-      <div class="dcard"><h4>الكاشيرون</h4>${share(c.cash)}</div></div>`;
+  $$("[data-dp]").forEach(b => b.onclick = () => { dsh.p = b.dataset.dp; admDash(); }); $("#dd").onchange = e => { dsh.d = e.target.value || bizDay(); admDash(); }; $("#dcp").onclick = () => { dsh.cmp = !dsh.cmp; admDash(); };
+  let L, c, p; try { L = await dshLoad(R); c = dshCalc(L); p = dsh.cmp ? dshCalc(await dshLoad(P)) : null; } catch (e) { $("#dbody").innerHTML = `<div class="err">تعذّر التحميل: ${esc(e.code || e.message)}</div>`; return; }
+  const ok = L.filter(o => o.status !== "void"), hrs = [...Array(24).keys()].map(h => (h + (S.config?.cutoff ?? 4)) % 24);
+  const series = f => hrs.map(h => ok.filter(o => new Date(o.ts).getHours() === h).reduce((s, o) => s + f(o), 0));
+  const card = (title, val, pv, ser, go, isNum) => `<div class="dc"><div class="dch"><h3>${title}</h3>${go ? `<button class="dlink" data-go="${go}">عرض التقرير</button>` : ""}</div>
+    <div class="dcv">${isNum ? `<span class="num">${Math.round(val)}</span>` : `${money(val)} <small>ر.س</small>`}</div>${dsh.cmp && p ? `<div class="dcp">${pctTxt(val, pv)} <span class="muted">السابق ${isNum ? Math.round(pv) : m2(pv)}</span></div>` : `<div class="dcp"></div>`}${ser ? spark(ser) : ""}</div>`;
+  const top = Object.fromEntries(Object.entries(c.items).sort((a, b) => b[1].v - a[1].v).slice(0, 6).map(([n, v]) => [n, v.v]));
+  $("#dbody").innerHTML = `<div class="dgrid3">
+    ${card("الطلبات", c.n, p?.n, series(() => 1), "report", true)}
+    ${card("صافي المبيعات", c.tot, p?.tot, series(o => o.total), "report")}
+    ${card("مجمل الربح", c.gp, p?.gp, series(o => { const g = o.cogs || orderCogs(o); return o.total - g.food - g.pack; }), "report")}
+    ${card("متوسط الطلب", c.avg, p?.avg, null, "report")}
+    ${card("مبلغ الخصم", c.disc, p?.disc, series(o => o.discount?.amount || 0), "report")}
+    ${card("مبلغ الإلغاء", c.vT, p?.vT, null, "report")}
+    <div class="dc"><div class="dch"><h3>نسبة التكلفة</h3></div><div class="dcv num">${c.tot ? (c.cogs / c.tot * 100).toFixed(1) + "%" : "—"}</div><div class="dcp muted small">تكلفة البضاعة ${m2(c.cogs)} ر.س</div></div>
+    <div class="dc"><div class="dch"><h3>متوسط مدة التحضير</h3></div><div class="dcv">${c.prep == null ? "—" : `<span class="num">${c.prep.toFixed(1)}</span> <small>دقيقة</small>`}</div><div class="dcp muted small">من الطلب حتى التسليم</div></div>
+    <div class="dc"><div class="dch"><h3>عدد الإلغاءات</h3></div><div class="dcv num">${c.vN}</div><div class="dcp muted small">طلب ملغى برمز المدير</div></div>
+    <div class="dc w2"><div class="dch"><h3>المبيعات لكل ساعة</h3></div>${bars(hrs.map(h => c.hours[h]), hrs.map(h => pad(h)))}</div>
+    <div class="dc"><div class="dch"><h3>أنواع الطلب</h3></div>${donut(c.typ, Object.fromEntries(TYPES))}</div>
+    <div class="dc"><div class="dch"><h3>أعلى المنتجات حسب صافي البيع</h3><button class="dlink" data-go="report">عرض التقرير</button></div>${donut(top)}</div>
+    <div class="dc"><div class="dch"><h3>أعلى المدفوعات</h3><button class="dlink" data-go="report">عرض التقرير</button></div>${donut(c.pay, METHODS)}</div>
+    <div class="dc"><div class="dch"><h3>الكاشيرون</h3><button class="dlink" data-go="shifts">الورديات</button></div>${donut(c.cash)}</div></div>`;
+  $$("#dbody [data-go]").forEach(b => b.onclick = () => { if (b.dataset.go === "report") { rep.a = R[0]; rep.b = R[1]; } openAdmin(b.dataset.go); });
 }
 /* ترتيب أي جدول بالضغط على عنوان العمود (من الأكبر للأصغر ثم العكس) */
 document.addEventListener("click", e => {
@@ -1010,10 +1041,18 @@ document.addEventListener("click", e => {
 
 /* ---------- admin ---------- */
 let admTab = "dash";
-function openAdmin() {
-  if (!isAdmin()) return;
-  modal(`${mh("لوحة المدير")}<nav class="tabs">${[["dash", "لوحة المتابعة"], ["report", "التقرير"], ["shifts", "الورديات"], ["stock", "المخزون"], ["menu", "المنيو والأسعار"], ["staff", "الكاشيرون والرموز"], ["store", "الإيصال والإعدادات"], ["verify", "التحقق من إيصال"]].map(([k, l]) => `<button data-at="${k}" class="${admTab === k ? "on" : ""}">${l}</button>`).join("")}</nav><div class="mdl-b" id="adm"></div>`, { wide: true });
-  $$("[data-at]").forEach(b => b.onclick = () => { admTab = b.dataset.at; $$("[data-at]").forEach(x => x.classList.toggle("on", x === b)); drawAdm(); });
+const ADM_NAV = [["dash", "📊", "الملخص"], ["report", "📈", "تقرير المبيعات"], ["shifts", "🕘", "الورديات"], ["stock", "📦", "المخزون"], ["menu", "🍽️", "المنيو والأسعار"], ["staff", "👥", "الكاشيرون والرموز"], ["store", "⚙️", "الإيصال والإعدادات"], ["verify", "🔎", "التحقق من إيصال"]];
+function openAdmin(tab) { if (!isAdmin()) return; if (typeof tab === "string") admTab = tab; closeModal(); render("admin"); }
+function drawAdminPage() {
+  const nm = isAdmin() ? "عاطف" : (S.cashier?.name || "");
+  $("#app").innerHTML = `<div class="ap"><aside class="aside"><div class="abrand"><img src="icons/logo.png" alt=""><b dir="ltr">Cashier AQ</b></div>
+    <nav>${ADM_NAV.map(([k, ic, l]) => `<button data-at="${k}" class="${admTab === k ? "on" : ""}"><span>${ic}</span>${l}</button>`).join("")}</nav>
+    <button class="aback" id="aback">↩ رجوع لشاشة البيع</button></aside>
+    <main class="amain"><header class="ahead"><button class="iconbtn amenu" id="amenu" aria-label="القائمة">☰</button><h1>مرحباً، ${esc(nm)}</h1><span class="sp"></span><span class="pill ${S.online ? "" : "off"}"><i class="d"></i>${S.online ? "متصل" : "بدون إنترنت"}</span></header>
+    <h2 class="atitle">${ADM_NAV.find(x => x[0] === admTab)[2]}</h2><div id="adm" class="abody"></div></main></div>`;
+  $$(".aside [data-at]").forEach(b => b.onclick = () => { admTab = b.dataset.at; $(".ap").classList.remove("navopen"); drawAdminPage(); });
+  $("#aback").onclick = () => render(S.cashier ? (S.shift ? "pos" : "openshift") : "pin");
+  $("#amenu").onclick = () => $(".ap").classList.toggle("navopen");
   drawAdm();
 }
 function drawAdm() { ({ dash: admDash, report: admReport, shifts: admShifts, stock: admStock, menu: admMenu, staff: admStaff, store: admStore, verify: admVerify })[admTab](); }

@@ -162,6 +162,40 @@ input,select,textarea{font:inherit;color:inherit}
 .shr{display:grid;gap:8px}.sr{display:grid;grid-template-columns:minmax(80px,1.2fr) 2fr auto auto;gap:8px;align-items:center;font-size:14px}
 .sb{height:10px;background:var(--bg);border-radius:6px;overflow:hidden}.sb i{display:block;height:100%;background:var(--red);border-radius:6px}.sr small{color:var(--mut);min-width:32px;text-align:left}
 table.t thead th{cursor:pointer;user-select:none}table.t thead th.sd::after{content:" ▼";font-size:10px}table.t thead th.sa::after{content:" ▲";font-size:10px}
+/* full-page admin (like Foodics console) */
+.ap{flex:1;display:grid;grid-template-columns:250px 1fr;min-height:0;background:#F7F7F8}
+.aside{background:#fff;border-inline-start:0;border-inline-end:1px solid var(--line);display:flex;flex-direction:column;padding:18px 12px;overflow-y:auto}
+.abrand{display:flex;align-items:center;gap:10px;padding:4px 10px 22px}.abrand img{width:40px;height:40px;border-radius:11px}.abrand b{font-size:20px;color:var(--red);font-weight:800}
+.aside nav{display:grid;gap:4px}
+.aside nav button{display:flex;align-items:center;gap:12px;min-height:48px;padding:0 14px;border-radius:12px;font-size:16px;font-weight:600;color:#2b2b31;text-align:right}
+.aside nav button span{width:24px;text-align:center;font-size:18px}
+.aside nav button:hover{background:#F3F3F5}.aside nav button.on{background:#FDECEC;color:var(--red);font-weight:800}
+.aback{margin-top:auto;min-height:48px;border-radius:12px;border:1.5px solid var(--line);font-weight:700;color:var(--ink)}
+.amain{overflow-y:auto;min-width:0;padding:0 28px 40px}
+.ahead{display:flex;align-items:center;gap:12px;padding:22px 0 6px;position:sticky;top:0;background:#F7F7F8;z-index:5}
+.ahead h1{margin:0;font-size:26px;font-weight:800}.amenu{display:none}
+.atitle{margin:4px 0 16px;font-size:16px;color:var(--mut);font-weight:700}
+.abody{background:transparent}
+.dtool{display:flex;flex-wrap:wrap;align-items:center;gap:12px;margin-bottom:18px}
+.dtool .seg{background:#fff;border:1.5px solid var(--line)}.dtool .seg button.on{background:var(--red);color:#fff}
+.dinp{min-height:46px;border:1.5px solid var(--line);border-radius:12px;padding:0 12px;background:#fff;font-size:16px}
+.dsw{display:flex;align-items:center;gap:8px;font-weight:700}
+.dgrid3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px}
+.dc{background:#fff;border-radius:16px;box-shadow:0 1px 3px rgba(0,0,0,.06),0 6px 18px rgba(0,0,0,.04);padding:20px 22px;display:flex;flex-direction:column;min-width:0}
+.dc.w2{grid-column:span 2}
+.dch{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:10px}.dch h3{margin:0;font-size:17px;font-weight:800}
+.dlink{color:#1F6FD1;font-size:14px;font-weight:600;padding:4px}
+.dcv{font-size:34px;font-weight:600;letter-spacing:-.5px;line-height:1.1}.dcv small{font-size:16px;color:var(--mut)}
+.dcp{min-height:20px;margin:6px 0 4px;font-size:13px}
+.spark{width:100%;height:110px;margin-top:auto}
+.donut{display:grid;grid-template-columns:150px 1fr;gap:14px;align-items:center}.donut svg{width:150px;height:150px}
+.donut ul{list-style:none;margin:0;padding:0;display:grid;gap:8px}.donut li{display:grid;grid-template-columns:12px 1fr auto auto;gap:8px;align-items:center;font-size:14px}
+.donut li i{width:12px;height:12px;border-radius:3px}.donut li small{color:var(--mut);min-width:34px;text-align:left}
+.abody .kpis .kpi,.abody .note,.abody table.t,.abody .setrow,.abody .mrow{background:#fff}
+.abody > .toolbar,.abody > div > table.t{background:#fff}
+@media (max-width:1100px){.dgrid3{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:800px){.ap{grid-template-columns:1fr}.aside{position:fixed;inset:0 0 0 auto;width:270px;z-index:40;transform:translateX(100%);transition:.2s;box-shadow:0 0 40px rgba(0,0,0,.2)}
+  .ap.navopen .aside{transform:none}.amenu{display:grid}.amain{padding:0 14px 30px}.ahead h1{font-size:21px}.dgrid3{grid-template-columns:1fr}.dc.w2{grid-column:auto}.donut{grid-template-columns:120px 1fr}.donut svg{width:120px;height:120px}}
 .tot{border-top:1px solid var(--line);padding:10px 14px;display:grid;gap:4px}
 .tot .r{display:flex;justify-content:space-between;font-size:15px;color:var(--mut)}
 .tot .r.big{font-size:26px;color:var(--ink);font-weight:800;align-items:baseline}
@@ -260,7 +294,7 @@ table.t tfoot td{font-weight:800}
 <div id="app"><div class="center"><div class="brand"><div class="logo"><img src="icons/logo.png" alt=""></div><h1 dir="ltr">Cashier AQ</h1><p>جارٍ التحميل…</p></div></div></div>
 <div id="print"></div>
 <noscript>يحتاج الكاشير إلى تفعيل JavaScript.</noscript>
-<script type="module" src="app.js?v=1.4.0"></script>
+<script type="module" src="app.js?v=1.5.0"></script>
 <script>
 if ("serviceWorker" in navigator) addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(() => {}));
 </script>
