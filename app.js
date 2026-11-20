@@ -4,7 +4,7 @@
 import * as F from "./fb.js";
 import { firebaseConfig } from "./firebase-config.js";
 
-const VERSION = "1.2.1";
+const VERSION = "1.2.2";
 const ADMIN_EMAIL = "abuabraj@gmail.com";
 const DEVICE_EMAIL = "cashier@aqeela-pos.app";
 
@@ -496,7 +496,7 @@ function openMore() {
     <button class="row" id="m-dev"><span style="font-size:24px">⚙️</span><span><b>إعدادات الجهاز والطابعة</b><br><span class="meta">تحتاج رمز المدير</span></span><span></span></button>
     ${isAdmin() ? `<button class="row" id="m-adm"><span style="font-size:24px">📊</span><span><b>لوحة المدير</b><br><span class="meta">التقرير، المنيو، الكاشيرون، الإعدادات</span></span><span></span></button>` : ""}
     <button class="row" id="m-up"><span style="font-size:24px">🔄</span><span><b>تحديث الكاشير</b><br><span class="meta">الإصدار <span class="num">${VERSION}</span></span></span><span></span></button>
-  </div></div>`);
+  </div><p class="small muted" style="margin:14px 2px 0;text-align:center">الحساب: <span class="num">${esc(S.user?.email || "")}</span> · <b>${isAdmin() ? "حساب المدير" : "حساب جهاز الكاشير"}</b></p></div>`);
   $("#m-ord").onclick = openOrders; $("#m-sh").onclick = openShift;
   $("#m-sw").onclick = switchCashier;
   $("#m-dev").onclick = () => askManager("إعدادات الجهاز", openDevice);
