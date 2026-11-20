@@ -179,7 +179,7 @@ table.t tfoot td{font-weight:800}
 .tabs{display:flex;gap:6px;overflow-x:auto;padding:10px 14px;border-bottom:1px solid var(--line)}
 .tabs button{min-height:42px;padding:0 16px;border-radius:10px;font-weight:700;color:var(--mut);white-space:nowrap}
 .tabs button.on{background:var(--redbg);color:var(--red)}
-.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:14px}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin-bottom:14px}
 .kpi{background:var(--bg);border-radius:14px;padding:12px 14px}
 .kpi > span{font-size:13px;color:var(--mut);font-weight:600;display:block}
 .kpi b{display:block;font-size:22px;margin-top:2px}
@@ -223,7 +223,7 @@ table.t tfoot td{font-weight:800}
 <div id="app"><div class="center"><div class="brand"><div class="logo">ع</div><h1>شاورما العقيله</h1><p>جارٍ التحميل…</p></div></div></div>
 <div id="print"></div>
 <noscript>يحتاج الكاشير إلى تفعيل JavaScript.</noscript>
-<script type="module" src="app.js?v=1"></script>
+<script type="module" src="app.js?v=1.0.1"></script>
 <script>
 if ("serviceWorker" in navigator) addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(() => {}));
 </script>

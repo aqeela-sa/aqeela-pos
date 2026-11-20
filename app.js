@@ -4,7 +4,7 @@
 import * as F from "./fb.js";
 import { firebaseConfig } from "./firebase-config.js";
 
-const VERSION = "1.0.0";
+const VERSION = "1.0.1";
 const ADMIN_EMAIL = "abuabraj@gmail.com";
 const DEVICE_EMAIL = "cashier@aqeela-pos.app";
 
@@ -361,7 +361,8 @@ function openPay(method) {
 }
 
 function nextNo(day) {
-  const k = "seq_" + day, mine = S.today.filter(o => o.device === S.dev && o.day === day).reduce((m, o) => Math.max(m, o.no || 0), 0);
+  /* الترقيم موحّد لكل الأجهزة: أكبر رقم وصل من أي جهاز اليوم + 1، مع عدّاد محلي يحمي الترقيم أثناء انقطاع الإنترنت */
+  const k = "seq_" + day, mine = S.today.filter(o => o.day === day).reduce((m, o) => Math.max(m, o.no || 0), 0);
   const n = Math.max(ls.get(k, 0), mine) + 1; ls.set(k, n);
   /* تنظيف عدادات الأيام القديمة */
   try { Object.keys(localStorage).filter(x => x.startsWith("aq_seq_") && x < "aq_seq_" + addDays(day, -7)).forEach(x => localStorage.removeItem(x)); } catch {}
@@ -404,9 +405,9 @@ function openOrders() {
   drawOrdersList();
 }
 function drawOrdersList() {
-  const B = $("#orders-list"); if (!B) return; const L = S.today, ok = L.filter(o => o.status !== "void" && !o.test);
+  const B = $("#orders-list"); if (!B) return; const L = S.today, tm = !!S.device.test, ok = L.filter(o => o.status !== "void" && !!o.test === tm);
   const sum = m => r2(ok.filter(o => o.method === m).reduce((s, o) => s + o.total, 0));
-  B.innerHTML = `<div class="kpis"><div class="kpi"><span>الطلبات</span><b class="num">${ok.length}</b></div><div class="kpi"><span>الإجمالي</span><b>${money(ok.reduce((s, o) => s + o.total, 0))}</b></div>
+  B.innerHTML = `${tm ? `<div class="note warn" style="margin-bottom:10px">الأرقام أدناه للطلبات <b>التجريبية</b> فقط، لأن الجهاز في الوضع التجريبي. المبيعات الفعلية لا تتأثر بها.</div>` : L.some(o => o.test) ? `<p class="small muted" style="margin:0 0 8px">الطلبات التجريبية تظهر في القائمة ولا تدخل في الأرقام.</p>` : ""}<div class="kpis"><div class="kpi"><span>الطلبات</span><b class="num">${ok.length}</b></div><div class="kpi"><span>الإجمالي</span><b>${money(ok.reduce((s, o) => s + o.total, 0))}</b></div>
     ${Object.entries(METHODS).map(([k, l]) => `<div class="kpi"><span>${l}</span><b>${money(sum(k))}</b></div>`).join("")}</div>
     <div class="list">${L.length ? L.map(o => `<button class="row ${o.status === "void" ? "void" : ""}" data-o="${esc(o.id)}"><span class="no num">${pad(o.no, 4)}</span>
       <span><b>${o.lines.map(l => `${l.qty}× ${esc(l.name)}`).join("، ")}</b><br><span class="meta"><span class="num">${hm(o.ts)}</span> · ${esc(o.cashierName)} · ${TYPES.find(t => t[0] === o.type)[1]} · ${METHODS[o.method]}
