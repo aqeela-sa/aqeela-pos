@@ -4,7 +4,7 @@
 import * as F from "./fb.js";
 import { firebaseConfig } from "./firebase-config.js";
 
-const VERSION = "1.1.0";
+const VERSION = "1.2.0";
 const ADMIN_EMAIL = "abuabraj@gmail.com";
 const DEVICE_EMAIL = "cashier@aqeela-pos.app";
 
@@ -34,6 +34,11 @@ const DEFAULT_MENU = [
   ["drinks", "بيبسي دايت", 2.5, 4, "sk-0017"],
   ["drinks", "مياه", 1, 2, "sk-0018"],
 ];
+/* تكلفة الطعام للوحدة من برنامج المحاسبة (بدون التغليف) — حسب رمز الصنف */
+const DEFAULT_COSTS = { "sk-0001": 2.53, "sk-0002": 3.75, "sk-0003": 4, "sk-0004": 6.2, "sk-0005": 2.46, "sk-0006": 3.65, "sk-0007": 2.27, "sk-0008": 3.24,
+  "sk-0009": 8.2, "sk-0010": 9.39, "sk-0011": 6.54, "sk-0012": 8.92, "sk-0013": 8.59, "sk-0014": 1.5, "sk-0015": 0.44, "sk-0016": 1.8, "sk-0017": 1.8, "sk-0018": 0.5 };
+const BOX_REFS = ["sk-0009", "sk-0010", "sk-0011", "sk-0012", "sk-0013"];
+const DEFAULT_PACK = { boxPrice: 1.4, bagKgPrice: 9, bagsPerKg: 60, perBag: 3 };
 const DEFAULT_CONFIG = {
   cutoff: 4,
   store: { name: "شاورما العقيله", address: "القطيف – الإسكان – شارع زين العابدين", phone: "0549801873", thanks: "شكراً لزيارتكم" },
@@ -93,14 +98,14 @@ F.onAuthStateChanged(auth, u => {
   if (S.role === "other") return render("login", "هذا الحساب غير مصرّح له بالكاشير.");
   S.configReady = S.menuReady = false; render("boot");
   if (S.shift) { shiftSubId = ""; setShift(S.shift); }
-  S.unsub.push(F.onSnapshot(D("config", "main"), s => { S.config = s.exists() ? s.data() : null; S.configReady = true; route(); },
+  S.unsub.push(F.onSnapshot(D("config", "main"), s => { S.config = s.exists() ? s.data() : null; S.configReady = true; migrate(); route(); },
     e => { console.error(e); render("login", "تعذّر قراءة الإعدادات: " + (e.code || e.message)); }));
   /* الوردية المفتوحة على هذا الجهاز (لاسترجاعها إن فُقدت من ذاكرة الجهاز) */
   S.unsub.push(F.onSnapshot(F.query(C("shifts"), F.where("device", "==", S.dev), F.where("status", "==", "open")), s => {
     const open = s.docs.map(d => d.data()).sort((a, b) => b.openedAt - a.openedAt)[0];
     if (!S.shift && open) { setShift(open); route(); }
   }, e => console.error(e)));
-  S.unsub.push(F.onSnapshot(C("menu"), s => { S.menu = s.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (a.sort ?? 0) - (b.sort ?? 0)); S.menuReady = true; route(); },
+  S.unsub.push(F.onSnapshot(C("menu"), s => { S.menu = s.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (a.sort ?? 0) - (b.sort ?? 0)); S.menuReady = true; migrate(); route(); },
     e => console.error(e)));
 });
 
@@ -113,6 +118,19 @@ function watchToday() {
   }, e => console.error(e));
 }
 setInterval(() => { if (S.view === "pos") watchToday(); }, 60e3);
+
+/* ترقية بيانات قديمة مرة واحدة (من حساب المدير فقط): تكلفة الأصناف، والعلب، وأسعار التغليف */
+let migrated = false;
+function migrate() {
+  if (migrated || !isAdmin() || !S.configReady || !S.menuReady || !S.config || !S.menu.length) return; migrated = true;
+  const b = F.writeBatch(db); let n = 0;
+  S.menu.forEach(m => { const u = {};
+    if (!("cost" in m)) u.cost = m.ref && DEFAULT_COSTS[m.ref] != null ? DEFAULT_COSTS[m.ref] : null;
+    if (!("box" in m)) u.box = BOX_REFS.includes(m.ref);
+    if (Object.keys(u).length) { b.set(D("menu", m.id), u, { merge: true }); n++; } });
+  if (!S.config.pack) { b.set(D("config", "main"), { pack: DEFAULT_PACK }, { merge: true }); n++; }
+  if (n) b.commit().catch(e => console.error("migrate", e));
+}
 
 function route() {
   if (!S.configReady || !S.menuReady) return;
@@ -381,15 +399,35 @@ async function receiptCode(o) {
   const h = await sha([S.config.receiptKey || S.config.salt, o.id, m2(o.total), o.ts, o.method].join("|"));
   return parseInt(h.slice(0, 10), 16).toString(36).toUpperCase().padStart(7, "0").slice(-6);
 }
+/* التكلفة والتغليف */
+const itemCost = id => { const m = S.menu.find(x => x.id === id); return m && m.cost != null ? +m.cost : null; };
+const isBox = l => { const m = S.menu.find(x => x.id === l.id); return m ? !!m.box : BOX_REFS.includes(l.ref); };
+const isDrink = l => { const m = S.menu.find(x => x.id === l.id); return m ? m.cat === "drinks" : ["sk-0016", "sk-0017", "sk-0018"].includes(l.ref); };
+/* قاعدة التغليف: كل بوكس (عراقيات وصحن عربي) = علبة ورقية + كيس. باقي الأصناف كيس لكل 3، والمشروبات كيس مستقل لكل 3 */
+function packOf(lines) {
+  const per = S.config?.pack?.perBag || 3; let box = 0, food = 0, drink = 0;
+  lines.forEach(l => { if (isBox(l)) box += l.qty; else if (isDrink(l)) drink += l.qty; else food += l.qty; });
+  return { boxes: box, bags: box + Math.ceil(food / per) + Math.ceil(drink / per) };
+}
+const packPrices = () => { const p = S.config?.pack || DEFAULT_PACK; return { box: p.boxPrice, bag: r2(p.bagKgPrice / p.bagsPerKg * 1000) / 1000 }; };
+function orderCogs(o) {
+  let food = 0, missing = 0;
+  o.lines.forEach(l => { const c = l.cost ?? itemCost(l.id); if (c == null) missing++; else food += c * l.qty;
+    l.mods.forEach(m => { const mc = m.cost ?? itemCost(m.id); if (mc == null) missing++; else food += mc * l.qty; }); });
+  const pk = o.pack || packOf(o.lines), pp = packPrices();
+  return { food: r2(food), pack: r2(pk.boxes * pp.box + pk.bags * pp.bag), missing };
+}
+
 async function complete(method, given, change) {
   const ts = Date.now(), day = bizDay(ts), no = nextNo(day), st = subtotal(), da = discAmt();
   const o = {
     id: `${day}-${S.dev}-${pad(no, 4)}-${rid(3)}`, no, day, ts, type: S.cart.type, method,
-    lines: S.cart.lines.map(l => ({ id: l.id, ref: l.ref, name: l.name, price: l.price, qty: l.qty, mods: l.mods.map(m => ({ id: m.id, ref: m.ref, name: m.name, price: m.price })), total: lineTotal(l) })),
+    lines: S.cart.lines.map(l => ({ id: l.id, ref: l.ref, name: l.name, price: l.price, qty: l.qty, cost: itemCost(l.id), mods: l.mods.map(m => ({ id: m.id, ref: m.ref, name: m.name, price: m.price, cost: itemCost(m.id) })), total: lineTotal(l) })),
     subtotal: st, discount: S.cart.discount ? { ...S.cart.discount, amount: da } : null, total: r2(st - da),
     given: method === "cash" ? r2(given) : null, change: method === "cash" ? r2(change) : 0,
     cashierId: S.cashier.id, cashierName: S.cashier.name, device: S.dev, shiftId: S.shift?.id || null, status: "paid", test: !!S.device.test, v: 1, app: VERSION,
   };
+  o.pack = packOf(o.lines); o.cogs = orderCogs(o);
   o.code = await receiptCode(o);
   fire(F.setDoc(D("orders", o.id), { ...o, savedAt: F.serverTimestamp() }), "الطلب");
   if (!S.today.some(x => x.id === o.id)) S.today = [{ ...o, _pending: true }, ...S.today];
@@ -741,6 +779,62 @@ async function drawShiftReport(sh, orders) {
   y += 30; const out = document.createElement("canvas"); out.width = W; out.height = Math.ceil(y); out.getContext("2d").drawImage(cv, 0, 0); return out;
 }
 
+/* لوحة المدير: المخزون (التغليف بالعدد) */
+async function admStock() {
+  const A = $("#adm"), st = S.config.stock || {}, pk = S.config.pack || DEFAULT_PACK, pp = packPrices();
+  A.innerHTML = `<p class="muted">جارٍ الحساب…</p>`;
+  const since = ["boxes", "bags"].map(k => st[k]?.at).filter(Boolean).sort()[0], from = since ? bizDay(since) : addDays(bizDay(), -7);
+  let L = [];
+  try { L = (await F.getDocs(F.query(C("orders"), F.where("day", ">=", addDays(from < addDays(bizDay(), -7) ? from : addDays(bizDay(), -7), 0))))).docs.map(d => d.data()).filter(o => !o.test && o.status !== "void"); }
+  catch (e) { A.innerHTML = `<div class="err">تعذّر تحميل الطلبات: ${esc(e.code || e.message)}</div>`; return; }
+  const use = (k, t0) => L.filter(o => o.ts >= t0).reduce((s, o) => s + (o.pack || packOf(o.lines))[k], 0);
+  const wk = Date.now() - 7 * 864e5, row = (k, label, unit) => {
+    const c = st[k], rec = (st.receipts || []).filter(r => r.kind === k && c && r.at >= c.at).reduce((s, r) => s + r.qty, 0);
+    const used = c ? use(k, c.at) : null, left = c ? c.count + rec - used : null, daily = use(k, wk) / 7, days = left != null && daily ? Math.floor(left / daily) : null;
+    const low = days != null && days < (st.alertDays || 7);
+    return `<div class="kpi" style="background:${low ? "var(--badbg)" : "var(--bg)"}"><span style="font-size:15px;color:var(--ink)"><b>${label}</b></span>
+      ${c ? `<b class="num" style="font-size:30px">${left}</b><span>${unit} متبقية تقديرياً${k === "bags" ? ` · <span class="num">${(left / pk.bagsPerKg).toFixed(1)}</span> كيلو` : ""}</span>
+      <table class="t" style="margin-top:8px;font-size:14px"><tbody><tr><td>جرد <span class="num">${dmy(bizDay(c.at))}</span></td><td class="n num">${c.count}</td></tr><tr><td>+ المستلم بعده</td><td class="n num">${rec}</td></tr><tr><td>− المستهلك من مبيعات الكاشير</td><td class="n num">${used}</td></tr></tbody></table>
+      <span style="margin-top:6px">${daily ? `الاستهلاك اليومي <span class="num">${daily.toFixed(1)}</span> · ${days != null ? `يكفي نحو <strong class="num">${days}</strong> يوم` : ""}` : "لا يوجد استهلاك في آخر 7 أيام"}</span>
+      ${low ? `<div class="err" style="margin:8px 0 0">قارب على النفاد، اطلب كمية جديدة.</div>` : ""}`
+      : `<span>لم يُسجَّل جرد بعد. سجّل الكمية الموجودة الآن ليبدأ الخصم التلقائي.</span>`}</div>`; };
+  A.innerHTML = `<div class="note" style="margin-bottom:12px">يُخصم التغليف تلقائياً مع كل طلب: كل صنف في علبة (عراقيات وصحن عربي) = علبة + كيس، وباقي الأصناف كيس لكل <span class="num">${pk.perBag}</span>، والمشروبات كيس مستقل لكل <span class="num">${pk.perBag}</span>. <b>ما دام فودكس يعمل بجانب الكاشير فالخصم يشمل مبيعات الكاشير فقط.</b></div>
+    <div class="kpis" style="grid-template-columns:repeat(auto-fit,minmax(280px,1fr))">${row("boxes", "العلب الورقية المطبوعة", "علبة")}${row("bags", "الأكياس المطبوعة", "كيس")}</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:20px;margin-top:6px">
+      <div><h4 style="margin:4px 0 8px">تسجيل جرد أو استلام</h4>
+        <div class="seg" style="margin-bottom:10px"><button data-sk="count" class="on" style="flex:1">جرد (الموجود فعلاً)</button><button data-sk="recv" style="flex:1">استلام كمية جديدة</button></div>
+        <div class="f"><label for="sbx">العلب (عدد)</label><input id="sbx" type="number" inputmode="numeric" min="0" step="1" dir="ltr" placeholder="اتركه فارغاً إن لم يتغير"></div>
+        <div class="f"><label for="sbg">الأكياس (كيلو)</label><input id="sbg" type="number" inputmode="decimal" min="0" step="0.1" dir="ltr" placeholder="اتركه فارغاً إن لم يتغير"><span class="hint">الكيلو = <span class="num">${pk.bagsPerKg}</span> كيس.</span></div>
+        <button class="btn" id="ssv1">حفظ</button></div>
+      <div><h4 style="margin:4px 0 8px">أسعار التغليف وقاعدته</h4>
+        <div class="f"><label for="pb">سعر العلبة</label><input id="pb" type="number" step="0.01" min="0" dir="ltr" value="${pk.boxPrice}"></div>
+        <div class="f"><label for="pg">سعر كيلو الأكياس</label><input id="pg" type="number" step="0.01" min="0" dir="ltr" value="${pk.bagKgPrice}"></div>
+        <div class="f"><label for="pn">عدد الأكياس في الكيلو</label><input id="pn" type="number" step="1" min="1" dir="ltr" value="${pk.bagsPerKg}"></div>
+        <div class="f"><label for="pq">أقصى عدد أصناف في الكيس</label><input id="pq" type="number" step="1" min="1" dir="ltr" value="${pk.perBag}"></div>
+        <div class="f"><label for="pa">التنبيه قبل النفاد بـ (أيام)</label><input id="pa" type="number" step="1" min="1" dir="ltr" value="${st.alertDays || 7}"></div>
+        <p class="small muted" style="margin:0 0 10px">تكلفة الكيس الواحد حالياً <span class="num">${pp.bag}</span> ر.س.</p>
+        <button class="btn ghost" id="psv">حفظ الأسعار</button></div></div>
+    ${(st.receipts || []).length ? `<h4 style="margin:18px 0 6px">آخر الحركات</h4><table class="t"><tbody>${[...st.receipts].reverse().slice(0, 10).map(r => `<tr><td class="num">${dmy(bizDay(r.at))}</td><td>استلام ${r.kind === "boxes" ? "علب" : "أكياس"}</td><td class="n num">${r.qty}</td></tr>`).join("")}</tbody></table>` : ""}`;
+  let mode = "count";
+  $$("[data-sk]").forEach(b => b.onclick = () => { mode = b.dataset.sk; $$("[data-sk]").forEach(x => x.classList.toggle("on", x === b)); });
+  $("#ssv1").onclick = async () => {
+    const bx = $("#sbx").value, bg = $("#sbg").value; if (bx === "" && bg === "") return toast("أدخل كمية العلب أو الأكياس", true);
+    if ((bx !== "" && (+bx < 0 || !Number.isInteger(+bx))) || (bg !== "" && +bg < 0)) return toast("الكمية غير صحيحة", true);
+    const t = Date.now(), ns = { ...st, receipts: [...(st.receipts || [])] };
+    const put = (k, q) => { if (mode === "count") ns[k] = { count: q, at: t }; else { if (!ns[k]) return false; ns.receipts.push({ kind: k, qty: q, at: t }); } return true; };
+    if (bx !== "" && !put("boxes", +bx)) return toast("سجّل جرد العلب أولاً قبل الاستلام", true);
+    if (bg !== "" && !put("bags", Math.round(+bg * pk.bagsPerKg))) return toast("سجّل جرد الأكياس أولاً قبل الاستلام", true);
+    ns.receipts = ns.receipts.slice(-50);
+    try { await F.updateDoc(D("config", "main"), { stock: ns, updatedAt: t }); toast("تم الحفظ ✓"); admStock(); } catch (e) { toast("تعذّر الحفظ: " + (e.code || e.message), true); }
+  };
+  $("#psv").onclick = async () => {
+    const v = { boxPrice: r2($("#pb").value), bagKgPrice: r2($("#pg").value), bagsPerKg: Math.max(1, Math.round(+$("#pn").value)), perBag: Math.max(1, Math.round(+$("#pq").value)) };
+    if (!(v.boxPrice >= 0 && v.bagKgPrice >= 0)) return toast("أدخل أسعاراً صحيحة", true);
+    try { await F.updateDoc(D("config", "main"), { pack: v, stock: { ...st, alertDays: Math.max(1, Math.round(+$("#pa").value || 7)) }, updatedAt: Date.now() }); toast("تم الحفظ ✓"); admStock(); }
+    catch (e) { toast("تعذّر الحفظ: " + (e.code || e.message), true); }
+  };
+}
+
 /* لوحة المدير: الورديات */
 let shf = { a: null, b: null };
 async function admShifts() {
@@ -767,19 +861,24 @@ async function admShifts() {
 let admTab = "report";
 function openAdmin() {
   if (!isAdmin()) return;
-  modal(`${mh("لوحة المدير")}<nav class="tabs">${[["report", "التقرير"], ["shifts", "الورديات"], ["menu", "المنيو والأسعار"], ["staff", "الكاشيرون والرموز"], ["store", "الإيصال والإعدادات"], ["verify", "التحقق من إيصال"]].map(([k, l]) => `<button data-at="${k}" class="${admTab === k ? "on" : ""}">${l}</button>`).join("")}</nav><div class="mdl-b" id="adm"></div>`, { wide: true });
+  modal(`${mh("لوحة المدير")}<nav class="tabs">${[["report", "التقرير"], ["shifts", "الورديات"], ["stock", "المخزون"], ["menu", "المنيو والأسعار"], ["staff", "الكاشيرون والرموز"], ["store", "الإيصال والإعدادات"], ["verify", "التحقق من إيصال"]].map(([k, l]) => `<button data-at="${k}" class="${admTab === k ? "on" : ""}">${l}</button>`).join("")}</nav><div class="mdl-b" id="adm"></div>`, { wide: true });
   $$("[data-at]").forEach(b => b.onclick = () => { admTab = b.dataset.at; $$("[data-at]").forEach(x => x.classList.toggle("on", x === b)); drawAdm(); });
   drawAdm();
 }
-function drawAdm() { ({ report: admReport, shifts: admShifts, menu: admMenu, staff: admStaff, store: admStore, verify: admVerify })[admTab](); }
+function drawAdm() { ({ report: admReport, shifts: admShifts, stock: admStock, menu: admMenu, staff: admStaff, store: admStore, verify: admVerify })[admTab](); }
 
 let rep = { a: null, b: null, test: false };
+function download(rows, name) {
+  const csv = "\ufeff" + rows.map(r => r.map(x => `"${String(x).replace(/"/g, '""')}"`).join(",")).join("\r\n");
+  const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+  a.download = name; document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+}
 async function admReport() {
   const A = $("#adm"); rep.a ||= bizDay(); rep.b ||= rep.a;
   A.innerHTML = `<div class="toolbar"><div class="f"><label for="ra">من</label><input id="ra" type="date" value="${rep.a}"></div><div class="f"><label for="rb">إلى</label><input id="rb" type="date" value="${rep.b}"></div>
     <button class="btn ghost sm" id="rt">اليوم</button><button class="btn ghost sm" id="ry">أمس</button>
     <label class="small" style="display:flex;gap:6px;align-items:center;min-height:42px"><input type="checkbox" id="rx" ${rep.test ? "checked" : ""}> إظهار التجريبي</label>
-    <span class="sp"></span><button class="btn sm" id="rc">⬇ ملف للمحاسبة (CSV)</button></div><div id="rbody"><p class="muted">جارٍ التحميل…</p></div>`;
+    <span class="sp"></span><button class="btn sm" id="rc">⬇ المبيعات للمحاسبة</button><button class="btn sm ghost" id="ri">⬇ تقرير الأصناف للمحاسبة</button></div><div id="rbody"><p class="muted">جارٍ التحميل…</p></div>`;
   const go = () => { rep.a = $("#ra").value; rep.b = $("#rb").value < rep.a ? rep.a : $("#rb").value; rep.test = $("#rx").checked; admReport(); };
   $("#ra").onchange = go; $("#rb").onchange = go; $("#rx").onchange = go;
   $("#rt").onclick = () => { rep.a = rep.b = bizDay(); admReport(); };
@@ -792,30 +891,46 @@ async function admReport() {
   const by = (arr, f) => arr.reduce((m, o) => { const k = f(o); m[k] = r2((m[k] || 0) + o.total); return m; }, {});
   const cnt = (arr, f) => arr.reduce((m, o) => { const k = f(o); m[k] = (m[k] || 0) + 1; return m; }, {});
   const meth = by(ok, o => o.method), methN = cnt(ok, o => o.method), typ = by(ok, o => o.type), typN = cnt(ok, o => o.type), cash = by(ok, o => o.cashierName), cashN = cnt(ok, o => o.cashierName);
-  const items = {}; ok.forEach(o => o.lines.forEach(l => { const k = l.name; items[k] ||= { q: 0, v: 0 }; items[k].q += l.qty; items[k].v = r2(items[k].v + l.qty * l.price);
-    l.mods.forEach(m => { items[m.name] ||= { q: 0, v: 0 }; items[m.name].q += l.qty; items[m.name].v = r2(items[m.name].v + l.qty * m.price); }); }));
+  /* الأصناف: الصافي بعد توزيع خصم الطلب على أصنافه، والتكلفة من تكلفة الصنف وقت البيع */
+  const items = {}, add = (key, name, ref, q, gross, f, c) => { const it = items[key] ||= { name, ref, q: 0, v: 0, net: 0, cost: 0, noCost: false };
+    it.q += q; it.v = r2(it.v + gross); it.net = r2(it.net + gross * f); if (c == null) it.noCost = true; else it.cost = r2(it.cost + c * q); };
+  ok.forEach(o => { const f = o.subtotal ? o.total / o.subtotal : 1;
+    o.lines.forEach(l => { add(l.ref || l.name, l.name, l.ref, l.qty, l.qty * l.price, f, l.cost ?? itemCost(l.id));
+      l.mods.forEach(m => add(m.ref || m.name, m.name, m.ref, l.qty, l.qty * m.price, f, m.cost ?? itemCost(m.id))); }); });
+  const cg = ok.reduce((a, o) => { const c = o.cogs || orderCogs(o), pk = o.pack || packOf(o.lines); a.food += c.food; a.pack += c.pack; a.boxes += pk.boxes; a.bags += pk.bags; a.miss += c.missing; return a; }, { food: 0, pack: 0, boxes: 0, bags: 0, miss: 0 });
+  const cogs = r2(cg.food + cg.pack), gp = r2(tot - cogs);
   const disc = ok.filter(o => o.discount), discT = r2(disc.reduce((s, o) => s + o.discount.amount, 0));
   const days = [...new Set(ok.map(o => o.day))].sort();
   $("#rbody").innerHTML = `<div class="kpis"><div class="kpi"><span>صافي المبيعات</span><b>${money(tot)}</b></div><div class="kpi"><span>عدد الطلبات</span><b class="num">${ok.length}</b></div>
       <div class="kpi"><span>متوسط الطلب</span><b>${money(ok.length ? tot / ok.length : 0)}</b></div><div class="kpi"><span>الخصومات</span><b>${money(discT)}</b><span>${disc.length} طلب</span></div>
       <div class="kpi"><span>الملغي</span><b>${money(voids.reduce((s, o) => s + o.total, 0))}</b><span>${voids.length} طلب</span></div></div>
+    <div class="kpis"><div class="kpi"><span>تكلفة الطعام</span><b>${money(cg.food)}</b></div><div class="kpi"><span>التغليف</span><b>${money(cg.pack)}</b><span><span class="num">${cg.boxes}</span> علبة · <span class="num">${cg.bags}</span> كيس</span></div>
+      <div class="kpi"><span>مجمل الربح</span><b>${money(gp)}</b></div><div class="kpi"><span>نسبة التكلفة</span><b class="num">${tot ? (cogs / tot * 100).toFixed(1) + "%" : "—"}</b><span>طعام ${tot ? (cg.food / tot * 100).toFixed(1) + "%" : "—"}</span></div></div>
+    ${cg.miss ? `<div class="note warn" style="margin-bottom:12px">بعض الأصناف المباعة بدون تكلفة، فالتكلفة أقل من الحقيقة. اكتب تكلفتها في «المنيو والأسعار».</div>` : ""}
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px">
       <div><h4 style="margin:6px 0">طرق الدفع</h4><table class="t"><thead><tr><th>الطريقة</th><th class="n">الطلبات</th><th class="n">المبلغ</th></tr></thead><tbody>${Object.entries(METHODS).map(([k, l]) => `<tr><td>${l}</td><td class="n num">${methN[k] || 0}</td><td class="n">${money(meth[k] || 0)}</td></tr>`).join("")}</tbody><tfoot><tr><td>الإجمالي</td><td class="n num">${ok.length}</td><td class="n">${money(tot)}</td></tr></tfoot></table></div>
       <div><h4 style="margin:6px 0">نوع الطلب</h4><table class="t"><thead><tr><th>النوع</th><th class="n">الطلبات</th><th class="n">المبلغ</th></tr></thead><tbody>${TYPES.map(([k, l]) => `<tr><td>${l}</td><td class="n num">${typN[k] || 0}</td><td class="n">${money(typ[k] || 0)}</td></tr>`).join("")}</tbody></table>
         <h4 style="margin:14px 0 6px">حسب الكاشير</h4><table class="t"><tbody>${Object.keys(cash).map(k => `<tr><td>${esc(k)}</td><td class="n num">${cashN[k]}</td><td class="n">${money(cash[k])}</td></tr>`).join("") || `<tr><td class="muted">—</td></tr>`}</tbody></table></div>
-      <div><h4 style="margin:6px 0">الأصناف المباعة</h4><table class="t"><thead><tr><th>الصنف</th><th class="n">الكمية</th><th class="n">القيمة</th></tr></thead><tbody>${Object.entries(items).sort((a, b) => b[1].q - a[1].q).map(([k, v]) => `<tr><td>${esc(k)}</td><td class="n num">${v.q}</td><td class="n">${money(v.v)}</td></tr>`).join("") || `<tr><td class="muted">—</td></tr>`}</tbody></table>
-        ${discT ? `<p class="small muted">قيمة الأصناف قبل الخصم؛ الخصومات ${m2(discT)} ر.س.</p>` : ""}</div></div>
+      </div>
+    <h4 style="margin:16px 0 6px">الأصناف المباعة وربحيتها</h4><table class="t"><thead><tr><th>الصنف</th><th class="n">الكمية</th><th class="n">صافي المبيعات</th><th class="n">تكلفة الطعام</th><th class="n">نسبة التكلفة</th><th class="n">الربح</th></tr></thead><tbody>${Object.values(items).sort((a, b) => b.q - a.q).map(v => { const pc = v.net && !v.noCost ? v.cost / v.net * 100 : null;
+        return `<tr><td>${esc(v.name)}</td><td class="n num">${v.q}</td><td class="n">${money(v.net)}</td><td class="n">${v.noCost ? `<span class="chip warn">بدون تكلفة</span>` : money(v.cost)}</td><td class="n">${pc == null ? "—" : `<span class="chip ${pc > 45 ? "bad" : pc > 35 ? "warn" : "ok"} num">${pc.toFixed(1)}%</span>`}</td><td class="n">${v.noCost ? "—" : money(v.net - v.cost)}</td></tr>`; }).join("") || `<tr><td class="muted">—</td></tr>`}</tbody></table>
+    <p class="small muted">صافي المبيعات بعد توزيع الخصومات على الأصناف. تكلفة الطعام بدون التغليف، والتغليف محسوب أعلاه بالعدد.</p>
     ${disc.length || voids.length ? `<h4 style="margin:16px 0 6px">الخصومات والإلغاءات</h4><table class="t"><thead><tr><th>الطلب</th><th>اليوم</th><th>النوع</th><th>السبب</th><th>الكاشير</th><th class="n">المبلغ</th></tr></thead><tbody>
       ${disc.map(o => `<tr><td class="num">${pad(o.no, 4)}</td><td class="num">${dmy(o.day)} ${hm(o.ts)}</td><td><span class="chip warn">خصم</span></td><td>${esc(o.discount.reason)}</td><td>${esc(o.cashierName)}</td><td class="n">${money(o.discount.amount)}</td></tr>`).join("")}
       ${voids.map(o => `<tr><td class="num">${pad(o.no, 4)}</td><td class="num">${dmy(o.day)} ${hm(o.ts)}</td><td><span class="chip bad">إلغاء</span></td><td>${esc(o.void?.reason)}</td><td>${esc(o.cashierName)}</td><td class="n">${money(o.total)}</td></tr>`).join("")}</tbody></table>` : ""}
-    <p class="small muted" style="margin-top:14px;line-height:1.7">ملف المحاسبة يُستورد في برنامج «محاسبة شاورما العقيلة» من شاشة المبيعات ← استيراد من فودكس، ويحتوي على كل يوم مقسّماً حسب طريقة الدفع (لوكيت يذهب إلى تطبيقات التوصيل). الطلبات التجريبية والملغاة لا تدخل فيه.</p>`;
+    <p class="small muted" style="margin-top:14px;line-height:1.7">ملف المحاسبة يُستورد في برنامج «محاسبة شاورما العقيلة» من شاشة المبيعات ← استيراد من فودكس، ويحتوي على كل يوم مقسّماً حسب طريقة الدفع (لوكيت يذهب إلى تطبيقات التوصيل). الطلبات التجريبية والملغاة لا تدخل فيه. «تقرير الأصناف» يُستورد في شاشة «تكلفة الوجبات» ← استيراد تقرير الأصناف بنفس الفترة، فتظهر التكلفة النظرية مقارنة بالفواتير الفعلية (كشف الهدر).</p>`;
+  $("#ri").onclick = () => {
+    const L2 = Object.values(items); if (!L2.length) return toast("لا توجد مبيعات في هذه الفترة");
+    const rows = [["المنتج", "كود تعريف المنتج", "صافي الكمية", "صافي المبيعات", "إجمالي المبيعات", "كمية الإلغاء"]];
+    const vq = {}; voids.forEach(o => o.lines.forEach(l => { const k = l.ref || l.name; vq[k] = (vq[k] || 0) + l.qty; }));
+    L2.forEach(v => rows.push([v.name, v.ref || "", v.q, m2(v.net), m2(v.v), vq[v.ref || v.name] || 0]));
+    download(rows, `أصناف-الكاشير-${rep.a}${rep.b !== rep.a ? "_" + rep.b : ""}.csv`);
+  };
   $("#rc").onclick = () => {
     if (!days.length) return toast("لا توجد مبيعات في هذه الفترة");
     const rows = [["التاريخ", "طريقة الدفع", "المبلغ الصافي", "العدد"]];
     days.forEach(d => Object.entries(METHODS).forEach(([k, l]) => { const os = ok.filter(o => o.day === d && o.method === k && !o.test); if (os.length) rows.push([d, l, m2(os.reduce((s, o) => s + o.total, 0)), os.length]); }));
-    const csv = "﻿" + rows.map(r => r.map(x => `"${String(x).replace(/"/g, '""')}"`).join(",")).join("\r\n");
-    const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
-    a.download = `مبيعات-الكاشير-${rep.a}${rep.b !== rep.a ? "_" + rep.b : ""}.csv`; document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+    download(rows, `مبيعات-الكاشير-${rep.a}${rep.b !== rep.a ? "_" + rep.b : ""}.csv`);
   };
 }
 
@@ -825,24 +940,26 @@ function admMenu() {
     <select data-f="cat" aria-label="القسم">${CATS.map(([k, l]) => `<option value="${k}" ${m.cat === k ? "selected" : ""}>${l}</option>`).join("")}</select>
     <input data-f="price" type="number" step="0.25" min="0" inputmode="decimal" dir="ltr" value="${m.price ?? ""}" aria-label="سعر المطعم">
     <input data-f="lokit" type="number" step="0.25" min="0" inputmode="decimal" dir="ltr" value="${m.lokit ?? ""}" placeholder="—" aria-label="سعر لوكيت">
+    <input data-f="cost" type="number" step="0.01" min="0" inputmode="decimal" dir="ltr" value="${m.cost ?? ""}" placeholder="—" aria-label="تكلفة الطعام">
+    <button class="sw ${m.box ? "on" : ""}" data-f="box" aria-label="يُقدَّم في علبة ورقية"></button>
     <input data-f="sort" type="number" step="1" inputmode="numeric" dir="ltr" value="${m.sort ?? 0}" aria-label="الترتيب">
     <button class="sw ${m.active ? "on" : ""}" data-f="active" aria-label="ظاهر في الكاشير"></button></div>`;
-  A.innerHTML = `<div class="note" style="margin-bottom:12px">سعر لوكيت الفارغ يعني أن الصنف غير متوفر في لوكيت. الأصناف المُطفأة تختفي من الكاشير وتبقى في التقارير. «الترتيب» يحدد مكان الصنف في الشاشة.</div>
-    <div class="mrow h"><span>الصنف</span><span>القسم</span><span>سعر المطعم</span><span>سعر لوكيت</span><span>الترتيب</span><span>ظاهر</span></div>
+  A.innerHTML = `<div class="note" style="margin-bottom:12px">سعر لوكيت الفارغ يعني أن الصنف غير متوفر في لوكيت. «تكلفة الطعام» للحبة الواحدة بدون التغليف (من برنامج المحاسبة). «علبة» للأصناف التي تُقدَّم في علبة ورقية، ويُحسب لكل منها علبة وكيس. الأصناف المُطفأة تختفي من الكاشير وتبقى في التقارير.</div>
+    <div class="mrow h"><span>الصنف</span><span>القسم</span><span>سعر المطعم</span><span>سعر لوكيت</span><span>تكلفة الطعام</span><span>علبة</span><span>الترتيب</span><span>ظاهر</span></div>
     <div id="mrows">${rows.map(row).join("")}</div>
     <div style="display:flex;gap:10px;margin-top:14px;flex-wrap:wrap"><button class="btn ghost" id="madd">+ صنف جديد</button><span class="sp"></span><button class="btn" id="msv">حفظ المنيو</button></div>
     <p class="small muted">الإضافات (مثل الجبن) تُضاف على الصنف المحدد في السلة. لجعل صنف جديد «إضافة» اختر قسم الإضافات واكتب في اسمه كلمة «جبن» أو أضفه ثم أخبرني.</p>`;
-  const bind = () => $$("#mrows [data-f=active]").forEach(b => b.onclick = () => b.classList.toggle("on"));
+  const bind = () => $$("#mrows [data-f=active],#mrows [data-f=box]").forEach(b => b.onclick = () => b.classList.toggle("on"));
   bind();
   $("#madd").onclick = () => { rows.push({ id: null, name: "", cat: S.cat, price: null, lokit: null, active: true, sort: (Math.max(0, ...rows.map(r => r.sort || 0)) + 10), addon: false });
     $("#mrows").insertAdjacentHTML("beforeend", row(rows.at(-1), rows.length - 1)); bind(); $("#mrows .mrow:last-child input").focus(); };
   $("#msv").onclick = async () => {
     const batch = F.writeBatch(db); let n = 0, err = "";
     $$("#mrows .mrow").forEach(e => { const i = +e.dataset.r, o = rows[i], g = f => e.querySelector(`[data-f=${f}]`);
-      const v = { name: g("name").value.trim(), cat: g("cat").value, price: g("price").value === "" ? null : r2(g("price").value), lokit: g("lokit").value === "" ? null : r2(g("lokit").value), sort: +g("sort").value || 0, active: g("active").classList.contains("on") };
+      const v = { name: g("name").value.trim(), cat: g("cat").value, price: g("price").value === "" ? null : r2(g("price").value), lokit: g("lokit").value === "" ? null : r2(g("lokit").value), sort: +g("sort").value || 0, active: g("active").classList.contains("on"), cost: g("cost").value === "" ? null : r2(g("cost").value), box: g("box").classList.contains("on") };
       if (!v.name && !o.id) return; if (!v.name) err ||= "اسم صنف فارغ"; if (v.price == null || v.price < 0) err ||= `سعر المطعم مطلوب: ${v.name || "صنف جديد"}`;
       v.addon = o.id ? !!o.addon : v.cat === "extras" && /جبن|إضافة|اضافة/.test(v.name);
-      const changed = !o.id || ["name", "cat", "price", "lokit", "sort", "active"].some(k => (o[k] ?? null) !== v[k]);
+      const changed = !o.id || ["name", "cat", "price", "lokit", "sort", "active", "cost", "box"].some(k => (o[k] ?? null) !== v[k]);
       if (changed) { batch.set(D("menu", o.id || "m" + Date.now().toString(36) + rid(2)), { ...(o.id ? { ref: o.ref ?? null } : { ref: null }), ...v, updatedAt: Date.now() }, { merge: true }); n++; } });
     if (err) return toast(err, true); if (!n) return toast("لا تغييرات");
     try { await batch.commit(); toast(`تم حفظ ${n} صنف ✓`); admMenu(); } catch (e) { toast("تعذّر الحفظ: " + (e.code || e.message), true); }
@@ -929,4 +1046,4 @@ function admVerify() {
 }
 
 /* expose for tests */
-window.__aq = { S, render, total, bizDay, drawReceipt, raster, shiftCalc, drawShiftReport };
+window.__aq = { S, render, total, bizDay, drawReceipt, raster, shiftCalc, drawShiftReport, packOf, orderCogs };
