@@ -4,7 +4,7 @@
 import * as F from "./fb.js";
 import { firebaseConfig } from "./firebase-config.js";
 
-const VERSION = "1.7.0";
+const VERSION = "1.7.1";
 const ADMIN_EMAIL = "abuabraj@gmail.com";
 const DEVICE_EMAIL = "cashier@aqeela-pos.app";
 const APP_NAME = `<span dir="ltr">Cashier AQ</span>`;
@@ -1083,6 +1083,7 @@ function openPicker(anchor, o) {
   draw(); setTimeout(() => document.addEventListener("pointerdown", pkOut, true), 0);
 }
 
+document.addEventListener("pointerdown", e => { if (!e.target.closest(".xmenu")) $$(".xlist").forEach(l => l.hidden = true); });
 /* ---------- التصدير: CSV أو Excel من جداول الصفحة الحالية ---------- */
 function pageRows() {
   const rows = [], A = $("#adm"); const ttl = ADM_NAV.find(x => x[0] === admTab)?.[2] || "";
@@ -1106,7 +1107,7 @@ function exportBtn(extra = []) {
 }
 function bindExport(handlers = {}) {
   const m = $("[data-xm]"); if (!m) return; const L = m.nextElementSibling;
-  m.onclick = () => { L.hidden = !L.hidden; }; document.addEventListener("pointerdown", e => { if (!e.target.closest(".xmenu")) L.hidden = true; }, { once: true });
+  m.onclick = () => { L.hidden = !L.hidden; };
   L.querySelectorAll("[data-xp]").forEach(b => b.onclick = () => { L.hidden = true; exportPage(b.dataset.xp); });
   L.querySelectorAll("[data-xid]").forEach(b => b.onclick = () => { L.hidden = true; handlers[b.dataset.xid]?.(); });
 }
