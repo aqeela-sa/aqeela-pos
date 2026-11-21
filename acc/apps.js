@@ -12,7 +12,20 @@ const PF_SEED = [
    contracts:[{id:"c-default", from:"2026-11-01", to:"", ref:"", commissionPct:30, paymentPct:0, tiers:[], perOrder:0, hplus:0, cycleDays:15,
      notes:"نسبة تقديرية (30%) حتى يُرفق عقد لوكيت."}]}
 ];
-const PF_CYCLES = [[1,"يومي"],[7,"أسبوعي"],[14,"كل أسبوعين"],[15,"كل 15 يوماً"],[30,"شهري"]];
+const PF_CYCLES = [[1,"يومي"],[7,"أسبوعي"],[14,"كل أسبوعين"],[15,"كل 15 يوماً"],[30,"شهري"],[-1,"نصف شهري بتاريخين ثابتين"]];
+/* expected transfer date of one day's sales. Half-monthly (cycleDays −1): days 1–15 are paid on payDay1 of the same month,
+   days 16 to month end on payDay2 of the next month (a payDay1 below 16 also falls in the next month) */
+function pfDue(c, day){
+  c = c || {};
+  if (n(c.cycleDays) === -1 && n(c.payDay1) && n(c.payDay2)){
+    const [y, m, d] = day.split("-").map(Number), last = (Y, M) => new Date(Y, M, 0).getDate();
+    const at = (Y, M, D) => { if (M > 12){ M -= 12; Y++; } return `${Y}-${String(M).padStart(2, "0")}-${String(Math.min(D, last(Y, M))).padStart(2, "0")}`; };
+    return d <= 15 ? at(y, n(c.payDay1) >= 16 ? m : m + 1, n(c.payDay1)) : at(y, m + 1, n(c.payDay2));
+  }
+  return addDays(day, n(c.cycleDays) > 0 ? n(c.cycleDays) : 7);
+}
+const pfCycleText = c => n(c.cycleDays) === -1 ? `مبيعات 1–15 تُحوَّل يوم <span class="num">${n(c.payDay1)}</span>${n(c.payDay1) >= 16 ? " من نفس الشهر" : " من الشهر التالي"}، ومبيعات 16–آخر الشهر يوم <span class="num">${n(c.payDay2)}</span> من الشهر التالي`
+  : (PF_CYCLES.find(x => x[0] === n(c.cycleDays)) || [0, `كل ${n(c.cycleDays) || 7} أيام`])[1];
 const pfKey = s => String(s || "").trim().toLowerCase().replace(/\s+/g, "").replace(/[أإآ]/g, "ا").replace(/ة/g, "ه").replace(/ى/g, "ي");
 const pfByName = name => { const k = pfKey(name); return (S.platforms || []).find(p => pfKey(p.name) === k || (p.aliases || []).some(a => pfKey(a) === k)) || null; };
 
@@ -69,7 +82,7 @@ function pfLedger(pf){
   days.forEach(x => {
     ["sales","comm","pay","del","extra","fees","net"].forEach(k => x[k] = r2(x[k]));
     x.recv = r2(Math.min(x.net, Math.max(0, pool))); pool = r2(pool - x.recv);
-    const cd = n((x.c || {}).cycleDays) || 7; x.due = addDays(x.date, cd);
+    x.due = pfDue(x.c, x.date);
     x.left = r2(x.net - x.recv);
     x.st = x.left <= 0.009 ? "paid" : x.recv > 0 ? "part" : t > addDays(x.due, 2) ? "late" : "wait";
   });
@@ -190,7 +203,7 @@ function pfContractTab(pf, el){
         ${row("التوصيل على المطعم", (c.tiers || []).length ? [...c.tiers].sort((a, b) => n(a[0]) - n(b[0])).map(([m, f], i, A) => `${i + 1 < A.length ? (i === 0 && !n(m) ? `أقل من <span class="num">${n(A[i + 1][0])}</span>` : `من <span class="num">${m}</span> إلى <span class="num">${r2(n(A[i + 1][0]) - 0.01)}</span>`) : `<span class="num">${m}</span> فأكثر`} ← <b class="num">${f}</b> ريال`).join("<br>") : "")}
         ${row("رسوم ثابتة لكل طلب", n(c.perOrder) ? `<b class="num">${fmt(n(c.perOrder))}</b>` : "")}
         ${row("إضافة HPlus", n(c.hplus) ? `<b class="num">${n(c.hplus)}</b> ريال لطلبات عملاء HPlus (لا تظهر في الكاشير، تُطابق من الفاتورة)` : "")}
-        ${row("دورة التحويل", `${(PF_CYCLES.find(x => x[0] === n(c.cycleDays)) || [0, `كل ${n(c.cycleDays) || 7} أيام`])[1]}`)}
+        ${row("دورة التحويل", pfCycleText(c))}
         ${row("حساب الاستلام", c.bank && (c.bank.owner || c.bank.bank || c.bank.iban) ? esc([c.bank.owner, c.bank.bank, c.bank.iban].filter(Boolean).join(" · ")) : "")}
         ${row("ملاحظات", c.notes ? `<span style="white-space:pre-wrap">${esc(c.notes)}</span>` : "")}
       </tbody></table></div><div class="att-row" id="pf_att_${esc(c.id)}"></div></div>`).join("") : `<div class="empty card">لا يوجد عقد بعد.</div>`}
@@ -212,6 +225,8 @@ function pfContractDialog(pf, c){
       <div class="f wide"><label for="pc_tiers">التوصيل على المطعم حسب قيمة الطلب <span class="muted">(سطر لكل شريحة: من قيمة : الرسوم — مثال 40:8)</span></label><textarea id="pc_tiers" rows="4" dir="ltr" style="text-align:right">${esc((x.tiers || []).map(([m, f]) => `${m}:${f}`).join("\n"))}</textarea></div>
       <div class="f"><label for="pc_hp">إضافة HPlus أو ما يشبهها</label><input id="pc_hp" type="number" step="0.01" min="0" inputmode="decimal" value="${has(x.hplus) && n(x.hplus) ? x.hplus : ""}"></div>
       <div class="f"><label for="pc_cy">دورة التحويل</label><select id="pc_cy">${PF_CYCLES.map(([d, l]) => `<option value="${d}" ${n(x.cycleDays) === d ? "selected" : ""}>${l}</option>`).join("")}</select></div>
+      <div class="f pc-semi"><label for="pc_p1">يوم تحويل مبيعات 1–15</label><input id="pc_p1" type="number" min="1" max="31" inputmode="numeric" value="${n(x.payDay1) || ""}"></div>
+      <div class="f pc-semi"><label for="pc_p2">يوم تحويل مبيعات 16–آخر الشهر <span class="muted">(من الشهر التالي)</span></label><input id="pc_p2" type="number" min="1" max="31" inputmode="numeric" value="${n(x.payDay2) || ""}"></div>
       <div class="f"><label for="pc_bo">صاحب حساب الاستلام</label><input id="pc_bo" type="text" value="${esc((x.bank || {}).owner || "")}"></div>
       <div class="f"><label for="pc_bb">البنك</label><input id="pc_bb" type="text" value="${esc((x.bank || {}).bank || "")}"></div>
       <div class="f wide"><label for="pc_bi">الآيبان</label><input id="pc_bi" type="text" dir="ltr" value="${esc((x.bank || {}).iban || "")}"></div>
@@ -220,13 +235,15 @@ function pfContractDialog(pf, c){
     </div>
     <div class="actions"><button class="btn" type="submit">حفظ العقد</button><button class="btn ghost" type="button" id="pc_x">إلغاء</button>${c ? '<button class="btn danger sm" type="button" id="pc_del">حذف العقد</button>' : ""}</div></form>`;
   $("#modal").classList.add("open"); $("#pc_x").onclick = closeModal;
+  const semi = () => document.querySelectorAll(".pc-semi").forEach(e => e.hidden = $("#pc_cy").value !== "-1"); $("#pc_cy").onchange = semi; semi();
   const cid = c ? c.id : "c-" + Date.now().toString(36), att = attachController("pc_att", `platforms/${pf.id}/${cid}`); att.load(c ? `platforms/${pf.id}/${cid}` : null);
   if (c) armDelete($("#pc_del"), async () => { if (await pfSave(pf, {contracts:(pf.contracts || []).filter(z => z.id !== c.id)}, "تم حذف العقد")) closeModal(); });
   $("#pf_cf").onsubmit = async e => { e.preventDefault();
     const tiers = $("#pc_tiers").value.split(/\n|،|,/).map(s => s.trim()).filter(Boolean).map(s => s.split(/[:=\s]+/).map(Number)).filter(a => a.length >= 2 && !isNaN(a[0]) && !isNaN(a[1])).map(a => [a[0], a[1]]);
     const v = id => $(id).value === "" ? 0 : n($(id).value);
-    const nc = {id:cid, from:$("#pc_from").value, to:$("#pc_to").value, ref:$("#pc_ref").value.trim(), commissionPct:v("#pc_comm"), paymentPct:v("#pc_pay"), perOrder:v("#pc_po"), tiers, hplus:v("#pc_hp"), cycleDays:n($("#pc_cy").value) || 7,
+    const nc = {id:cid, from:$("#pc_from").value, to:$("#pc_to").value, ref:$("#pc_ref").value.trim(), commissionPct:v("#pc_comm"), paymentPct:v("#pc_pay"), perOrder:v("#pc_po"), tiers, hplus:v("#pc_hp"), cycleDays:n($("#pc_cy").value) || 7, payDay1:v("#pc_p1"), payDay2:v("#pc_p2"),
       bank:{owner:$("#pc_bo").value.trim(), bank:$("#pc_bb").value.trim(), iban:$("#pc_bi").value.trim()}, notes:$("#pc_nt").value.trim()};
+    if (nc.cycleDays === -1 && !(nc.payDay1 >= 1 && nc.payDay1 <= 31 && nc.payDay2 >= 1 && nc.payDay2 <= 31)){ toast("اكتب يومي التحويل (من 1 إلى 31)"); return; }
     if (nc.to && nc.to < nc.from){ toast("تاريخ الانتهاء قبل تاريخ البدء"); return; }
     try { await att.flush(`platforms/${pf.id}/${cid}`); } catch(err){ toast(err && err.code === "pdf_unsupported" ? "ملف PDF غير مدعوم هنا؛ أرفق صورة للعقد" : "تعذّر حفظ المرفق"); }
     if (await pfSave(pf, {contracts:[...(pf.contracts || []).filter(z => z.id !== cid), nc]}, "تم حفظ العقد")) closeModal();
@@ -256,12 +273,12 @@ function pfPasteDialog(){
     if (J.aqeela === "contract" && J.contract){
       const c = J.contract, pf = pfByName(J.platform);
       $("#pp_out").innerHTML = `<div class="note"><b>عقد ${esc(J.platform || "")}</b>${pf ? "" : ' <span class="neg">(تطبيق غير موجود — سيُضاف)</span>'}<br>
-        يسري من <span class="num">${dmy(c.from || "")}</span> · ${pfSummary(c)} · دورة التحويل ${n(c.cycleDays) || 7} يوم${c.ref ? ` · رقم ${esc(c.ref)}` : ""}${c.notes ? `<div class="small muted" style="margin-top:6px;white-space:pre-wrap">${esc(c.notes)}</div>` : ""}</div>
+        يسري من <span class="num">${dmy(c.from || "")}</span> · ${pfSummary(c)} · دورة التحويل: ${pfCycleText(c)}${c.ref ? ` · رقم ${esc(c.ref)}` : ""}${c.notes ? `<div class="small muted" style="margin-top:6px;white-space:pre-wrap">${esc(c.notes)}</div>` : ""}</div>
         <div class="actions"><button class="btn" type="button" id="pp_save">حفظ العقد</button></div>`;
       $("#pp_save").onclick = async () => {
         let p = pf; if (!p){ p = {id:"p-" + Date.now().toString(36)}; }
         const cid = c.id || "c-" + (c.from || today()) ;
-        const nc = {id:cid, from:c.from || today(), to:c.to || "", ref:c.ref || "", commissionPct:n(c.commissionPct), paymentPct:n(c.paymentPct), perOrder:n(c.perOrder), tiers:(c.tiers || []).map(a => [n(a[0]), n(a[1])]), hplus:n(c.hplus), cycleDays:n(c.cycleDays) || 7, bank:c.bank || {}, notes:c.notes || ""};
+        const nc = {id:cid, from:c.from || today(), to:c.to || "", ref:c.ref || "", commissionPct:n(c.commissionPct), paymentPct:n(c.paymentPct), perOrder:n(c.perOrder), tiers:(c.tiers || []).map(a => [n(a[0]), n(a[1])]), hplus:n(c.hplus), cycleDays:n(c.cycleDays) || 7, payDay1:n(c.payDay1), payDay2:n(c.payDay2), bank:c.bank || {}, notes:c.notes || ""};
         const patch = pf ? {contracts:[...(pf.contracts || []).filter(z => z.id !== cid && z.from !== nc.from), nc]} : {name:J.platform, posKey:J.posKey || "", aliases:[J.platform], contracts:[nc], order:9};
         if (await pfSave(p, patch, "تم حفظ العقد")){ S.pfSel = p.id; S.pfTab = "contract"; closeModal(); renderPlatforms(); }
       };
