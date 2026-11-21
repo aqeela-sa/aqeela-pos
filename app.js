@@ -4,7 +4,7 @@
 import * as F from "./fb.js";
 import { firebaseConfig } from "./firebase-config.js";
 
-const VERSION = "2.1.0";
+const VERSION = "2.2.0";
 const ADMIN_EMAIL = "abuabraj@gmail.com";
 const DEVICE_EMAIL = "cashier@aqeela-pos.app";
 const APP_NAME = `<span dir="ltr">Cashier AQ</span>`;
@@ -293,11 +293,12 @@ function drawTop() {
     <div class="sp"></div><div class="t-st">${net}${topBtns(np)}</div>`;
   bindTop();
 }
-const topBtns = np => `${S.device.test ? `<span class="tchip test">تجريبي</span>` : ""}
+const topBtns = np => { const nu = unpaidList().length; return `${S.device.test ? `<span class="tchip test">تجريبي</span>` : ""}
+    <button class="tbtn ${nu ? "due" : ""}" id="unp" title="طلبات أُرسلت للمطبخ ولم تُدفع">${ic("clock")}<span class="tl">بانتظار الدفع</span>${nu ? `<b class="bd num">${nu}</b>` : ""}</button>
     <button class="tbtn ${np ? "hot" : ""}" id="prp" title="طلبات قيد التحضير">${ic("fire")}<span class="tl">قيد التحضير</span>${np ? `<b class="bd num">${np}</b>` : ""}</button>
     <button class="tbtn" id="ord" title="طلبات اليوم">${ic("receipt")}<span class="tl">الطلبات</span></button>
     <button class="tbtn who" id="me" title="الكاشير والوردية">${ic("person")}<span class="tw"><b>${esc(S.cashier?.name || "")}</b><small>وردية <span class="num">${S.shift ? hm(S.shift.openedAt) : ""}</span></small></span>${ic("chev", "cv")}</button>
-    <button class="tbtn sq" id="more" title="القائمة" aria-label="القائمة">${ic("menu")}</button>`;
+    <button class="tbtn sq" id="more" title="القائمة" aria-label="القائمة">${ic("menu")}</button>`; };
 function bindTop(partial) {
   if (!partial) {
     const q = $("#q");
@@ -307,7 +308,7 @@ function bindTop(partial) {
     $("#qx").onclick = () => { S.q = ""; q.value = ""; $("#qx").hidden = true; drawMenu(); };
   }
   $("#me").onclick = e => cashierMenu(e.currentTarget);
-  $("#ord").onclick = openOrders; $("#prp").onclick = openPrep;
+  $("#ord").onclick = openOrders; $("#prp").onclick = openPrep; $("#unp").onclick = openUnpaid;
   $("#more").onclick = openMore;
 }
 function cashierMenu(btn) {
@@ -383,6 +384,7 @@ function drawCart() {
         ${S.cart.discount ? `<div class="r disc"><span>خصم ${S.cart.discount.kind === "pct" ? `<span class="num">${S.cart.discount.value}%</span>` : ""} <small>${esc(S.cart.discount.reason || "")}</small></span><span class="num">−${m2(discAmt())}</span></div>` : ""}
         <div class="r big"><span>الإجمالي</span><span><span class="num">${m2(total())}</span> <small>ر.س</small></span></div></div>
       <div class="acts"><button id="disc" class="${S.cart.discount ? "on" : ""}" ${dis}>${ic("tag")}${S.cart.discount ? "الخصم ✓" : "خصم"}</button><button id="park" ${dis}>${ic("pause")}تعليق</button><button id="last">${ic("print")}آخر إيصال</button></div>
+      ${lk ? "" : `<button class="sendk" id="sendk" ${dis}>${ic("fire")}<span>إرسال للمطبخ<small>طلب اتصال — الدفع عند الاستلام</small></span></button>`}
       <div class="pays ${lk ? "one" : ""}">${lk ? `<button class="pay pay-lokit" data-pay="lokit" ${dis}>${ic("lokit")}<span>تأكيد طلب لوكيت</span><b class="num">${m2(total())}</b></button>`
         : `<button class="pay pay-cash" data-pay="cash" ${dis}>${ic("cash")}<span>كاش</span></button><button class="pay pay-mada" data-pay="mada" ${dis}>${ic("card")}<span>مدى</span></button><button class="pay pay-visa" data-pay="visa" ${dis}>${ic("card")}<span>فيزا<small>ماستركارد</small></span></button>`}</div></div>`;
   const find = k => L.find(l => l.key === k);
@@ -397,8 +399,9 @@ function drawCart() {
   $("#pkl").onclick = openParked; $("#park").onclick = parkCart;
   $("#cback").onclick = () => toggleCart(false);
   $("#disc").onclick = () => askManager("الخصم يحتاج رمز المدير", openDiscount);
-  $("#last").onclick = () => { const o = S.today.find(x => x.device === S.dev) || S.today[0]; if (!o) return toast("لا توجد طلبات اليوم"); printJob(o, { receipt: true }, true); };
+  $("#last").onclick = () => { const P = S.today.filter(x => x.status !== "open"), o = P.find(x => x.device === S.dev) || P[0]; if (!o) return toast("لا توجد طلبات اليوم"); printJob(o, { receipt: true }, true); };
   $$("[data-pay]").forEach(b => b.onclick = () => openPay(b.dataset.pay));
+  $("#sendk") && ($("#sendk").onclick = sendKitchen);
   const cb = $("#cbar"); if (cb) { cb.innerHTML = `${ic("cart")}<span>عرض الطلب <b class="num">${n}</b></span><b class="num">${m2(total())} ر.س</b>`; cb.disabled = !L.length && !S.cartOpen; cb.onclick = () => toggleCart(true); }
 }
 function toggleCart(v) { S.cartOpen = v; $("#pos")?.classList.toggle("cart-open", v); }
@@ -482,21 +485,23 @@ function openDiscount() {
 
 /* ----- payment ----- */
 /* نوع الطلب ظاهر في شاشة الدفع: تبديل محلي/سفري (نفس السعر) قبل التأكيد */
-const typeBar = () => S.cart.type === "lokit" ? `<div class="paytype"><span class="tchip lk">${ic("lokit")}لوكيت</span></div>`
-  : `<div class="paytype"><span>نوع الطلب</span><div class="seg2">${TYPES.filter(t => t[0] !== "lokit").map(([k, l]) => `<button data-pt="${k}" class="${S.cart.type === k ? "on" : ""}">${ic(TYPE_IC[k])}${l}</button>`).join("")}</div></div>`;
-const bindTypeBar = () => $$("#ov [data-pt]").forEach(b => b.onclick = () => { S.cart.type = b.dataset.pt; $$("#ov [data-pt]").forEach(x => x.classList.toggle("on", x === b)); drawTop(); drawCart(); });
+let PT = null; /* الطلب الذي يُدفع: السلة الحالية أو طلب مفتوح */
+const typeBar = (tg = PT || S.cart) => tg.type === "lokit" ? `<div class="paytype"><span class="tchip lk">${ic("lokit")}لوكيت</span></div>`
+  : `<div class="paytype"><span>نوع الطلب</span><div class="seg2">${TYPES.filter(t => t[0] !== "lokit").map(([k, l]) => `<button data-pt="${k}" class="${tg.type === k ? "on" : ""}">${ic(TYPE_IC[k])}${l}</button>`).join("")}</div></div>`;
+const bindTypeBar = () => $$("#ov [data-pt]").forEach(b => b.onclick = () => { (PT || S.cart).type = b.dataset.pt; $$("#ov [data-pt]").forEach(x => x.classList.toggle("on", x === b)); drawTop(); drawCart(); });
 function payKeys(h) { if (S.kh) removeEventListener("keydown", S.kh); S.kh = h; addEventListener("keydown", h); }
-function openPay(method) {
-  if (!S.cart.lines.length) return; const T = total(), n = S.cart.lines.reduce((s, l) => s + l.qty, 0);
+function openPay(method, ord) {
+  PT = ord || null; if (!ord && !S.cart.lines.length) return;
+  const T = ord ? ord.total : total(), n = (ord ? ord.lines : S.cart.lines).reduce((s, l) => s + l.qty, 0), hasDisc = ord ? !!ord.discount : !!S.cart.discount, dA = ord ? ord.discount?.amount || 0 : discAmt();
   if (method !== "cash") {
     const lk = method === "lokit";
     modal(`${mh(lk ? "تأكيد طلب لوكيت" : `الدفع بـ${METHODS[method]}`)}<div class="mdl-b paycard">
       ${typeBar()}<div class="pc-ic ${method}">${ic(lk ? "lokit" : "card")}</div>
       <div class="due-l">المبلغ المطلوب</div><div class="big-amt"><span class="num">${m2(T)}</span> <small>ر.س</small></div>
       <p class="muted">${lk ? "تأكد أن الطلب مطابق لطلب لوكيت في التطبيق." : "أدخل المبلغ في جهاز الدفع، وبعد نجاح العملية اضغط «تمت العملية»."}</p>
-      <div class="pc-sum"><span><span class="num">${n}</span> صنف</span>${S.cart.discount ? `<span>بعد خصم <span class="num">${m2(discAmt())}</span></span>` : ""}</div></div>
+      <div class="pc-sum"><span><span class="num">${n}</span> صنف</span>${hasDisc ? `<span>بعد خصم <span class="num">${m2(dA)}</span></span>` : ""}</div></div>
       <div class="mdl-f"><button class="btn ghost" data-close>رجوع</button><button class="btn ${lk ? "pay-lokit" : "ok"} wide" id="pok">${ic("check")}${lk ? "تأكيد الطلب" : "تمت العملية"}</button></div>`);
-    bindTypeBar(); $("#pok").onclick = () => { $("#pok").disabled = true; complete(method, T, 0); };
+    bindTypeBar(); $("#pok").onclick = () => { $("#pok").disabled = true; complete(method, T, 0, ord); };
     payKeys(e => { if (e.key === "Enter" && $("#pok") && !$("#pok").disabled) { e.preventDefault(); $("#pok").click(); } });
     return;
   }
@@ -522,7 +527,7 @@ function openPay(method) {
   $$("#ov [data-q]").forEach(b => b.onclick = () => { given = String(+b.dataset.q); upd(); });
   $$("#ov [data-kp]").forEach(b => b.onclick = () => key(b.dataset.kp));
   upd(); bindTypeBar();
-  $("#pok").onclick = () => { const g = val(); if (g < T) return; $("#pok").disabled = true; complete("cash", g, r2(g - T)); };
+  $("#pok").onclick = () => { const g = val(); if (g < T) return; $("#pok").disabled = true; complete("cash", g, r2(g - T), ord); };
   payKeys(e => { if (!$("#ov .cashpay")) return; if (/^\d$/.test(e.key) || e.key === ".") { e.preventDefault(); key(e.key); } else if (e.key === "Backspace") { e.preventDefault(); key("b"); } else if (e.key === "Enter" && !$("#pok").disabled) { e.preventDefault(); $("#pok").click(); } });
 }
 
@@ -557,23 +562,101 @@ function orderCogs(o) {
   return { food: r2(food), pack: r2(pk.boxes * pp.box + pk.bags * pp.bag), missing };
 }
 
-async function complete(method, given, change) {
+function buildOrder(extra) {
   const ts = Date.now(), day = bizDay(ts), no = nextNo(day), st = subtotal(), da = discAmt();
   const o = {
-    id: `${day}-${S.dev}-${pad(no, 4)}-${rid(3)}`, no, day, ts, type: S.cart.type, method,
+    id: `${day}-${S.dev}-${pad(no, 4)}-${rid(3)}`, no, day, ts, type: S.cart.type, method: null,
     lines: S.cart.lines.map(l => ({ id: l.id, ref: l.ref, name: l.name, price: l.price, qty: l.qty, cost: itemCost(l.id), mods: l.mods.map(m => ({ id: m.id, ref: m.ref, name: m.name, price: m.price, cost: itemCost(m.id) })), notes: l.notes || [], note: l.note || "", total: lineTotal(l) })),
-    subtotal: st, discount: S.cart.discount ? { ...S.cart.discount, amount: da } : null, total: r2(st - da),
-    given: method === "cash" ? r2(given) : null, change: method === "cash" ? r2(change) : 0,
-    cashierId: S.cashier.id, cashierName: S.cashier.name, device: S.dev, shiftId: S.shift?.id || null, status: "paid", prep: "open", test: !!S.device.test, v: 1, app: VERSION,
+    subtotal: st, discount: S.cart.discount ? { ...S.cart.discount, amount: da } : null, total: r2(st - da), given: null, change: 0,
+    cashierId: S.cashier.id, cashierName: S.cashier.name, device: S.dev, shiftId: S.shift?.id || null, status: "paid", prep: "open", test: !!S.device.test, v: 1, app: VERSION, ...extra,
   };
-  o.pack = packOf(o.lines); o.cogs = orderCogs(o);
+  o.pack = packOf(o.lines); o.cogs = orderCogs(o); return o;
+}
+function keepLocal(o) {
+  const t = S.today.find(x => x.id === o.id); if (t) Object.assign(t, o); else S.today = [{ ...o, _pending: true }, ...S.today];
+  const h = S.shiftOrders.find(x => x.id === o.id); if (h) Object.assign(h, o); else S.shiftOrders = [o, ...S.shiftOrders];
+}
+async function complete(method, given, change, ord) {
+  /* ord: طلب مفتوح (أُرسل للمطبخ بدون دفع) يُدفع الآن */
+  if (ord) {
+    const u = { status: "paid", method, given: method === "cash" ? r2(given) : null, change: method === "cash" ? r2(change) : 0, type: ord.type, paidAt: Date.now(), paidBy: S.cashier.name };
+    if (ord.prep === "open") Object.assign(u, { prep: "done", deliveredAt: u.paidAt, deliveredBy: S.cashier.name });
+    const o = Object.assign(ord, u); o.code = await receiptCode(o); u.code = o.code;
+    fire(F.updateDoc(D("orders", o.id), u), "دفع الطلب"); keepLocal(o); drawTop();
+    showDone(o); if (S.device.autoPrint) printJob(o, { receipt: true });
+    return;
+  }
+  const o = buildOrder({ method, given: method === "cash" ? r2(given) : null, change: method === "cash" ? r2(change) : 0 });
   o.code = await receiptCode(o);
   fire(F.setDoc(D("orders", o.id), { ...o, savedAt: F.serverTimestamp() }), "الطلب");
-  if (!S.today.some(x => x.id === o.id)) S.today = [{ ...o, _pending: true }, ...S.today];
-  if (!S.shiftOrders.some(x => x.id === o.id)) S.shiftOrders = [o, ...S.shiftOrders];
+  keepLocal(o);
   resetCart();
   showDone(o);
   if (S.device.autoPrint) printJob(o, { receipt: true, kitchen: true });
+}
+
+/* ----- طلبات الاتصال: إرسال للمطبخ بدون دفع، والدفع عند حضور العميل ----- */
+const isUnpaid = o => o.status === "open";
+const unpaidList = () => { const m = new Map(); [...S.shiftOrders, ...S.today].forEach(o => { if (isUnpaid(o) && !!o.test === !!S.device.test && !m.has(o.id)) m.set(o.id, o); }); return [...m.values()].sort((a, b) => a.ts - b.ts); };
+const normPhone = v => { let d = String(v || "").replace(/[٠-٩]/g, c => "٠١٢٣٤٥٦٧٨٩".indexOf(c)).replace(/\D/g, ""); if (d.startsWith("00966")) d = "0" + d.slice(5); else if (d.startsWith("966")) d = "0" + d.slice(3); else if (d.length === 9 && d[0] === "5") d = "0" + d; return d; };
+function sendKitchen() {
+  PT = null; if (!S.cart.lines.length || S.cart.type === "lokit") return;
+  modal(`${mh("إرسال للمطبخ — الدفع عند الاستلام")}<div class="mdl-b">
+    <p class="small muted" style="margin:0 0 12px;line-height:1.7">للطلبات بالاتصال: تُطبع ورقة المطبخ الآن، ولا يُحسب الطلب في المبيعات حتى يحضر العميل ويدفع. إن لم يحضر يُلغى من «بانتظار الدفع».</p>
+    ${typeBar()}
+    <div class="f"><label for="kph">رقم جوال العميل <b style="color:var(--bad)">*</b></label><input id="kph" type="tel" inputmode="tel" dir="ltr" maxlength="16" placeholder="05xxxxxxxx" autocomplete="off"></div>
+    <div class="f"><label for="knm">اسم العميل (اختياري)</label><input id="knm" maxlength="30" placeholder="مثال: أبو محمد" autocomplete="off"></div>
+    <div class="cp-r due"><span>المبلغ عند الاستلام</span><b class="num">${m2(total())}</b></div></div>
+    <div class="mdl-f"><button class="btn ghost" data-close>رجوع</button><button class="btn wide" id="kok" style="background:#C2410C">${ic("fire")}إرسال للمطبخ</button></div>`);
+  bindTypeBar(); setTimeout(() => $("#kph")?.focus(), 60);
+  const go = () => { const ph = normPhone($("#kph").value);
+    if (!/^05\d{8}$/.test(ph)) { toast("اكتب رقم جوال صحيح يبدأ بـ 05 (10 أرقام)", true); $("#kph").focus(); return; }
+    $("#kok").disabled = true;
+    const o = buildOrder({ status: "open", phone: ph, name: $("#knm").value.trim(), via: "phone", sentAt: Date.now() });
+    fire(F.setDoc(D("orders", o.id), { ...o, savedAt: F.serverTimestamp() }), "الطلب");
+    keepLocal(o); resetCart(); closeModal();
+    toast(`أُرسل الطلب ${pad(o.no, 4)} للمطبخ — بانتظار الدفع`);
+    if (S.device.autoPrint) printJob(o, { kitchen: true });
+  };
+  $("#kok").onclick = go; $("#kph").onkeydown = e => { if (e.key === "Enter") { e.preventDefault(); $("#knm").focus(); } }; $("#knm").onkeydown = e => { if (e.key === "Enter") go(); };
+}
+function openUnpaid() {
+  const L = unpaidList(), now = Date.now();
+  modal(`${mh(`بانتظار الدفع <span class="muted small">(<span class="num">${L.length}</span>)</span>`)}<div class="mdl-b" id="unp-list">${L.length ? `<div class="list">${L.map(o => { const mn = Math.floor((now - o.ts) / 60000);
+      return `<div class="row up"><span class="no num">${pad(o.no, 4)}</span>
+      <span><b>${o.lines.map(l => `${l.qty}× ${esc(l.name)}`).join("، ")}</b><br><span class="meta"><span class="num">${esc(o.phone || "")}</span>${o.name ? ` · ${esc(o.name)}` : ""} · ${TYPES.find(t => t[0] === o.type)?.[1] || ""} · منذ <span class="num">${mn}</span> د · ${o.prep === "open" ? "قيد التحضير" : "جاهز"}</span></span>
+      <span class="up-a"><b class="num">${m2(o.total)}</b><button class="btn ok sm" data-up="${esc(o.id)}">${ic("cash")}استلام ودفع</button><button class="btn ghost sm" data-uv="${esc(o.id)}" style="color:var(--bad)">إلغاء</button></span></div>`; }).join("")}</div>`
+    : `<div class="empty" style="padding:40px">لا توجد طلبات بانتظار الدفع</div>`}</div>`, L.length > 4 ? { wide: true } : { mid: true });
+  const get = id => unpaidList().find(o => o.id === id);
+  $$("#ov [data-up]").forEach(b => b.onclick = () => payOpen(get(b.dataset.up)));
+  $$("#ov [data-uv]").forEach(b => b.onclick = () => voidOpen(get(b.dataset.uv)));
+}
+function payOpen(o) {
+  if (!o) return;
+  modal(`${mh(`استلام الطلب <span class="num">${pad(o.no, 4)}</span>`)}<div class="mdl-b">${orderDetail(o)}
+    <div class="cp-r due" style="margin-top:12px"><span>المطلوب</span><b class="num">${m2(o.total)}</b></div>
+    <div class="pays" style="margin-top:12px"><button class="pay pay-cash" data-m="cash">${ic("cash")}<span>كاش</span></button><button class="pay pay-mada" data-m="mada">${ic("card")}<span>مدى</span></button><button class="pay pay-visa" data-m="visa">${ic("card")}<span>فيزا<small>ماستركارد</small></span></button></div></div>
+    <div class="mdl-f"><button class="btn ghost" id="uv" style="margin-inline-end:auto;color:var(--bad)">إلغاء الطلب</button><button class="btn ghost" id="uk">${ic("fire")}المطبخ</button><button class="btn ghost" id="ub">رجوع</button></div>`);
+  $("#ub").onclick = openUnpaid; $("#uv").onclick = () => voidOpen(o); $("#uk").onclick = () => printJob(o, { kitchen: true }, true);
+  $$("#ov [data-m]").forEach(b => b.onclick = () => openPay(b.dataset.m, o));
+}
+function voidOpen(o) {
+  if (!o) return;
+  const R = ["لم يحضر العميل", "ألغى العميل بالاتصال", "خطأ في الطلب"];
+  modal(`${mh(`إلغاء الطلب <span class="num">${pad(o.no, 4)}</span>`)}<div class="mdl-b">
+    <p style="margin:0 0 12px">طلب لم يُدفع بمبلغ <b class="num">${m2(o.total)}</b> ر.س — جوال <span class="num">${esc(o.phone || "")}</span></p>
+    <div class="nchips">${R.map((r, i) => `<button data-r="${r}" class="${i ? "" : "on"}">${r}</button>`).join("")}</div>
+    <div class="f" style="margin-top:12px"><label for="uvr">ملاحظة (اختياري)</label><input id="uvr" maxlength="60"></div>
+    <p class="small muted" style="margin:0">يظهر في التقارير ضمن الإلغاءات، وتُحسب تكلفة الأكل المحضّر هدراً.</p></div>
+    <div class="mdl-f"><button class="btn ghost" id="ub">رجوع</button><button class="btn" id="uvok" style="background:var(--bad)">تأكيد الإلغاء</button></div>`);
+  let r = R[0];
+  $$("#ov [data-r]").forEach(b => b.onclick = () => { r = b.dataset.r; $$("#ov [data-r]").forEach(x => x.classList.toggle("on", x === b)); });
+  $("#ub").onclick = openUnpaid;
+  $("#uvok").onclick = () => { const n = $("#uvr").value.trim();
+    const v = { at: Date.now(), reason: n ? `${r} — ${n}` : r, kind: r === "لم يحضر العميل" ? "noshow" : "unpaid", unpaid: true, by: "cashier", cashierId: S.cashier.id, cashierName: S.cashier.name };
+    const u = { status: "void", void: v, prep: "done" }; Object.assign(o, u); keepLocal(o);
+    fire(F.updateDoc(D("orders", o.id), u), "الإلغاء"); drawTop(); toast(`أُلغي الطلب ${pad(o.no, 4)}`);
+    unpaidList().length ? openUnpaid() : closeModal(); };
 }
 function showDone(o) {
   const chg = o.method === "cash" && o.change > 0;
@@ -620,15 +703,16 @@ function drawPrep() {
   const B = $("#prep-list"); if (!B) return; const L = prepOpen(), now = Date.now();
   const done = S.today.filter(o => o.prep === "done" && o.status !== "void" && !!o.test === !!S.device.test).sort((a, b) => (b.deliveredAt || 0) - (a.deliveredAt || 0)).slice(0, 5);
   B.innerHTML = (L.length ? `<div class="prepgrid">${L.map(o => { const mn = Math.floor((now - o.ts) / 60000), lv = mn >= 12 ? "bad" : mn >= 7 ? "warn" : "ok";
-      return `<div class="prep ${lv}"><div class="ph"><span class="no num">${pad(o.no, 4)}</span><span class="chip ${o.type === "lokit" ? "lk" : ""}">${TYPES.find(t => t[0] === o.type)[1]}</span><span class="sp"></span><span class="tm"><span class="num">${mn}</span> د</span></div>
+      return `<div class="prep ${lv}"><div class="ph"><span class="no num">${pad(o.no, 4)}</span><span class="chip ${o.type === "lokit" ? "lk" : ""}">${TYPES.find(t => t[0] === o.type)[1]}</span>${isUnpaid(o) ? `<span class="chip warn">لم يُدفع</span>` : ""}<span class="sp"></span><span class="tm"><span class="num">${mn}</span> د</span></div>
         <ul>${o.lines.map(l => `<li><b>${l.qty} × ${esc(l.name)}</b>${l.mods.map(m => `<div class="pm">+ ${esc(m.name)}</div>`).join("")}${[...(l.notes || []), ...(l.note ? [l.note] : [])].map(t => `<div class="pn">● ${esc(t)}</div>`).join("")}</li>`).join("")}</ul>
-        <div class="pf"><button class="btn ghost sm icon" data-pk="${esc(o.id)}" aria-label="طباعة ورقة المطبخ">${ic("print")}</button><button class="btn ok" data-dv="${esc(o.id)}" style="flex:1">${ic("check")}تم التسليم</button></div></div>`; }).join("")}</div>`
+        <div class="pf"><button class="btn ghost sm icon" data-pk="${esc(o.id)}" aria-label="طباعة ورقة المطبخ">${ic("print")}</button>${isUnpaid(o) ? `<button class="btn ok" data-pay-o="${esc(o.id)}" style="flex:1">${ic("cash")}استلام ودفع</button>` : `<button class="btn ok" data-dv="${esc(o.id)}" style="flex:1">${ic("check")}تم التسليم</button>`}</div></div>`; }).join("")}</div>`
     : `<div class="empty" style="padding:40px">لا توجد طلبات قيد التحضير</div>`) +
     (done.length ? `<h4 style="margin:18px 0 8px" class="muted">آخر الطلبات المسلّمة</h4><div class="list">${done.map(o => `<div class="row" style="cursor:default"><span class="no num">${pad(o.no, 4)}</span><span class="meta">سُلّم <span class="num">${o.deliveredAt ? hm(o.deliveredAt) : ""}</span>${o.deliveredBy ? ` · ${esc(o.deliveredBy)}` : ""}</span><button class="btn ghost sm" data-un="${esc(o.id)}">إرجاع للتحضير</button></div>`).join("")}</div>` : "");
   const setPrep = (id, v) => { const o = S.today.find(x => x.id === id); if (!o) return;
     const u = v === "done" ? { prep: "done", deliveredAt: Date.now(), deliveredBy: S.cashier?.name || "" } : { prep: "open", deliveredAt: null, deliveredBy: null };
     Object.assign(o, u); fire(F.updateDoc(D("orders", id), u), "حالة الطلب"); drawPrep(); drawTop(); };
   $$("#prep-list [data-dv]").forEach(b => b.onclick = () => setPrep(b.dataset.dv, "done"));
+  $$("#prep-list [data-pay-o]").forEach(b => b.onclick = () => payOpen(unpaidList().find(x => x.id === b.dataset.payO)));
   $$("#prep-list [data-un]").forEach(b => b.onclick = () => setPrep(b.dataset.un, "open"));
   $$("#prep-list [data-pk]").forEach(b => b.onclick = () => { const o = S.today.find(x => x.id === b.dataset.pk); if (o) printJob(o, { kitchen: true }, true); });
 }
@@ -641,25 +725,25 @@ function openOrders() {
   drawOrdersList();
 }
 function drawOrdersList() {
-  const B = $("#orders-list"); if (!B) return; const L = S.today, tm = !!S.device.test, ok = L.filter(o => o.status !== "void" && !!o.test === tm);
+  const B = $("#orders-list"); if (!B) return; const L = S.today, tm = !!S.device.test, ok = L.filter(o => o.status === "paid" && !!o.test === tm);
   const sum = m => r2(ok.filter(o => o.method === m).reduce((s, o) => s + o.total, 0));
   B.innerHTML = `${tm ? `<div class="note warn" style="margin-bottom:10px">الأرقام أدناه للطلبات <b>التجريبية</b> فقط، لأن الجهاز في الوضع التجريبي. المبيعات الفعلية لا تتأثر بها.</div>` : L.some(o => o.test) ? `<p class="small muted" style="margin:0 0 8px">الطلبات التجريبية تظهر في القائمة ولا تدخل في الأرقام.</p>` : ""}<div class="kpis"><div class="kpi"><span>الطلبات</span><b class="num">${ok.length}</b></div><div class="kpi"><span>الإجمالي</span><b>${money(ok.reduce((s, o) => s + o.total, 0))}</b></div>
     ${Object.entries(METHODS).map(([k, l]) => `<div class="kpi"><span>${l}</span><b>${money(sum(k))}</b></div>`).join("")}</div>
     <div class="list">${L.length ? L.map(o => `<button class="row ${o.status === "void" ? "void" : ""}" data-o="${esc(o.id)}"><span class="no num">${pad(o.no, 4)}</span>
       <span><b>${o.lines.map(l => `${l.qty}× ${esc(l.name)}`).join("، ")}</b><br><span class="meta"><span class="num">${hm(o.ts)}</span> · ${esc(o.cashierName)} · ${TYPES.find(t => t[0] === o.type)[1]} · ${METHODS[o.method]}
-      ${o.status === "void" ? ` <span class="chip bad">ملغي</span>` : ""}${o.discount ? ` <span class="chip warn">خصم</span>` : ""}${o.test ? ` <span class="chip test">تجريبي</span>` : ""}${o._pending ? ` <span class="chip warn">لم يُرسل بعد</span>` : ""}</span></span>
+      ${o.status === "void" ? ` <span class="chip bad">${o.void?.unpaid ? "ملغي — لم يُدفع" : "ملغي"}</span>` : ""}${isUnpaid(o) ? ` <span class="chip warn">بانتظار الدفع · <span class="num">${esc(o.phone || "")}</span></span>` : ""}${o.discount ? ` <span class="chip warn">خصم</span>` : ""}${o.test ? ` <span class="chip test">تجريبي</span>` : ""}${o._pending ? ` <span class="chip warn">لم يُرسل بعد</span>` : ""}</span></span>
       <span class="money" style="font-weight:800;font-size:18px">${m2(o.total)}</span></button>`).join("") : `<div class="empty" style="padding:40px">لا توجد طلبات اليوم بعد</div>`}</div>`;
   $$("#orders-list [data-o]").forEach(b => b.onclick = () => openOrder(S.today.find(o => o.id === b.dataset.o)));
 }
 function orderDetail(o) {
   return `<table class="t"><tbody>${o.lines.map(l => `<tr><td>${l.qty} × ${esc(l.name)}${l.mods.map(m => `<br><span class="small muted">+ ${esc(m.name)} ${m2(m.price)}</span>`).join("")}${(l.notes || []).length || l.note ? `<br><span class="small" style="color:var(--blue);font-weight:700">• ${esc([...(l.notes || []), ...(l.note ? [l.note] : [])].join(" · "))}</span>` : ""}</td><td class="n">${money(l.total)}</td></tr>`).join("")}</tbody>
-    <tfoot>${o.discount ? `<tr><td>خصم (${esc(o.discount.reason)})</td><td class="n">−${money(o.discount.amount)}</td></tr>` : ""}<tr><td>الإجمالي · ${METHODS[o.method]}</td><td class="n">${money(o.total)}</td></tr>
+    <tfoot>${o.discount ? `<tr><td>خصم (${esc(o.discount.reason)})</td><td class="n">−${money(o.discount.amount)}</td></tr>` : ""}<tr><td>الإجمالي · ${o.method ? METHODS[o.method] : "لم يُدفع"}</td><td class="n">${money(o.total)}</td></tr>
     ${o.method === "cash" && o.given ? `<tr><td class="muted">المستلم / الباقي</td><td class="n muted">${m2(o.given)} / ${m2(o.change)}</td></tr>` : ""}</tfoot></table>
-    <p class="small muted" style="margin:10px 0 0">${dmy(o.day)} <span class="num">${hm(o.ts)}</span> · الكاشير: ${esc(o.cashierName)} · ${TYPES.find(t => t[0] === o.type)[1]} · رمز التحقق <span class="num">${esc(o.code)}</span></p>
-    ${o.status === "void" ? `<div class="note warn" style="margin-top:10px">ملغي بموافقة المدير <span class="num">${hm(o.void.at)}</span> — السبب: ${esc(o.void.reason)}</div>` : ""}`;
+    <p class="small muted" style="margin:10px 0 0">${dmy(o.day)} <span class="num">${hm(o.ts)}</span> · الكاشير: ${esc(o.cashierName)} · ${TYPES.find(t => t[0] === o.type)[1]}${o.code ? ` · رمز التحقق <span class="num">${esc(o.code)}</span>` : ""}${o.phone ? ` · طلب اتصال <span class="num">${esc(o.phone)}</span>${o.name ? ` (${esc(o.name)})` : ""}` : ""}</p>
+    ${o.status === "void" ? `<div class="note warn" style="margin-top:10px">${o.void.unpaid ? `أُلغي قبل الدفع بواسطة ${esc(o.void.cashierName || "")}` : "ملغي بموافقة المدير"} <span class="num">${hm(o.void.at)}</span> — السبب: ${esc(o.void.reason)}</div>` : ""}`;
 }
 function openOrder(o) {
-  if (!o) return;
+  if (!o) return; if (isUnpaid(o)) return payOpen(o);
   modal(`${mh(`طلب رقم <span class="num">${pad(o.no, 4)}</span>`)}<div class="mdl-b">${orderDetail(o)}</div>
     <div class="mdl-f">${o.status !== "void" && (!o.shiftId || o.shiftId === S.shift?.id) ? `<button class="btn ghost" id="vd" style="margin-inline-end:auto;color:var(--bad)">إلغاء الطلب</button>` : o.status !== "void" ? `<span class="small muted" style="margin-inline-end:auto;align-self:center">لا يُلغى: الطلب من وردية أخرى${o.device !== S.dev ? " أو جهاز آخر" : " مقفلة"}</span>` : ""}${o.status !== "void" && o.type !== "lokit" ? `<button class="btn ghost" id="ct">${ic("swap")}تغيير إلى ${o.type === "dine" ? "سفري" : "محلي"}</button>` : ""}<button class="btn ghost" id="bk">رجوع</button><button class="btn ghost" id="rk">${ic("fire")}المطبخ</button><button class="btn" id="rp">${ic("print")}الإيصال</button></div>`);
   $("#bk").onclick = openOrders; $("#rp").onclick = () => printJob(o, { receipt: true }, true); $("#rk").onclick = () => printJob(o, { kitchen: true }, true);
@@ -829,6 +913,7 @@ async function drawKitchen(o) {
   g.fillRect(0, y, W, 120); g.fillStyle = "#fff"; y -= 4; ctr(`طلب ${pad(o.no, 4)}`, 64, 900); g.fillStyle = "#000"; y = 140;
   ctr(`${typ}${o.test ? " · تجريبي" : ""}`, 44, 900);
   const d = new Date(o.ts); ctr(`${hm(o.ts)} · ${pad(d.getDate())}/${pad(d.getMonth() + 1)} · ${o.cashierName}`, 24, 500);
+  if (o.phone) { ctr(`طلب اتصال · ${o.name ? o.name + " · " : ""}${o.phone}`, 28, 800); if (o.status === "open") ctr("الدفع عند الاستلام", 26, 700); }
   hr();
   let n = 0;
   for (const l of o.lines) {
@@ -897,7 +982,7 @@ function switchCashier() {
 
 /* حسابات الوردية من طلباتها */
 function shiftCalc(sh, orders) {
-  const ok = orders.filter(o => o.status !== "void"), voids = orders.filter(o => o.status === "void");
+  const ok = orders.filter(o => o.status === "paid"), voids = orders.filter(o => o.status === "void");
   const sum = a => r2(a.reduce((s, o) => s + o.total, 0)), m = {}, n = {}, ty = {}, items = {};
   Object.keys(METHODS).forEach(k => { const a = ok.filter(o => o.method === k); m[k] = sum(a); n[k] = a.length; });
   TYPES.forEach(([k]) => ty[k] = sum(ok.filter(o => o.type === k)));
@@ -941,7 +1026,10 @@ function cashMove(kind) {
 
 /* التقفيل: 1) عدّ الدرج بالفئات (بدون رؤية المتوقع) 2) النتيجة والفرق 3) التأكيد والطباعة */
 function closeShiftFlow() {
-  if (!S.shift) return; const q = {}; DENOMS.forEach(d => q[d] = "");
+  if (!S.shift) return;
+  const up = unpaidList().filter(o => o.shiftId === S.shift.id);
+  if (up.length) { modal(`${mh("لا يمكن تقفيل الوردية")}<div class="mdl-b"><p style="margin:0;line-height:1.8">يوجد <b class="num">${up.length}</b> ${up.length === 1 ? "طلب" : "طلبات"} أُرسلت للمطبخ ولم تُدفع (${up.map(o => `<span class="num">${pad(o.no, 4)}</span>`).join("، ")}). ادفعها عند حضور العميل أو ألغها إن لم يحضر، ثم قفّل الوردية.</p></div>
+      <div class="mdl-f"><button class="btn ghost" data-close>إغلاق</button><button class="btn" id="gou">${ic("clock")}عرض بانتظار الدفع</button></div>`); $("#gou").onclick = openUnpaid; return; } const q = {}; DENOMS.forEach(d => q[d] = "");
   modal(`${mh("تقفيل الوردية — عدّ الدرج")}<div class="mdl-b">
     <p class="small muted" style="margin:0 0 12px">عُدّ كل فئة في الدرج واكتب عددها. لا تكتب المبلغ المتوقع، اكتب الموجود فعلاً.</p>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px">${DENOMS.map(d => `<div class="f" style="margin:0"><label for="d${String(d).replace(".", "_")}">فئة ${d === 0.5 ? "نصف ريال" : d}</label><input id="d${String(d).replace(".", "_")}" data-d="${d}" type="number" inputmode="numeric" min="0" step="1" dir="ltr" placeholder="العدد"></div>`).join("")}</div>
@@ -1022,7 +1110,7 @@ async function admStock() {
   A.innerHTML = `<p class="muted">جارٍ الحساب…</p>`;
   const since = ["boxes", "bags"].map(k => st[k]?.at).filter(Boolean).sort()[0], from = since ? bizDay(since) : addDays(bizDay(), -7);
   let L = [];
-  try { L = (await F.getDocs(F.query(C("orders"), F.where("day", ">=", addDays(from < addDays(bizDay(), -7) ? from : addDays(bizDay(), -7), 0))))).docs.map(d => d.data()).filter(o => !o.test && o.status !== "void"); }
+  try { L = (await F.getDocs(F.query(C("orders"), F.where("day", ">=", addDays(from < addDays(bizDay(), -7) ? from : addDays(bizDay(), -7), 0))))).docs.map(d => d.data()).filter(o => !o.test && (o.status !== "void" || o.void?.unpaid)); }
   catch (e) { A.innerHTML = `<div class="err">تعذّر تحميل الطلبات: ${esc(e.code || e.message)}</div>`; return; }
   const use = (k, t0) => L.filter(o => o.ts >= t0).reduce((s, o) => s + (o.pack || packOf(o.lines))[k], 0);
   const wk = Date.now() - 7 * 864e5, row = (k, label, unit) => {

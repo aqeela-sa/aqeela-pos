@@ -187,13 +187,13 @@ async function load(a, b, coll = "orders") {
   const L = s.docs.map(d => d.data()); cache.set(k, { t: Date.now(), L }); return L;
 }
 const applyF = L => L.filter(o => (st.flt.test || !o.test) && (!st.flt.type || o.type === st.flt.type) && (!st.flt.method || o.method === st.flt.method) && (!st.flt.cashier || o.cashierName === st.flt.cashier));
-const isOk = o => o.status !== "void";
+const isOk = o => o.status === "paid" || !o.status, isVoid = o => o.status === "void", isUnpaid = o => o.status === "open";
 const cogsOf = o => o.cogs || A.orderCogs(o);
 const costOf = o => { const c = cogsOf(o); return c.food + c.pack; };
 const qtyOf = o => o.lines.reduce((s, l) => s + l.qty, 0);
 const prepMin = o => o.deliveredAt ? (o.deliveredAt - o.ts) / 60000 : null;
 function agg(L) {
-  const ok = L.filter(isOk), vd = L.filter(o => !isOk(o)), sum = (a, f) => a.reduce((s, o) => s + f(o), 0);
+  const ok = L.filter(isOk), vd = L.filter(o => isVoid(o)), sum = (a, f) => a.reduce((s, o) => s + f(o), 0);
   const net = sum(ok, o => o.total), gross = sum(ok, o => o.subtotal ?? o.total), disc = sum(ok, o => o.discount?.amount || 0), cost = sum(ok, costOf), food = sum(ok, o => cogsOf(o).food);
   const pm = ok.map(prepMin).filter(x => x != null);
   return { n: ok.length, net, gross, disc, discN: ok.filter(o => o.discount).length, vN: vd.length, vT: sum(vd, o => o.total), cost, food, pack: cost - food, gp: net - cost, qty: sum(ok, qtyOf),
@@ -361,17 +361,19 @@ function drawer(head, body, foot, bind) {
   document.body.append(s, d); d.querySelector("[data-x]").onclick = closeDrawer; bind?.(d);
 }
 const typeTag = t => `<span class="cx-tag ${t === "lokit" ? "lk" : t === "dine" ? "warn" : ""}">${A.TYPES.find(x => x[0] === t)?.[1] || t}</span>`;
-const statusTag = o => o.status === "void" ? `<span class="cx-tag bad">ملغي</span>` : o.prep === "open" ? `<span class="cx-tag blue">قيد التحضير</span>` : `<span class="cx-tag ok">مكتمل</span>`;
+const mName = o => o.method ? A.METHODS[o.method] : "لم يُدفع";
+const statusTag = o => o.status === "void" ? `<span class="cx-tag bad">${o.void?.kind === "noshow" ? "ملغي — لم يحضر" : o.void?.unpaid ? "ملغي قبل الدفع" : "ملغي"}</span>` : isUnpaid(o) ? `<span class="cx-tag warn">بانتظار الدفع</span>` : o.prep === "open" ? `<span class="cx-tag blue">قيد التحضير</span>` : `<span class="cx-tag ok">مكتمل</span>`;
 function orderDrawer(o) {
-  const c = cogsOf(o), pk = o.pack || A.packOf(o.lines), pm = prepMin(o), ev = [[o.ts, "أُنشئ الطلب ودُفع", `${A.METHODS[o.method]} · ${esc(o.cashierName)}`]];
+  const c = cogsOf(o), pk = o.pack || A.packOf(o.lines), pm = prepMin(o), ev = o.phone ? [[o.ts, "طلب اتصال أُرسل للمطبخ", `${esc(o.cashierName)} · جوال <span class="num">${esc(o.phone)}</span>${o.name ? ` (${esc(o.name)})` : ""}`]] : [[o.ts, "أُنشئ الطلب ودُفع", `${mName(o)} · ${esc(o.cashierName)}`]];
+  if (o.paidAt) ev.push([o.paidAt, "حضر العميل ودفع", `${mName(o)} · ${esc(o.paidBy || "")}`]);
   (o.typeChanges || []).forEach(x => ev.push([x.at, `تغيير النوع إلى ${A.TYPES.find(t => t[0] === x.to)?.[1]}`, esc(x.by)]));
   if (o.deliveredAt) ev.push([o.deliveredAt, "سُلّم للعميل", `${pm != null ? `بعد ${nf(pm, 0)} دقيقة` : ""}${o.deliveredBy ? " · " + esc(o.deliveredBy) : ""}`]);
-  if (o.void) ev.push([o.void.at, "أُلغي الطلب بموافقة المدير", `السبب: ${esc(o.void.reason)}`]);
+  if (o.void) ev.push([o.void.at, o.void.unpaid ? `أُلغي قبل الدفع${o.void.cashierName ? " · " + esc(o.void.cashierName) : ""}` : "أُلغي الطلب بموافقة المدير", `السبب: ${esc(o.void.reason)}`]);
   ev.sort((a, b) => a[0] - b[0]);
   drawer(`<h2>طلب <span class="num">${pad(o.no, 4)}</span></h2>${statusTag(o)}${o.test ? `<span class="cx-tag test">تجريبي</span>` : ""}`,
     `<div class="cx-sec"><div class="cx-kv"><div><span>تاريخ العمل</span><b>${dFull(o.day)}</b></div><div><span>وقت الطلب</span><b class="tm">${tm(o.ts)}</b></div>
-      <div><span>النوع</span><b>${A.TYPES.find(t => t[0] === o.type)?.[1]}</b></div><div><span>طريقة الدفع</span><b>${A.METHODS[o.method]}</b></div>
-      <div><span>الكاشير</span><b>${esc(o.cashierName)}</b></div><div><span>رمز التحقق</span><b class="num">${esc(o.code || "—")}</b></div></div></div>
+      <div><span>النوع</span><b>${A.TYPES.find(t => t[0] === o.type)?.[1]}</b></div><div><span>طريقة الدفع</span><b>${mName(o)}</b></div>
+      <div><span>الكاشير</span><b>${esc(o.cashierName)}</b></div><div><span>رمز التحقق</span><b class="num">${esc(o.code || "—")}</b></div>${o.phone ? `<div><span>جوال العميل</span><b class="num">${esc(o.phone)}${o.name ? ` · ${esc(o.name)}` : ""}</b></div>` : ""}</div></div>
     <div class="cx-sec"><h4>الأصناف</h4><div class="cx-it">${o.lines.map(l => `<div class="r"><span class="q num">${l.qty}</span><div><b>${esc(l.name)}</b>${l.mods.map(m => `<div class="m">+ ${esc(m.name)} (${nf(m.price)})</div>`).join("")}
       ${[...(l.notes || []), ...(l.note ? [l.note] : [])].length ? `<div class="nt">● ${esc([...(l.notes || []), ...(l.note ? [l.note] : [])].join(" · "))}</div>` : ""}</div><b class="num">${nf(l.total ?? l.qty * l.price)}</b></div>`).join("")}</div>
       <div class="cx-tot"><div><span>المجموع</span><b class="num">${nf(o.subtotal ?? o.total)}</b></div>${o.discount ? `<div style="color:#B45309"><span>خصم (${esc(o.discount.reason)})</span><b class="num">−${nf(o.discount.amount)}</b></div>` : ""}
@@ -436,7 +438,7 @@ function kpiCard(o) {
     <div class="cx-val">${o.html}</div>${deltaHtml(o.v, o.pv, o.inv)}${o.s ? chart({ kind: "line", labels: o.B.labels, tips: o.B.tips, series: ser, f: o.f }) : ""}</div>`;
 }
 function dashGen(L, Lp, R) {
-  const B = buckets(L, R), ok = L.filter(isOk), okp = Lp.filter(isOk), vd = L.filter(o => !isOk(o)), vdp = Lp.filter(o => !isOk(o)), a = agg(L), p = st.cmp ? agg(likeFor(Lp, R)) : {};
+  const B = buckets(L, R), ok = L.filter(isOk), okp = Lp.filter(isOk), vd = L.filter(o => isVoid(o)), vdp = Lp.filter(o => isVoid(o)), a = agg(L), p = st.cmp ? agg(likeFor(Lp, R)) : {};
   const fut = futureMask(B, R), Bp = st.cmp ? buckets(Lp, prevRange(R)) : B;
   const S = (arr, f, avg) => series(arr, B, f, avg).map((v, i) => fut[i] ? null : v);
   const SP = (arr, f, avg) => { const v = series(arr, Bp, f, avg); return B.keys.map((_, i) => i < v.length ? v[i] : null); };
@@ -501,21 +503,21 @@ async function dashCash(L, Lp, R) {
 /* ---------- الطلبات ---------- */
 PAGES.orders = async () => {
   const [rb, rbind] = rangeBtn(PAGES.orders);
-  page(`<div class="cx-ctl">${rb}<div class="cx-seg">${[["all", "الكل"], ["paid", "مكتمل"], ["open", "قيد التحضير"], ["disc", "عليه خصم"], ["void", "ملغي"]].map(([k, l]) => `<button data-s="${k}" class="${st.status === k ? "on" : ""}">${l}</button>`).join("")}</div>
-      <div style="position:relative;display:flex;align-items:center"><input class="cx-in" id="oq" placeholder="بحث برقم الطلب أو رمز التحقق" value="${esc(st.q)}" style="width:250px;padding-inline-start:38px"><span style="position:absolute;inset-inline-start:10px;color:#A1A1AA;display:flex">${ic("search")}</span></div>
+  page(`<div class="cx-ctl">${rb}<div class="cx-seg">${[["all", "الكل"], ["paid", "مكتمل"], ["open", "قيد التحضير"], ["unpaid", "بانتظار الدفع"], ["disc", "عليه خصم"], ["void", "ملغي"]].map(([k, l]) => `<button data-s="${k}" class="${st.status === k ? "on" : ""}">${l}</button>`).join("")}</div>
+      <div style="position:relative;display:flex;align-items:center"><input class="cx-in" id="oq" placeholder="بحث برقم الطلب أو رمز التحقق أو الجوال" value="${esc(st.q)}" style="width:250px;padding-inline-start:38px"><span style="position:absolute;inset-inline-start:10px;color:#A1A1AA;display:flex">${ic("search")}</span></div>
       <span class="cx-sp"></span>${fltBtn()}</div>${fltChips()}<div id="ob">${loadingTable()}</div>`, { acts: expBtn() });
   rbind(); bindExp();
   $$("[data-s]").forEach(b => b.onclick = () => { st.status = b.dataset.s; st.pg = 0; PAGES.orders(); });
   let all; try { all = await load(st.a, st.b); bindFlt(PAGES.orders, all.map(o => o.cashierName)); } catch (e) { $("#ob").innerHTML = errBox(e); return; }
   const draw = () => {
     const q = st.q.trim().toUpperCase().replace(/^0+/, "");
-    const L = applyF(all).filter(o => (st.status === "all" || (st.status === "void" ? !isOk(o) : st.status === "disc" ? o.discount && isOk(o) : st.status === "open" ? o.prep === "open" && isOk(o) : isOk(o) && o.prep !== "open"))
-      && (!q || String(o.no) === q || String(o.no).includes(q) || (o.code || "").includes(q))).sort((x, y) => y.ts - x.ts);
+    const L = applyF(all).filter(o => (st.status === "all" || (st.status === "void" ? isVoid(o) : st.status === "disc" ? o.discount && isOk(o) : st.status === "open" ? o.prep === "open" && !isVoid(o) : st.status === "unpaid" ? isUnpaid(o) : isOk(o) && o.prep !== "open"))
+      && (!q || String(o.no) === q || String(o.no).includes(q) || (o.code || "").includes(q) || (q.length >= 4 && (o.phone || "").includes(q)))).sort((x, y) => y.ts - x.ts);
     EXP = [];
     $("#ob").innerHTML = `<div class="cx-tcard"><div class="cx-tbar"><h3><span class="num">${ni(L.length)}</span> طلب</h3><span style="color:#71717A;font-size:13px">صافي <b class="num">${nf(L.filter(isOk).reduce((s, o) => s + o.total, 0))}</b> ر.س · اضغط على أي طلب لعرض تفاصيله</span></div><div id="otb"></div></div>`;
     table("#otb", "orders", [{ k: "no", t: "الرقم", num: 0, f: o => `<b class="num">${pad(o.no, 4)}</b>` }, { k: "code", t: "رمز التحقق", f: o => `<span class="num" style="color:#71717A">${esc(o.code || "")}</span>` },
       { k: "status", t: "الحالة", sv: o => o.status + (o.prep || ""), f: o => statusTag(o) + (o.discount ? ` <span class="cx-tag warn">خصم</span>` : "") + (o.test ? ` <span class="cx-tag test">تجريبي</span>` : "") },
-      { k: "type", t: "النوع", f: o => typeTag(o.type) }, { k: "method", t: "الدفع", f: o => A.METHODS[o.method] }, { k: "cashierName", t: "الكاشير" },
+      { k: "type", t: "النوع", f: o => typeTag(o.type) }, { k: "method", t: "الدفع", f: o => mName(o) }, { k: "cashierName", t: "الكاشير" },
       { k: "total", t: "الإجمالي", num: 1, f: o => `<b class="num" style="${isOk(o) ? "" : "text-decoration:line-through;color:#A1A1AA"}">${nf(o.total)}</b>` },
       { k: "day", t: "تاريخ العمل", f: o => `<span class="num">${o.day}</span>` }, { k: "ts", t: "وقت الفتح", f: o => `<span class="tm">${tm(o.ts)}</span>` }],
       L, { pageSize: 25, onRow: orderDrawer, empty: "لا توجد طلبات مطابقة" });
@@ -564,7 +566,7 @@ PAGES.pays = async () => {
   let all; try { all = await load(st.a, st.b); bindFlt(PAGES.pays, all.map(o => o.cashierName)); } catch (e) { $("#pb").innerHTML = errBox(e); return; }
   const L = applyF(all), g = st.pgrp, ok = L.filter(isOk), tot = ok.reduce((s, o) => s + o.total, 0), rows = [];
   [...new Set(L.map(o => grpKey(o, g)))].sort().forEach(k => Object.entries(A.METHODS).forEach(([mk, ml]) => {
-    const G = L.filter(o => grpKey(o, g) === k && o.method === mk); if (!G.length && g !== "none") return; const gok = G.filter(isOk), gv = G.filter(o => !isOk(o)), net = gok.reduce((s, o) => s + o.total, 0);
+    const G = L.filter(o => grpKey(o, g) === k && o.method === mk); if (!G.length && g !== "none") return; const gok = G.filter(isOk), gv = G.filter(o => isVoid(o)), net = gok.reduce((s, o) => s + o.total, 0);
     rows.push({ gk: k, grp: grpLabel(k, g), m: mk, ml, n: gok.length, val: net + gv.reduce((s, o) => s + o.total, 0), vN: gv.length, vT: gv.reduce((s, o) => s + o.total, 0), net, share: tot ? net / tot * 100 : 0 }); }));
   const byM = Object.entries(A.METHODS).map(([k, l]) => [k, ok.filter(o => o.method === k).reduce((s, o) => s + o.total, 0)]);
   charts.clear(); EXP = [];
@@ -575,7 +577,7 @@ PAGES.pays = async () => {
   const cols = [...(g !== "none" ? [{ k: "grp", t: GROUPS[g], sv: r => r.gk, f: r => `<b>${esc(r.grp)}</b>` }] : []), { k: "ml", t: "طريقة الدفع", f: r => `<b>${r.ml}</b>` }, { k: "n", t: "العدد", num: 1, f: r => `<span class="num">${ni(r.n)}</span>` },
     { k: "val", t: "القيمة", num: 1, f: r => `<span class="num">${nf(r.val)}</span>` }, { k: "vT", t: "مبلغ الإلغاء", num: 1, f: r => `<span class="num">${nf(r.vT)}</span>${r.vN ? ` <small style="color:#71717A">(${r.vN})</small>` : ""}` },
     { k: "net", t: "المبلغ الصافي", num: 1, f: r => `<b class="num">${nf(r.net)}</b>` }, { k: "share", t: "النسبة", num: 1, f: r => `<div style="display:flex;align-items:center;gap:8px;justify-content:flex-end"><div class="cx-bar"><i style="width:${r.share}%"></i></div><span class="num">${pct(r.share)}</span></div>` }];
-  table("#ptb", "pays" + g, cols, rows, { foot: { [g !== "none" ? "grp" : "ml"]: "المجموع", n: ni(ok.length), val: nf(tot + L.filter(o => !isOk(o)).reduce((s, o) => s + o.total, 0)), vT: nf(L.filter(o => !isOk(o)).reduce((s, o) => s + o.total, 0)), net: nf(tot), share: "100%" } });
+  table("#ptb", "pays" + g, cols, rows, { foot: { [g !== "none" ? "grp" : "ml"]: "المجموع", n: ni(ok.length), val: nf(tot + L.filter(o => isVoid(o)).reduce((s, o) => s + o.total, 0)), vT: nf(L.filter(o => isVoid(o)).reduce((s, o) => s + o.total, 0)), net: nf(tot), share: "100%" } });
   drawCharts();
 };
 
@@ -585,7 +587,7 @@ function itemsAgg(L) {
   const ok = L.filter(isOk), it = {}, catOf = id => A.S.menu.find(m => m.id === id)?.cat || "";
   const add = (key, name, cat, q, g, f, c) => { const x = it[key] ||= { name, cat, q: 0, gross: 0, net: 0, cost: 0, nc: false, vq: 0, ref: key }; x.q += q; x.gross += g; x.net += g * f; if (c == null) x.nc = true; else x.cost += c * q; };
   ok.forEach(o => { const f = o.subtotal ? o.total / o.subtotal : 1; o.lines.forEach(l => { add(l.ref || l.name, l.name, catOf(l.id), l.qty, l.qty * l.price, f, l.cost ?? A.itemCost(l.id)); l.mods.forEach(m => add(m.ref || m.name, m.name, catOf(m.id) || "extras", l.qty, l.qty * m.price, f, m.cost ?? A.itemCost(m.id))); }); });
-  L.filter(o => !isOk(o)).forEach(o => o.lines.forEach(l => { const x = it[l.ref || l.name]; if (x) x.vq += l.qty; }));
+  L.filter(o => isVoid(o)).forEach(o => o.lines.forEach(l => { const x = it[l.ref || l.name]; if (x) x.vq += l.qty; }));
   const V = Object.values(it), T = V.reduce((s, x) => s + x.net, 0), main = V.filter(x => !x.nc && x.q > 0);
   const aq = main.length ? main.reduce((s, x) => s + x.q, 0) / main.length : 0, am = main.length ? main.reduce((s, x) => s + (x.net - x.cost) / x.q, 0) / main.length : 0;
   V.forEach(x => { x.disc = x.gross - x.net; x.share = T ? x.net / T * 100 : 0; x.gp = x.net - x.cost; x.cpct = x.net && !x.nc ? x.cost / x.net * 100 : NaN; x.um = x.q ? x.gp / x.q : 0;
@@ -631,7 +633,7 @@ PAGES.disc = async () => {
   rbind(); bindExp(); $$("[data-k]").forEach(b => b.onclick = () => { st.dkind = b.dataset.k; save(); PAGES.disc(); });
   let all; try { all = await load(st.a, st.b); bindFlt(PAGES.disc, all.map(o => o.cashierName)); } catch (e) { $("#xb").innerHTML = errBox(e); return; }
   const L = applyF(all), net = L.filter(isOk).reduce((s, o) => s + o.total, 0), k = st.dkind; EXP = [];
-  const R = k === "disc" ? L.filter(o => o.discount && isOk(o)) : k === "void" ? L.filter(o => !isOk(o)) : L.filter(o => o.typeChanges?.length);
+  const R = k === "disc" ? L.filter(o => o.discount && isOk(o)) : k === "void" ? L.filter(o => isVoid(o)) : L.filter(o => o.typeChanges?.length);
   const amt = o => k === "disc" ? o.discount.amount : o.total, sum = R.reduce((s, o) => s + amt(o), 0);
   const reasons = {}; R.forEach(o => { const r = (k === "disc" ? o.discount?.reason : o.void?.reason) || "—"; reasons[r] = (reasons[r] || 0) + 1; });
   const topR = Object.entries(reasons).sort((a, b) => b[1] - a[1])[0];
@@ -639,7 +641,7 @@ PAGES.disc = async () => {
     <div class="cx-st"><span>أكثر سبب</span><b style="font-size:17px">${topR ? esc(topR[0]) : "—"}</b><small>${topR ? topR[1] + " مرة" : ""}</small></div>` : ""}</div><div class="cx-tcard"><div id="xtb"></div></div>`;
   const base = [{ k: "no", t: "الطلب", f: o => `<b class="num">${pad(o.no, 4)}</b>` }, { k: "day", t: "اليوم", f: o => `<span class="num">${o.day}</span>` }, { k: "ts", t: "الوقت", f: o => `<span class="tm">${tm(k === "void" ? o.void.at : o.ts)}</span>` }, { k: "cashierName", t: "الكاشير" }];
   const cols = k === "disc" ? [...base, { k: "subtotal", t: "قبل الخصم", num: 1, f: o => `<span class="num">${nf(o.subtotal)}</span>` }, { k: "amt", t: "الخصم", num: 1, sv: amt, f: o => `<b class="num" style="color:#B45309">${nf(o.discount.amount)}</b>${o.discount.kind === "pct" ? ` <small style="color:#71717A">(${o.discount.value}%)</small>` : ""}` }, { k: "total", t: "بعد الخصم", num: 1, f: o => `<span class="num">${nf(o.total)}</span>` }, { k: "reason", t: "السبب", sv: o => o.discount.reason, cls: "wrap", f: o => esc(o.discount.reason) }]
-    : k === "void" ? [...base, { k: "method", t: "الدفع", f: o => A.METHODS[o.method] }, { k: "total", t: "المبلغ", num: 1, f: o => `<b class="num" style="color:#C2261F">${nf(o.total)}</b>` }, { k: "reason", t: "السبب", sv: o => o.void?.reason, cls: "wrap", f: o => esc(o.void?.reason) }, { k: "by", t: "ألغاه", sv: o => o.void?.cashierName, f: o => esc(o.void?.cashierName || "") + ` <small style="color:#71717A">بموافقة المدير</small>` }]
+    : k === "void" ? [...base, { k: "method", t: "الدفع", f: o => mName(o) }, { k: "total", t: "المبلغ", num: 1, f: o => `<b class="num" style="color:#C2261F">${nf(o.total)}</b>` }, { k: "reason", t: "السبب", sv: o => o.void?.reason, cls: "wrap", f: o => esc(o.void?.reason) }, { k: "by", t: "ألغاه", sv: o => o.void?.cashierName, f: o => esc(o.void?.cashierName || "") + ` <small style="color:#71717A">بموافقة المدير</small>` }]
     : [...base, { k: "chg", t: "التغيير", sv: o => o.typeChanges.length, f: o => o.typeChanges.map(c => `${A.TYPES.find(t => t[0] === c.from)?.[1]} ← ${A.TYPES.find(t => t[0] === c.to)?.[1]}`).join("، ") }, { k: "by", t: "بواسطة", sv: o => o.typeChanges.at(-1).by, f: o => esc(o.typeChanges.at(-1).by) }, { k: "total", t: "المبلغ", num: 1, f: o => `<span class="num">${nf(o.total)}</span>` }];
   table("#xtb", "disc" + k, cols, R.sort((a, b) => b.ts - a.ts), { onRow: orderDrawer, foot: k === "type" ? null : { no: "المجموع", [k === "disc" ? "amt" : "total"]: nf(sum) }, empty: k === "disc" ? "لا توجد خصومات في هذه الفترة" : k === "void" ? "لا توجد إلغاءات في هذه الفترة" : "لا توجد تغييرات" });
 };
