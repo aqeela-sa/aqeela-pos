@@ -42,12 +42,12 @@ function pfFee(c, t){
 }
 const pfDayOf = (o, sday) => (o.shiftId && sday.get(o.shiftId)) || o.day;
 /* paid cashier orders of one platform, each with its business day and its fees */
-function pfOrders(pf){
+function pfOrders(pf, testMode = !!S.testView){
   const P = S.pos; if (!P || !P.ready || !pf.posKey) return [];
   const sday = new Map((P.shifts || []).map(x => [x.id, x.day]));
-  const rows = (P.orders || []).filter(o => !o.test && o.status === "paid" && (o.method === pf.posKey || (o.type === pf.posKey && !o.method)))
+  const rows = (P.orders || []).filter(o => !!o.test === testMode && o.status === "paid" && (o.method === pf.posKey || (o.type === pf.posKey && !o.method)))
     .map(o => { const day = pfDayOf(o, sday), t = n(o.total), c = pfContract(pf, day); return {o, day, t, c, f: pfFee(c, t)}; });
-  return pf.id === PF_SALES_APP ? rows.concat(pfFromSales(pf, rows, sday)) : rows;
+  return pf.id === PF_SALES_APP && !testMode ? rows.concat(pfFromSales(pf, rows, sday)) : rows;
 }
 /* days whose Lokit orders were not rung up on the cashier (taken in Foodics and entered on the sales page): the sales page's
    «تطبيقات التوصيل» for that day, less any HungerStation orders the cashier recorded that day, is Lokit's; one row per day */
@@ -66,7 +66,7 @@ function pfFromSales(pf, rows, sday){
 }
 /* transfers count from the day the cashier started recording this platform's orders; earlier ones settle sales the cashier never saw */
 const pfStart = pf => { const d = pfOrders(pf).map(r => r.day).sort()[0]; return pf.trackFrom || d || null; };
-const pfTransfers = pf => { const st = pfStart(pf); return (S.apps || []).filter(x => pfByName(x.app) === pf && st && (x.to || x.date) >= st).sort((a, b) => a.date < b.date ? -1 : 1); };
+const pfTransfers = pf => { if (S.testView) return []; const st = pfStart(pf); return (S.apps || []).filter(x => pfByName(x.app) === pf && st && (x.to || x.date) >= st).sort((a, b) => a.date < b.date ? -1 : 1); };
 
 /* day by day: what the platform owes, what came in (oldest days settled first), and what is late */
 function pfLedger(pf){
@@ -100,7 +100,7 @@ let pfDC = {key:null, by:null};
 function pfDayComm(d){
   if (!S.pos || !S.pos.ready || !S.platforms) return null;
   const key = `${S.pos.at}|${S.pfVer || 0}`;
-  if (pfDC.key !== key){ const by = new Map(); for (const p of S.platforms) for (const r of pfOrders(p)) if (r.o) by.set(r.day, (by.get(r.day) || 0) + r.f.total); pfDC = {key, by}; }
+  if (pfDC.key !== key){ const by = new Map(); for (const p of S.platforms) for (const r of pfOrders(p, false)) if (r.o) by.set(r.day, (by.get(r.day) || 0) + r.f.total); pfDC = {key, by}; }
   return r2(pfDC.by.get(d) || 0);
 }
 
@@ -132,8 +132,8 @@ async function pfSave(pf, patch, msg){
 
 /* ---------- page ---------- */
 function viewPlatforms(){
-  return `<div class="bar"><h2>التطبيقات</h2><div class="actions" style="margin:0"><button type="button" class="btn ghost sm" id="pf_paste">لصق من Claude</button><button type="button" class="btn sm" id="pf_add">+ إضافة تطبيق</button></div></div>
-    <div id="pf_cards"></div><div id="list"></div>`;
+  return `<div class="bar"><h2>التطبيقات</h2><div class="actions" style="margin:0">${testToggle()}<button type="button" class="btn ghost sm" id="pf_paste">لصق من Claude</button><button type="button" class="btn sm" id="pf_add">+ إضافة تطبيق</button></div></div>
+    ${testBanner()}<div id="pf_cards"></div><div id="list"></div>`;
 }
 function bindPlatforms(){
   startPlatforms();
@@ -186,7 +186,7 @@ function pfDaily(pf, el){
     <div class="tw"><table><thead><tr><th>تاريخ الوصول</th><th class="n">المبلغ</th><th>عن الفترة</th><th>ملاحظات</th></tr></thead><tbody>
     ${tr.length ? tr.map(x => `<tr class="click" data-app="${esc(x.id)}"><td class="num">${dmy(x.date)}${who(x.by)}</td><td class="n"><b>${money(n(x.amount))}</b></td><td class="num">${x.from ? dmy(x.from) : ""}${x.to ? " ← " + dmy(x.to) : ""}</td><td>${esc(x.notes || "")}</td></tr>`).join("") : `<tr><td colspan="4" class="empty">لا توجد تحويلات في ${rgShort()}</td></tr>`}</tbody></table></div>
     <p class="foot" style="margin-top:10px">الصافي = المبيعات − الرسوم حسب العقد الساري يوم الطلب، محسوباً طلباً طلباً من الكاشير. ${pf.id === PF_SALES_APP ? "الأيام التي لم تُسجَّل طلباتها في الكاشير تؤخذ من صفحة المبيعات (خانة تطبيقات التوصيل) وتظهر «من المبيعات»." : ""} التحويلات الواصلة تُخصم من أقدم الأيام أولاً. «متأخر» = مرّ موعد التحويل المتوقع بيومين ولم يصل. اكتب اسم التطبيق في التحويل كما هو (${esc(pf.name)}) ليُحتسب له.</p>`;
-  $("#pf_tr").onclick = () => openApp(null, {app: pf.name});
+  $("#pf_tr").onclick = () => S.testView ? toast("في عرض التجربة لا تُسجَّل تحويلات؛ أغلق عرض التجربة أولاً") : openApp(null, {app: pf.name});
   el.querySelectorAll("[data-app]").forEach(tr => tr.onclick = () => openApp(tr.dataset.app));
 }
 
@@ -309,7 +309,7 @@ function pfItems(pf, R){
   const priceOf = id => { const m = menu.get(id); return m ? n(m.price) : null; };
   let miss = 0;
   for (const o of (P.orders || [])){
-    if (o.test || o.status !== "paid") continue;
+    if (!posTestOk(o) || o.status !== "paid") continue;
     const day = pfDayOf(o, sday); if (!inR(day, R)) continue;
     const lines = o.lines || [], sub = lines.reduce((a, l) => a + n(l.total), 0) || 1, t = n(o.total);
     const isA = o.method === pf.posKey;

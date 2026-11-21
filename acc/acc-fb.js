@@ -99,6 +99,17 @@ const pos = {
     const u2 = F.onSnapshot(F.query(F.collection(fs, "shifts"), F.where("day", ">=", fromDay)), q => { shifts = q.docs.map(d => ({ id: d.id, ...d.data() })); fire(); }, e => onErr && onErr(e));
     const u3 = F.onSnapshot(F.collection(fs, "menu"), q => { menu = q.docs.map(d => ({ id: d.id, ...d.data() })); fire(); }, () => {});
     return () => { u1(); u2(); u3(); };
+  },
+  /* every order and shift, any day (for the cleanup tool) */
+  async all(){
+    const [o, sh] = await Promise.all([F.getDocs(F.collection(fs, "orders")), F.getDocs(F.collection(fs, "shifts"))]);
+    return { orders: o.docs.map(d => ({ id: d.id, ...d.data() })), shifts: sh.docs.map(d => ({ id: d.id, ...d.data() })) };
+  },
+  /* delete documents of «orders» or «shifts» by id, in batches */
+  async remove(coll, ids){
+    if (!["orders", "shifts"].includes(coll)) throw new Error("bad collection");
+    for (let i = 0; i < ids.length; i += 400){ const b = F.writeBatch(fs); ids.slice(i, i + 400).forEach(id => b.delete(F.doc(fs, coll, id))); await b.commit(); }
+    return ids.length;
   }
 };
 window.__accFb = { db, user: userApi, roleOf, ADMIN_EMAIL, pos };

@@ -1905,6 +1905,9 @@ function viewSetup(){
   ${brandIsAqeela() ? `<div class="card" style="display:flex;align-items:center;gap:14px;flex-wrap:wrap"><div style="flex:1;min-width:220px"><h3 style="margin:0 0 4px">📘 دليل المستخدم</h3><p class="small muted" style="margin:0">كتاب PDF من 51 صفحة يشرح فكرة البرنامج وطريقة استخدام كل صفحاته، مناسب لتدريب أي موظف جديد.</p></div><button class="btn" type="button" id="set_book">تنزيل الدليل</button></div>` : ""}
   ${brandCard()}
   ${staffPermCard()}
+  ${S.isOwner ? `<div class="card" id="pc_card"><h3 style="margin:0 0 4px">بيانات الكاشير (التجارب)</h3>
+    <p class="small muted" style="margin:0 0 12px">مسح طلبات وورديات من برنامج الكاشير. اضغط «فحص» أولاً لترى ما سيُمسح بالعدد والمبلغ، ثم اختر. المسح نهائي ولا يمس بيانات المحاسبة.</p>
+    <div class="actions"><button class="btn ghost" type="button" id="pc_scan">فحص بيانات الكاشير</button></div><div id="pc_out"></div></div>` : ""}
   ${lockCard()}
   ${lock ? `<div class="note warn">الإعدادات يعدّلها مالك البرنامج أو المحرر فقط.</div>` : ""}
   <form class="card entry" id="fset"><h3>أرصدة البداية</h3>
@@ -1979,7 +1982,7 @@ async function importMigration(file, st){
   };
 }
 function bindSetup(){
-  bindLockCard(); bindBrandCard(); bindStaffPermCard(); if ($("#set_book")) $("#set_book").onclick = () => downloadBook($("#set_book"));
+  bindLockCard(); bindBrandCard(); bindStaffPermCard(); bindPosClean(); if ($("#set_book")) $("#set_book").onclick = () => downloadBook($("#set_book"));
   document.querySelectorAll(".skin-opt").forEach(b => b.onclick = () => { const v = ["teal", "rose"].includes(b.dataset.sk) ? b.dataset.sk : "classic";
     document.documentElement.dataset.skin = v; try { localStorage.setItem("skin", v); } catch(e){}
     document.querySelectorAll(".skin-opt").forEach(x => { x.classList.toggle("on", x === b); x.setAttribute("aria-checked", x === b); }); });
@@ -5690,6 +5693,35 @@ function gdDashChip(){
   return `<a class="btn ghost sm gd-chip ${left ? "has" : ""}" href="#guide">${left ? `مهام اليوم <b class="num">${left}</b>` : "مهام اليوم ✓"}</a>`;
 }
 
+/* ---------- CASHIER TEST DATA CLEANUP (owner) ---------- */
+function bindPosClean(){
+  const b = $("#pc_scan"); if (!b || !window.__accFb || !window.__accFb.pos) return;
+  b.onclick = async () => {
+    const out = $("#pc_out"); out.innerHTML = '<p class="muted">جارٍ القراءة…</p>';
+    let A; try { A = await window.__accFb.pos.all(); } catch(e){ out.innerHTML = `<div class="note warn">تعذّرت القراءة (${esc(e.code || e.message || e)}).</div>`; return; }
+    const sday = new Map(A.shifts.map(x => [x.id, x.day])), dayOf = o => (o.shiftId && sday.get(o.shiftId)) || o.day || "";
+    const openSh = A.shifts.filter(x => x.status === "open"), openIds = new Set(openSh.map(x => x.id));
+    const grp = L => { const days = [...new Set(L.map(dayOf))].filter(Boolean).sort(); const paid = L.filter(o => o.status === "paid");
+      return {n:L.length, paid:paid.length, sum:r2(paid.reduce((a, o) => a + n(o.total), 0)), from:days[0], to:days[days.length - 1]}; };
+    const testO = A.orders.filter(o => o.test), realO = A.orders.filter(o => !o.test);
+    const testS = A.shifts.filter(x => x.test && x.status !== "open"), realS = A.shifts.filter(x => !x.test && x.status !== "open");
+    const tG = grp(testO), rG = grp(realO);
+    const posSales = [...S.sales.values()].filter(x => x.source === "pos").map(x => x.date || x.id).sort();
+    const line = (t, G, sh) => `<div class="dy-kv"><span>${t}</span><b>${G.n ? `${G.n} طلب (${G.paid} مدفوع، <span class="num">${fmt(G.sum)}</span>) · ${G.from === G.to ? `<span class="num">${dmy(G.from)}</span>` : `من <span class="num">${dmy(G.from)}</span> إلى <span class="num">${dmy(G.to)}</span>`} · ${sh} وردية` : `لا يوجد${sh ? ` · ${sh} وردية` : ""}`}</b></div>`;
+    out.innerHTML = `<div style="margin-top:12px">${line("طلبات الوضع التجريبي", tG, testS.length)}${line("طلبات عادية (غير مُعلَّمة تجريبي)", rG, realS.length)}
+      ${openSh.length ? `<div class="note warn" style="margin-top:10px"><b>وردية مفتوحة الآن:</b> ${openSh.map(x => `${esc((x.openedBy || {}).name || "")} منذ <span class="num">${dmy(x.day)}</span>${x.test ? " (تجريبية)" : ""}`).join("، ")}. أقفلها من الكاشير أولاً؛ الوردية المفتوحة وطلباتها لا تُمسح.</div>` : ""}
+      ${posSales.length ? `<div class="note warn" style="margin-top:10px"><b>انتبه:</b> مبيعات هذه الأيام في صفحة المبيعات مسجّلة «من الكاشير»: ${posSales.map(d => `<span class="num">${dmy(d)}</span>`).join("، ")}. إن كانت من طلبات تجربة فاحذفها أو أعد إدخالها من فودكس بعد المسح.</div>` : ""}
+      <div class="actions" style="margin-top:12px"><button class="btn ghost" type="button" id="pc_test" ${testO.filter(o => !openIds.has(o.shiftId)).length || testS.length ? "" : "disabled"}>مسح طلبات التجربة فقط</button>
+      <button class="btn danger" type="button" id="pc_all" ${A.orders.filter(o => !openIds.has(o.shiftId)).length || testS.length || realS.length ? "" : "disabled"}>مسح كل طلبات الكاشير</button></div></div>`;
+    const run = async (orders, shifts, msg) => {
+      try { const o = await window.__accFb.pos.remove("orders", orders.filter(x => !openIds.has(x.shiftId)).map(x => x.id)); const s = await window.__accFb.pos.remove("shifts", shifts.map(x => x.id));
+        toast(`${msg}: ${o} طلب و${s} وردية`); b.click(); }
+      catch(e){ toast("تعذّر المسح: " + (e.code || e.message || e)); } };
+    if ($("#pc_test")) armDelete($("#pc_test"), () => run(testO, testS, "تم مسح بيانات التجربة"), "اضغط مرة أخرى لمسح بيانات التجربة");
+    if ($("#pc_all")) armDelete($("#pc_all"), () => run(A.orders, [...testS, ...realS], "تم مسح طلبات الكاشير"), "اضغط مرة أخرى للمسح النهائي");
+  };
+}
+
 /* ---------- STAFF PERMISSIONS (صلاحيات الموظفين) ---------- */
 function staffPermCard(){
   if (!S.canEdit) return ""; const P = staffPerms();
@@ -6013,11 +6045,17 @@ const POS_M = ["cash","mada","visa","lokit","hunger"];
 /* HungerStation contract (18/11/2026): 10% service + 2.5% online payment on the order total, plus a delivery charge by basket value */
 const hsDelivery = t => t >= 80 ? 13 : t >= 60 ? 11 : t >= 50 ? 9 : t >= 40 ? 8 : 7;
 const hsFee = t => r2(t * 0.125 + hsDelivery(t));
+/* «عرض بيانات التجربة»: the cashier page and the Apps page show only the orders made in the cashier's test mode,
+   with nothing posted, compared or imported. It turns off on leaving those pages. */
+const posTestOk = o => !!o.test === !!S.testView;
+const testToggle = () => `<button type="button" class="btn ${S.testView ? "" : "ghost"} sm" data-testview="1" aria-pressed="${!!S.testView}">${S.testView ? "إغلاق عرض التجربة" : "عرض بيانات التجربة"}</button>`;
+const testBanner = () => S.testView ? `<div class="note warn" style="margin-bottom:12px"><b>عرض بيانات التجربة:</b> تظهر هنا طلبات الوضع التجريبي في الكاشير فقط. لا تدخل في المبيعات ولا القيود ولا المطابقة، ولا تُعتمد ولا تُسجَّل منها تحويلات.</div>` : "";
+document.addEventListener("click", e => { const b = e.target.closest && e.target.closest("[data-testview]"); if (!b) return; S.testView = !S.testView; render(); });
 function posDays(){
   const P = S.pos; if (!P || !P.ready) return null;
   const sday = new Map((P.shifts || []).map(x => [x.id, x.day])), by = new Map();
   for (const o of (P.orders || [])){
-    if (o.test) continue;
+    if (!posTestOk(o)) continue;
     const d = (o.shiftId && sday.get(o.shiftId)) || o.day; if (!d) continue;
     const x = by.get(d) || {date:d, cash:0, mada:0, visa:0, lokit:0, hunger:0, count:0, voids:0, voidAmt:0, open:0, openAmt:0, disc:0, hsN:0, hsGross:0, hsFee:0, hsDel:0, last:0};
     const t = n(o.total);
@@ -6038,7 +6076,7 @@ const hm = t => { const d = new Date(n(t)); return isNaN(d) ? "" : `${String(d.g
 /* every order of one shift day, in the order they were rung up, with their items: to trace a difference with Foodics down to the order */
 function openPosDay(day){
   const P = S.pos || {}, sday = new Map((P.shifts || []).map(x => [x.id, x.day]));
-  const L = (P.orders || []).filter(o => !o.test && ((o.shiftId && sday.get(o.shiftId)) || o.day) === day).sort((a, b) => n(a.ts) - n(b.ts));
+  const L = (P.orders || []).filter(o => posTestOk(o) && ((o.shiftId && sday.get(o.shiftId)) || o.day) === day).sort((a, b) => n(a.ts) - n(b.ts));
   const st = o => o.status === "void" ? '<span class="chip bad">ملغي</span>' : o.status === "open" ? '<span class="chip warn">غير مدفوع</span>' : '<span class="chip ok">مدفوع</span>';
   const items = o => (o.lines || []).map(l => `<div><b class="num">${n(l.qty)}</b> × ${esc(l.name)}${(l.mods || []).length ? ` <span class="small muted">+ ${l.mods.map(m => esc(m.name)).join("، ")}</span>` : ""}${(l.notes || []).length || l.note ? ` <span class="small muted">(${esc([...(l.notes || []), l.note].filter(Boolean).join("، "))})</span>` : ""}</div>`).join("");
   const paid = L.filter(o => o.status !== "void" && o.status !== "open");
@@ -6056,7 +6094,7 @@ function openPosDay(day){
 }
 const posAsSale = x => ({cash: x.cash || null, mada: x.mada || null, visa: x.visa || null, delivery: r2(x.lokit + x.hunger) || null});
 function viewPos(){
-  return `<div class="bar"><h2>مبيعات الكاشير</h2>${rgPicker()}</div>
+  return `<div class="bar"><h2>مبيعات الكاشير</h2><div class="actions" style="margin:0">${testToggle()}${rgPicker()}</div></div>${testBanner()}
     <p class="small muted" style="margin:-4px 0 12px">المبيعات كما سجّلها برنامج الكاشير لحظة بلحظة، مقارنةً بالمبيعات المسجّلة في البرنامج (من فودكس). كل طلب يُحسب على يوم الوردية التي سُجّل فيها، فطلب الساعة 1 فجراً يتبع اليوم الذي فُتحت فيه الوردية.</p>
     <div id="list"></div>`;
 }
@@ -6114,12 +6152,12 @@ function renderPos(){
   if (S.pos.err){ el.innerHTML = `<div class="note warn">تعذّرت قراءة بيانات الكاشير (${esc(S.pos.err)}).</div>`; return; }
   const all = posDays(), R = curR(), t = today(), RL = rgShort();
   const days = [...all.values()].filter(x => inR(x.date, R)).sort((a, b) => a.date < b.date ? 1 : -1);
-  const rec = d => S.sales.get(d) || null;
+  const rec = d => S.testView ? null : S.sales.get(d) || null;
   const card = s => n(s.mada) + n(s.visa);
   const chip = v => Math.abs(v) < 0.005 ? '<span class="chip ok">مطابق</span>' : `<span class="chip ${v > 0 ? "warn" : "bad"}"><span class="num">${v > 0 ? "+" : ""}${fmt(v)}</span></span>`;
   const sum = k => r2(days.reduce((a, x) => a + n(x[k]), 0));
   const hs = days.reduce((a, x) => ({n:a.n + x.hsN, g:a.g + x.hsGross, f:a.f + x.hsFee, d:a.d + x.hsDel}), {n:0, g:0, f:0, d:0});
-  const live = new Set((S.pos.shifts || []).filter(z => z.status === "open").map(z => z.day));
+  const live = new Set((S.pos.shifts || []).filter(z => z.status === "open" && posTestOk(z)).map(z => z.day));
   const rows = days.map(x => {
     const s = rec(x.date), st = s ? saleTotal(s) : null, diff = s ? r2(x.total - st) : null, isPos = s && s.source === "pos";
     const det = s ? [["كاش", x.cash - n(s.cash)], ["بطاقات", x.mada + x.visa - card(s)], ["تطبيقات", x.lokit + x.hunger - n(s.delivery)]].filter(([, v]) => Math.abs(v) >= 0.005).map(([l, v]) => `${l} <span class="num">${v > 0 ? "+" : ""}${fmt(v)}</span>`).join(" · ") : "";
@@ -6128,7 +6166,7 @@ function renderPos(){
       <td class="n"><b>${money(x.total)}</b>${x.voids ? `<div class="by">ملغاة ${x.voids} · <span class="num">${fmt(x.voidAmt)}</span></div>` : ""}${x.open ? `<div class="by neg">غير مدفوعة ${x.open} · <span class="num">${fmt(x.openAmt)}</span></div>` : ""}</td>
       <td class="n">${s ? `${money(st)}<div class="by">${isPos ? "من الكاشير" : "من فودكس"}${s.count ? ` · ${s.count} طلب` : ""}</div>` : '<span class="dash">لم يُسجَّل</span>'}</td>
       <td>${s ? chip(diff) : ""}${det && !isPos ? `<div class="by">${det}</div>` : ""}</td>
-      <td>${!live.has(x.date) && x.date <= t && S.canEdit && !isPos ? `<button type="button" class="btn ghost sm" data-posimp="${x.date}">${s ? "اعتماد أرقام الكاشير" : "تسجيل من الكاشير"}</button>` : ""}</td></tr>`;
+      <td>${!S.testView && !live.has(x.date) && x.date <= t && S.canEdit && !isPos ? `<button type="button" class="btn ghost sm" data-posimp="${x.date}">${s ? "اعتماد أرقام الكاشير" : "تسجيل من الكاشير"}</button>` : ""}</td></tr>`;
   }).join("");
   el.innerHTML = `<div class="grid g4" style="margin-bottom:14px">
       <div class="kpi"><span class="l">مبيعات الكاشير · ${esc(RL)}</span><span class="v num">${fmt(sum("total"))}</span><span class="small muted">${days.reduce((a, x) => a + x.count, 0)} طلب في ${days.length} يوم</span></div>
@@ -6200,7 +6238,7 @@ function navMoreSync(){
     if (ar.left < nr.left + 8 || ar.right > nr.right - 8) nav.scrollLeft += (ar.left + ar.width / 2) - (nr.left + nr.width / 2); }
 }
 function renderLists(){ const V = VIEWS[S.view]; if (V.list) V.list(); }
-function route(){ const h = location.hash.slice(1); S.view = VIEWS[h] && !(isStaff() && !STAFF_VIEWS.has(h)) ? h : homeView(); closeModal(); render(); }
+function route(){ const h = location.hash.slice(1); if (!["pos","platforms"].includes(h)) S.testView = false; S.view = VIEWS[h] && !(isStaff() && !STAFF_VIEWS.has(h)) ? h : homeView(); closeModal(); render(); }
 window.addEventListener("hashchange", route);
 /* settings changes refresh selects without wiping a half-typed form */
 function refreshSelects(){
@@ -6308,7 +6346,7 @@ async function fixAttFlags(){
 }
 if (window.__accHost) window.__accStart = connect; else connect();
 </script>
-<script src="apps.js?v=7"></script>
-<script type="module" src="acc-fb.js?v=3"></script>
+<script src="apps.js?v=8"></script>
+<script type="module" src="acc-fb.js?v=4"></script>
 </body>
 </html>
