@@ -4,7 +4,7 @@
 import * as F from "./fb.js";
 import { firebaseConfig } from "./firebase-config.js";
 
-const VERSION = "2.6.1";
+const VERSION = "2.6.2";
 const ADMIN_EMAIL = "abuabraj@gmail.com";
 const DEVICE_EMAIL = "cashier@aqeela-pos.app";
 const APP_NAME = `<span dir="ltr">Cashier AQ</span>`;
@@ -40,6 +40,9 @@ const DEFAULT_MENU = [
 /* تكلفة الطعام للوحدة من برنامج المحاسبة (بدون التغليف) — حسب رمز الصنف */
 const DEFAULT_COSTS = { "sk-0001": 2.53, "sk-0002": 3.75, "sk-0003": 4, "sk-0004": 6.2, "sk-0005": 2.46, "sk-0006": 3.65, "sk-0007": 2.27, "sk-0008": 3.24,
   "sk-0009": 8.2, "sk-0010": 9.39, "sk-0011": 6.54, "sk-0012": 8.92, "sk-0013": 8.59, "sk-0014": 1.5, "sk-0015": 0.44, "sk-0016": 1.8, "sk-0017": 1.8, "sk-0018": 0.5 };
+/* أسعار هنقرستيشن من منيو المالك (21/11/2026) — تُعبَّأ مرة واحدة في الأصناف التي ليس لها سعر هنقرستيشن */
+const HUNGER_PRICES = { "sk-0007": 11, "sk-0009": 33.5, "sk-0001": 17, "sk-0005": 13, "sk-0003": 21, "sk-0011": 28, "sk-0012": 41,
+  "sk-0008": 13, "sk-0010": 38, "sk-0002": 20, "sk-0006": 17, "sk-0004": 22, "sk-0013": 36 };
 const BOX_REFS = ["sk-0009", "sk-0010", "sk-0011", "sk-0012", "sk-0013"];
 const DEFAULT_PACK = { boxPrice: 1.4, bagKgPrice: 9, bagsPerKg: 60, perBag: 3 };
 /* ملاحظات الأصناف السريعة (مجانية) — يعدّلها المدير من «الإيصال والإعدادات» */
@@ -136,8 +139,10 @@ function migrate() {
   S.menu.forEach(m => { const u = {};
     if (!("cost" in m)) u.cost = m.ref && DEFAULT_COSTS[m.ref] != null ? DEFAULT_COSTS[m.ref] : null;
     if (!("box" in m)) u.box = BOX_REFS.includes(m.ref);
+    if (!S.config.hungerSeeded && (m.hunger == null || m.hunger === "") && m.ref && HUNGER_PRICES[m.ref] != null) u.hunger = HUNGER_PRICES[m.ref];
     if (Object.keys(u).length) { b.set(D("menu", m.id), u, { merge: true }); n++; } });
   if (!S.config.pack) { b.set(D("config", "main"), { pack: DEFAULT_PACK }, { merge: true }); n++; }
+  if (!S.config.hungerSeeded) { b.set(D("config", "main"), { hungerSeeded: new Date().toISOString() }, { merge: true }); n++; }
   if (n) b.commit().catch(e => console.error("migrate", e));
 }
 
