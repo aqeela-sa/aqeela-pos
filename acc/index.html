@@ -1170,7 +1170,9 @@ const ACT = {create:["إضافة","ok"],edit:["تعديل","info"],delete:["حذ
 const strip = x => { if (!x) return {}; const {id, history, ...r} = x; return r; };
 const findRaw = (coll, id) => id ? S.raw[KEY[coll]].find(x => x.id === id) : null;
 /* ---------- roles: the owner/editors see everything; a Contributor is a data-entry employee ---------- */
-const STAFF_VIEWS = new Set(["dashboard","daily","guide","sales","invoices","prodcost","suppliers","custody","recon","reports"]);
+/* the data-entry employee sees the entry pages and her daily tasks; profits, production cost, reports and the dashboard are the owner's */
+const STAFF_VIEWS = new Set(["guide","daily","sales","invoices","suppliers","custody","recon"]), STAFF_HOME = "guide";
+const homeView = () => isStaff() ? STAFF_HOME : "dashboard";
 const STAFF_REPORTS = new Set(["summary","sales","expenses","production","recon","custody","apps","supplier","payables","buyer","prices","daily"]);
 const STAFF_HIDDEN = ["journal","staff","advances","payroll","cfo","menuItems","itemSales"];   // also closed to Contributors by the database rules
 const isStaff = () => S.role === "staff";
@@ -1181,7 +1183,7 @@ function applyRole(){
   /* with only «الموردون» left in the menu for an employee, show it as a normal tab */
   const sup = document.querySelector('#tabs a[data-v="suppliers"]'); if (sup) sup.classList.toggle("more", !isStaff());
   const menu = $("#nav_menu"); if (menu){ delete menu.dataset.built; menu.innerHTML = ""; }
-  if (isStaff() && !STAFF_VIEWS.has(S.view)){ S.view = "dashboard"; if (location.hash && location.hash !== "#dashboard") history.replaceState(null, "", "#dashboard"); }
+  if (isStaff() && !STAFF_VIEWS.has(S.view)){ S.view = STAFF_HOME; if (location.hash !== "#" + STAFF_HOME) history.replaceState(null, "", "#" + STAFF_HOME); }
 }
 function recWrite(coll, id, data, action, msg){
   const ex = findRaw(coll, id);
@@ -5510,13 +5512,13 @@ function renderDaily(){
     <div class="card dy-c"><h3>الخزنة والبنك</h3>${r ? `
       <div class="dy-kv"><span>الخزنة: الدفتري <span class="num">${fmt(r.cAtCount)}</span>${r.ac != null ? ` · الفعلي <span class="num">${fmt(r.ac)}</span>` : ""}</span>${diff(r.cDiff)}</div>
       <div class="dy-kv"><span>البنك: الدفتري <span class="num">${fmt(r.bankExp)}</span>${r.ab != null ? ` · الفعلي <span class="num">${fmt(r.ab)}</span>` : ""}</span>${diff(r.bDiff)}</div>` : `<p class="muted" style="margin:0">لا توجد حركة خزنة لهذا اليوم.</p>`}</div>
-    <div class="card dy-c"><h3>الشهر حتى هذا اليوم · ${MONTHS[+D.d.slice(5, 7) - 1]}</h3>
+    ${isStaff() ? "" : `<div class="card dy-c"><h3>الشهر حتى هذا اليوم · ${MONTHS[+D.d.slice(5, 7) - 1]}</h3>
       <div class="dy-kv"><span>المبيعات الفعلية (${M.days} يوم)</span><b class="num">${fmt(M.netSales)}</b></div>
       ${D.P && D.P.sales > 0 ? `<div class="dy-kv"><span>من هدف <span class="num">${fmt(D.P.sales)}</span></span>${bgMeter(M.netSales, D.P.sales, false)}</div>
         <div class="dy-kv"><span>المتوقع بنهاية الشهر</span><b class="num ${D.fc >= D.P.sales ? "pos" : "neg"}">${fmt(D.fc)}</b></div>` : ""}
       <div class="dy-kv"><span>متوسط اليوم</span><b class="num">${fmt(M.avg)}</b></div>
       <div class="dy-kv"><span>تكلفة الإنتاج</span><b class="num">${fmt(M.prod)} · ${pct(M.prodPct)}</b></div>
-      <div class="dy-kv"><span>المصروفات</span><b class="num">${fmt(M.exp)}</b></div></div>
+      <div class="dy-kv"><span>المصروفات</span><b class="num">${fmt(M.exp)}</b></div></div>`}
     <div class="card dy-c"><h3>يحتاج انتباهك ${A.length ? `<span class="chip ${A.some(a => a[0] === "bad") ? "bad" : "info"}">${A.length}</span>` : ""}</h3>
       ${A.length ? `<ul class="dy-al">${A.map(([lv, t]) => `<li class="${lv}">${esc(t)}</li>`).join("")}</ul>` : `<p class="pos" style="margin:0">كل شيء تمام ✓</p>`}</div>
     <div class="actions dy-share"><button class="btn" type="button" id="dy_wa">مشاركة الملخص</button><button class="btn ghost" type="button" id="dy_pdf">تنزيل PDF</button><button class="btn ghost" type="button" id="dy_cp">نسخ النص</button></div></div>`;
@@ -5535,9 +5537,9 @@ function dyText(D, A){
   L.push("", `المشتريات: ${fmt(sumBy(D.invs, invTotal))} (${D.invs.length} فاتورة) · إنتاج ${fmt(sumBy(D.prod, invTotal))}`);
   if (D.cus.length) L.push(`صرف العهد: ${fmt(sumBy(D.cus, x => n(x.amount)))}`);
   if (D.row){ const f = v => v == null ? "لم يُسجّل" : Math.abs(v) < 0.5 ? "مطابق" : (v > 0 ? "+" : "") + fmt(v); L.push(`الخزنة: ${f(D.row.cDiff)} · البنك: ${f(D.row.bDiff)}`); }
-  L.push("", `*الشهر حتى الآن*`, `المبيعات: ${fmt(M.netSales)} (${M.days} يوم، متوسط ${fmt(M.avg)})`);
-  if (D.P && D.P.sales > 0) L.push(`من الهدف ${fmt(D.P.sales)}: ${(M.netSales / D.P.sales * 100).toFixed(0)}% · المتوقع ${fmt(D.fc)}`);
-  L.push(`تكلفة الإنتاج: ${pct(M.prodPct)} · المصروفات: ${fmt(M.exp)}`);
+  if (!isStaff()){ L.push("", `*الشهر حتى الآن*`, `المبيعات: ${fmt(M.netSales)} (${M.days} يوم، متوسط ${fmt(M.avg)})`);
+    if (D.P && D.P.sales > 0) L.push(`من الهدف ${fmt(D.P.sales)}: ${(M.netSales / D.P.sales * 100).toFixed(0)}% · المتوقع ${fmt(D.fc)}`);
+    L.push(`تكلفة الإنتاج: ${pct(M.prodPct)} · المصروفات: ${fmt(M.exp)}`); }
   if (A.length){ L.push("", "*تنبيهات*"); A.forEach(([, t]) => L.push("• " + t)); }
   return L.join("\n");
 }
@@ -5556,9 +5558,9 @@ Object.assign(REPORTS, {
       (D.invs.length || D.cus.length ? rpSec("المشتريات والمصروفات", rpTable(["المورد","التصنيف","طريقة الدفع","المبلغ"], [...D.invs.slice().sort((p, q) => invTotal(q) - invTotal(p)).map(x => [esc(supKey(x.supplier) || "—"), esc(x.category || ""), esc(x.pay || ""), M_(invTotal(x))]),
         ...D.cus.map(x => [esc(x.employee || x.emp || "عهدة"), esc(x.category || ""), "من العهدة", M_(n(x.amount))])], ["الإجمالي", "", "", M_(sumBy(D.invs, invTotal) + sumBy(D.cus, x => n(x.amount)))], ["30%","30%","18%","22%"])) : "") +
       (r ? rpSec("الخزنة والبنك", rpTable(["","الدفتري","الفعلي","الفرق"], [["الخزنة", M_(r.cAtCount), r.ac != null ? M_(r.ac) : "—", f(r.cDiff)], ["البنك", M_(r.bankExp), r.ab != null ? M_(r.ab) : "—", f(r.bDiff)]], null, ["28%","24%","24%","24%"])) : "") +
-      rpSec(`الشهر حتى هذا اليوم · ${MONTHS[+d.slice(5, 7) - 1]}`, rpTable(["البند","القيمة"], [[`المبيعات الفعلية (${M.days} يوم)`, M_(M.netSales)], ["متوسط اليوم", M_(M.avg)],
+      (isStaff() ? "" : rpSec(`الشهر حتى هذا اليوم · ${MONTHS[+d.slice(5, 7) - 1]}`, rpTable(["البند","القيمة"], [[`المبيعات الفعلية (${M.days} يوم)`, M_(M.netSales)], ["متوسط اليوم", M_(M.avg)],
         ...(D.P && D.P.sales > 0 ? [[`من الهدف ${fmt(D.P.sales)}`, `${(M.netSales / D.P.sales * 100).toFixed(0)}%`], ["المتوقع بنهاية الشهر", M_(D.fc)]] : []),
-        ["تكلفة الإنتاج", `${M_(M.prod)} · ${pct(M.prodPct)}`], ["المصروفات", M_(M.exp)]], null, ["65%","35%"])) +
+        ["تكلفة الإنتاج", `${M_(M.prod)} · ${pct(M.prodPct)}`], ["المصروفات", M_(M.exp)]], null, ["65%","35%"]))) +
       rpSec("يحتاج انتباهك", A.length ? `<ul class="rp-al">${A.map(([lv, t]) => `<li class="${lv}">${esc(t)}</li>`).join("")}</ul>` : `<div class="rp-note">كل شيء تمام ✓</div>`) + rpFoot()};
   }
 });
@@ -6137,7 +6139,7 @@ const VIEWS = {
   setup:{v:viewSetup, bind:bindSetup}
 };
 function render(){
-  if (isStaff() && !STAFF_VIEWS.has(S.view)) S.view = "dashboard";
+  if (isStaff() && !STAFF_VIEWS.has(S.view)) S.view = STAFF_HOME;
   const V = VIEWS[S.view];
   document.querySelectorAll("#tabs a, #nav_menu a").forEach(a => a.classList.toggle("on", a.dataset.v === S.view));
   navMoreSync();
@@ -6166,7 +6168,7 @@ function navMoreSync(){
     if (ar.left < nr.left + 8 || ar.right > nr.right - 8) nav.scrollLeft += (ar.left + ar.width / 2) - (nr.left + nr.width / 2); }
 }
 function renderLists(){ const V = VIEWS[S.view]; if (V.list) V.list(); }
-function route(){ const h = location.hash.slice(1); S.view = VIEWS[h] && !(isStaff() && !STAFF_VIEWS.has(h)) ? h : "dashboard"; closeModal(); render(); }
+function route(){ const h = location.hash.slice(1); S.view = VIEWS[h] && !(isStaff() && !STAFF_VIEWS.has(h)) ? h : homeView(); closeModal(); render(); }
 window.addEventListener("hashchange", route);
 /* settings changes refresh selects without wiping a half-typed form */
 function refreshSelects(){
