@@ -116,20 +116,20 @@ function renderPlatforms(){
   const cards = $("#pf_cards"), el = $("#list"); if (!cards || !el) return;
   if (!S.platforms){ cards.innerHTML = `<div class="empty card">جارٍ التحميل…</div>`; el.innerHTML = ""; return; }
   if (!S.pos || !S.pos.ready){ el.innerHTML = `<div class="empty card">جارٍ قراءة طلبات الكاشير…</div>`; }
-  const R = monthRange(S.y, S.m);
+  const R = curR();
   cards.innerHTML = `<div class="pf-cards">${S.platforms.map(p => {
     const L = pfLedger(p), m = L.days.filter(x => inR(x.date, R)), sales = m.reduce((a, x) => a + x.sales, 0), fees = m.reduce((a, x) => a + x.fees, 0), c = pfContract(p, today());
     return `<button type="button" class="pf-card ${p.id === S.pfSel ? "on" : ""}" data-pf="${esc(p.id)}">
       <b>${esc(p.name)}</b><span class="small muted">${c ? pfSummary(c) : "لا يوجد عقد"}</span>
-      <span class="pf-v num">${fmt(sales)}</span><span class="small muted">مبيعات ${MONTHS[S.m-1]} · الرسوم <span class="num">${sales ? pct(fees / sales) : "—"}</span></span>
+      <span class="pf-v num">${fmt(sales)}</span><span class="small muted">مبيعات ${rgShort()} · الرسوم <span class="num">${sales ? pct(fees / sales) : "—"}</span></span>
       <span class="small ${L.late > 0.009 ? "neg" : ""}">المستحق <b class="num">${fmt(Math.max(0, L.bal))}</b>${L.late > 0.009 ? ` · متأخر <b class="num">${fmt(L.late)}</b>` : ""}</span></button>`; }).join("")}</div>`;
   cards.querySelectorAll("[data-pf]").forEach(b => b.onclick = () => { S.pfSel = b.dataset.pf; renderPlatforms(); });
   const pf = S.platforms.find(p => p.id === S.pfSel); if (!pf || !S.pos || !S.pos.ready) return;
   const tab = S.pfTab || "daily";
   el.innerHTML = `<div class="actions" style="margin:6px 0 12px;justify-content:space-between;align-items:center"><div class="seg" role="tablist">${PF_TABS.map(([k, l]) => `<button type="button" data-pft="${k}" class="${k === tab ? "on" : ""}">${l}</button>`).join("")}</div>
-    ${tab === "daily" || tab === "report" ? periodPicker() : ""}</div><div id="pf_body"></div>`;
+    ${tab === "daily" || tab === "report" ? rgPicker() : ""}</div><div id="pf_body"></div>`;
   el.querySelectorAll("[data-pft]").forEach(b => b.onclick = () => { S.pfTab = b.dataset.pft; renderPlatforms(); });
-  bindPeriod();
+  rgBind();
   ({daily:pfDaily, contract:pfContractTab, menu:pfMenu, report:pfReport})[tab](pf, $("#pf_body"));
 }
 const pfRange = (a, b) => a === b ? `<span class="num">${a}</span>` : `من <span class="num">${a}</span> إلى <span class="num">${b}</span>`;
@@ -138,24 +138,24 @@ const PF_ST = {paid:['ok', "حُوِّل"], part:['warn', "جزئي"], wait:['in
 
 /* ---- daily & receivables ---- */
 function pfDaily(pf, el){
-  const L = pfLedger(pf), R = monthRange(S.y, S.m), days = L.days.filter(x => inR(x.date, R)).reverse();
+  const L = pfLedger(pf), R = curR(), days = L.days.filter(x => inR(x.date, R)).reverse();
   const sum = k => r2(days.reduce((a, x) => a + n(x[k]), 0)), tr = L.tr.filter(x => inR(x.date, R));
   const last = L.tr[L.tr.length - 1];
   el.innerHTML = `<div class="grid g4" style="margin-bottom:14px">
-      <div class="kpi"><span class="l">مبيعات ${esc(pf.name)} · ${MONTHS[S.m-1]}</span><span class="v num">${fmt(sum("sales"))}</span><span class="small muted">${sum("n")} طلب</span></div>
+      <div class="kpi"><span class="l">مبيعات ${esc(pf.name)} · ${rgShort()}</span><span class="v num">${fmt(sum("sales"))}</span><span class="small muted">${sum("n")} طلب</span></div>
       <div class="kpi orange"><span class="l">العمولة والرسوم</span><span class="v num">${fmt(sum("fees"))}</span><span class="small muted">النسبة الفعلية <span class="num">${sum("sales") ? pct(sum("fees") / sum("sales")) : "—"}</span></span></div>
-      <div class="kpi green"><span class="l">الصافي المستحق لك</span><span class="v num">${fmt(sum("net"))}</span><span class="small muted">عن ${MONTHS[S.m-1]}</span></div>
+      <div class="kpi green"><span class="l">الصافي المستحق لك</span><span class="v num">${fmt(sum("net"))}</span><span class="small muted">عن ${rgShort()}</span></div>
       <div class="kpi ${L.late > 0.009 ? "orange" : "dark"}"><span class="l">الرصيد المستحق ${pfStart(pf) ? `منذ <span class="num">${dmy(pfStart(pf))}</span>` : ""}</span><span class="v num">${fmt(Math.max(0, L.bal))}</span><span class="small muted">${L.late > 0.009 ? `منه متأخر <span class="num">${fmt(L.late)}</span> · ` : ""}آخر تحويل ${last ? `<span class="num">${dmy(last.date)}</span> (${fmt(n(last.amount))})` : "—"}</span></div></div>
     ${L.late > 0.009 ? `<div class="note warn" style="margin-bottom:12px"><b>تنبيه:</b> مبالغ مرّ موعد تحويلها المتوقع ولم تصل: <b class="num">${fmt(L.late)}</b>. راجع كشف البنك أو تواصل مع ${esc(pf.name)}.</div>` : ""}
     ${L.extra > 0.009 ? `<div class="note" style="margin-bottom:12px">وصل من ${esc(pf.name)} أكثر من المستحق المحسوب بـ <b class="num">${fmt(L.extra)}</b> — قد تكون رسوم العقد أعلى من الفعلية، أو تحويل لم يُسجَّل باسم التطبيق الصحيح.</div>` : ""}
     <div class="tw stick"><table><thead><tr><th>يوم الوردية</th><th class="n">الطلبات</th><th class="n">المبيعات</th><th class="n">العمولة</th><th class="n">الدفع الإلكتروني</th><th class="n">التوصيل</th><th class="n">رسوم أخرى</th><th class="n">الصافي المستحق</th><th>موعد التحويل المتوقع</th><th class="n">وصل منه</th><th>الحالة</th></tr></thead><tbody>
     ${days.length ? days.map(x => `<tr><td class="num key">${dmy(x.date)} <span class="small muted">${dayName(x.date)}</span></td><td class="n num">${x.n}</td><td class="n">${money(x.sales)}</td><td class="n">${money(x.comm)}</td><td class="n">${money(x.pay)}</td><td class="n">${money(x.del)}</td><td class="n">${money(x.extra)}</td>
       <td class="n"><b>${money(x.net)}</b></td><td class="num">${dmy(x.due)}</td><td class="n">${money(x.recv)}</td><td><span class="chip ${PF_ST[x.st][0]}">${PF_ST[x.st][1]}</span></td></tr>`).join("")
-      : `<tr><td colspan="11" class="empty">لا توجد طلبات ${esc(pf.name)} في ${MONTHS[S.m-1]} ${S.y}</td></tr>`}
+      : `<tr><td colspan="11" class="empty">لا توجد طلبات ${esc(pf.name)} في ${rgShort()}</td></tr>`}
     <tr class="tot"><td>الإجمالي</td><td class="n num">${sum("n")}</td><td class="n">${money(sum("sales"))}</td><td class="n">${money(sum("comm"))}</td><td class="n">${money(sum("pay"))}</td><td class="n">${money(sum("del"))}</td><td class="n">${money(sum("extra"))}</td><td class="n">${money(sum("net"))}</td><td></td><td class="n">${money(sum("recv"))}</td><td></td></tr></tbody></table></div>
     <div class="bar" style="margin:18px 0 8px;border:0;padding:0"><h3 style="margin:0">التحويلات الواصلة من ${esc(pf.name)}</h3><button type="button" class="btn sm" id="pf_tr">تسجيل تحويل</button></div>
     <div class="tw"><table><thead><tr><th>تاريخ الوصول</th><th class="n">المبلغ</th><th>عن الفترة</th><th>ملاحظات</th></tr></thead><tbody>
-    ${tr.length ? tr.map(x => `<tr class="click" data-app="${esc(x.id)}"><td class="num">${dmy(x.date)}${who(x.by)}</td><td class="n"><b>${money(n(x.amount))}</b></td><td class="num">${x.from ? dmy(x.from) : ""}${x.to ? " ← " + dmy(x.to) : ""}</td><td>${esc(x.notes || "")}</td></tr>`).join("") : `<tr><td colspan="4" class="empty">لا توجد تحويلات في ${MONTHS[S.m-1]}</td></tr>`}</tbody></table></div>
+    ${tr.length ? tr.map(x => `<tr class="click" data-app="${esc(x.id)}"><td class="num">${dmy(x.date)}${who(x.by)}</td><td class="n"><b>${money(n(x.amount))}</b></td><td class="num">${x.from ? dmy(x.from) : ""}${x.to ? " ← " + dmy(x.to) : ""}</td><td>${esc(x.notes || "")}</td></tr>`).join("") : `<tr><td colspan="4" class="empty">لا توجد تحويلات في ${rgShort()}</td></tr>`}</tbody></table></div>
     <p class="foot" style="margin-top:10px">الصافي = المبيعات − الرسوم حسب العقد الساري يوم الطلب، محسوباً طلباً طلباً من الكاشير. التحويلات الواصلة تُخصم من أقدم الأيام أولاً. «متأخر» = مرّ موعد التحويل المتوقع بيومين ولم يصل. اكتب اسم التطبيق في التحويل كما هو (${esc(pf.name)}) ليُحتسب له.</p>`;
   $("#pf_tr").onclick = () => openApp(null, {app: pf.name});
   el.querySelectorAll("[data-app]").forEach(tr => tr.onclick = () => openApp(tr.dataset.app));
@@ -296,7 +296,7 @@ function pfItems(pf, R){
 }
 function pfReport(pf, el){
   if (!pf.posKey){ el.innerHTML = `<div class="note">${esc(pf.name)} غير مربوط بالكاشير بعد.</div>`; return; }
-  const R = monthRange(S.y, S.m), {L, miss} = pfItems(pf, R), sort = S.pfSort || "diff";
+  const R = curR(), {L, miss} = pfItems(pf, R), sort = S.pfSort || "diff";
   L.sort((a, b) => sort === "qty" ? b.qA - a.qA : sort === "profit" ? b.profit - a.profit : b.diff - a.diff);
   const T = k => r2(L.reduce((a, x) => a + n(x[k]), 0));
   const prev = [1, 2, 3].map(k => { const d = new Date(S.y, S.m - 1 - k, 1), r = monthRange(d.getFullYear(), d.getMonth() + 1), X = pfItems(pf, r).L; return {m:d.getMonth(), y:d.getFullYear(), sA:X.reduce((a, x) => a + x.sA, 0), got:X.reduce((a, x) => a + x.got, 0), direct:X.reduce((a, x) => a + x.direct, 0)}; }).filter(x => x.sA);
@@ -311,9 +311,9 @@ function pfReport(pf, el){
     ${L.length ? `<div class="tw stick"><table id="pf_rt"><thead><tr><th>الصنف</th><th class="n">الكمية عبر التطبيق</th><th class="n">الكمية مباشرة</th><th class="n">مبيعات التطبيق</th><th class="n">مبيعات مباشرة</th><th class="n">لو بيعت مباشرة</th><th class="n">العمولة والرسوم</th><th class="n">التوصيل</th><th class="n">يصلك</th><th class="n">الفرق</th><th class="n">صافي الربح</th></tr></thead><tbody>
       ${L.map(x => `<tr><td>${esc(x.name)}</td><td class="n num">${fmt0(x.qA)}</td><td class="n num">${fmt0(x.qD)}</td><td class="n">${money(x.sA)}</td><td class="n">${money(x.sD)}</td><td class="n">${money(x.direct)}</td><td class="n">${money(x.fees)}</td><td class="n">${money(x.del)}</td><td class="n"><b>${money(x.got)}</b></td><td class="n">${sg(x.diff)}</td><td class="n">${sg(x.profit)}</td></tr>`).join("")}
       <tr class="tot"><td>الإجمالي</td><td class="n num">${fmt0(T("qA"))}</td><td class="n num">${fmt0(T("qD"))}</td><td class="n">${money(T("sA"))}</td><td class="n">${money(T("sD"))}</td><td class="n">${money(T("direct"))}</td><td class="n">${money(T("fees"))}</td><td class="n">${money(T("del"))}</td><td class="n">${money(T("got"))}</td><td class="n">${sg(T("diff"))}</td><td class="n">${sg(T("profit"))}</td></tr></tbody></table></div>`
-      : `<div class="empty card">لا توجد أصناف مباعة عبر ${esc(pf.name)} في ${MONTHS[S.m-1]} ${S.y}.</div>`}
+      : `<div class="empty card">لا توجد أصناف مباعة عبر ${esc(pf.name)} في ${rgShort()}.</div>`}
     ${prev.length ? `<h3 style="margin:18px 0 8px">مقارنة بالأشهر السابقة</h3><div class="tw"><table><thead><tr><th>الشهر</th><th class="n">مبيعات التطبيق</th><th class="n">يصلك</th><th class="n">لو بيعت مباشرة</th><th class="n">الفرق</th></tr></thead><tbody>
-      <tr><td><b>${MONTHS[S.m-1]} ${S.y}</b></td><td class="n">${money(T("sA"))}</td><td class="n">${money(T("got"))}</td><td class="n">${money(T("direct"))}</td><td class="n">${sg(T("diff"))}</td></tr>
+      <tr><td><b>${rgShort()}</b></td><td class="n">${money(T("sA"))}</td><td class="n">${money(T("got"))}</td><td class="n">${money(T("direct"))}</td><td class="n">${sg(T("diff"))}</td></tr>
       ${prev.map(p => `<tr><td>${MONTHS[p.m]} ${p.y}</td><td class="n">${money(p.sA)}</td><td class="n">${money(p.got)}</td><td class="n">${money(p.direct)}</td><td class="n">${sg(p.got - p.direct)}</td></tr>`).join("")}</tbody></table></div>` : ""}
     <p class="foot" style="margin-top:10px">«لو بيعت مباشرة» = نفس الكمية بسعر المطعم في الكاشير. «يصلك» = مبيعات التطبيق − العمولة ورسوم الدفع − التوصيل (يُوزَّع على أصناف الطلب حسب قيمتها). «الفرق» موجب = التطبيق أربح من البيع المباشر. «صافي الربح» = يصلك − تكلفة الطعام − التغليف.${miss ? ` ${miss} صنف بلا سعر مطعم، حُسب بسعره في التطبيق.` : ""}</p>`;
   el.querySelectorAll("[data-pfs]").forEach(b => b.onclick = () => { S.pfSort = b.dataset.pfs; renderPlatforms(); });
@@ -321,7 +321,7 @@ function pfReport(pf, el){
   $("#pf_xl").onclick = async () => { try { const X = await loadXLSX(), wb = X.utils.book_new(), ws = X.utils.json_to_sheet(rowsX()); ws["!cols"] = Object.keys(rowsX()[0] || {a:1}).map(() => ({wch:16})); X.utils.book_append_sheet(wb, ws, "الأصناف");
       const out = X.write(wb, {bookType:"xlsx", type:"array"}), dl = await window.claude.use("downloads"); await dl.save({filename:`${pf.name}-أصناف-${S.y}-${String(S.m).padStart(2, "0")}.xlsx`, data:new Blob([out], {type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"})}); } catch(e){ toast("تعذّر التصدير"); } };
   $("#pf_pdf").onclick = () => { const t = $("#pf_rt"); if (!t) return; const w = window.open("", "_blank"); if (!w){ toast("اسمح بالنوافذ المنبثقة للطباعة"); return; }
-    w.document.write(`<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><title>${esc(pf.name)} · ${MONTHS[S.m-1]} ${S.y}</title><style>body{font-family:system-ui,sans-serif;padding:16px;color:#111}h1{font-size:18px}table{border-collapse:collapse;width:100%;font-size:11px}th,td{border:1px solid #ccc;padding:4px 6px;text-align:right}th{background:#f3f3f3}.n{text-align:left}.pos{color:#1b5e20}.neg{color:#b3261e}tr.tot td{font-weight:700;background:#fafafa}@page{size:A4 landscape;margin:10mm}</style></head><body><h1>تقرير أصناف ${esc(pf.name)} · ${MONTHS[S.m-1]} ${S.y}</h1><p>مبيعات التطبيق ${fmt(T("sA"))} · لو بيعت مباشرة ${fmt(T("direct"))} · يصلك ${fmt(T("got"))} · الفرق ${fmt(T("diff"))}</p>${t.outerHTML}<script>setTimeout(function(){print()},400)<\/script></body></html>`); w.document.close(); };
+    w.document.write(`<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><title>${esc(pf.name)} · ${rgShort()}</title><style>body{font-family:system-ui,sans-serif;padding:16px;color:#111}h1{font-size:18px}table{border-collapse:collapse;width:100%;font-size:11px}th,td{border:1px solid #ccc;padding:4px 6px;text-align:right}th{background:#f3f3f3}.n{text-align:left}.pos{color:#1b5e20}.neg{color:#b3261e}tr.tot td{font-weight:700;background:#fafafa}@page{size:A4 landscape;margin:10mm}</style></head><body><h1>تقرير أصناف ${esc(pf.name)} · ${rgShort()}</h1><p>مبيعات التطبيق ${fmt(T("sA"))} · لو بيعت مباشرة ${fmt(T("direct"))} · يصلك ${fmt(T("got"))} · الفرق ${fmt(T("diff"))}</p>${t.outerHTML}<script>setTimeout(function(){print()},400)<\/script></body></html>`); w.document.close(); };
 }
 
 VIEWS.platforms = {v:viewPlatforms, bind:bindPlatforms, list:renderPlatforms};

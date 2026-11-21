@@ -1241,6 +1241,7 @@ function periodPicker(){
     <select id="py" aria-label="السنة">${ys.map(y=>`<option ${y===S.y?"selected":""}>${y}</option>`).join("")}</select></div>`;
 }
 function bindPeriod(){
+  rgBind();
   const pm = $("#pm"), py = $("#py");
   if (pm) pm.onchange = () => { S.m = +pm.value; renderLists(); };
   if (py) py.onchange = () => { S.y = +py.value; renderLists(); };
@@ -1357,7 +1358,7 @@ function niceStep(x){ const p = Math.pow(10, Math.floor(Math.log10(x||1))); cons
 
 /* ---------- SALES ---------- */
 function viewSales(){
-  return `<div class="bar"><h2>المبيعات اليومية</h2><div class="actions">${S.canWrite ? `<button class="btn ghost" type="button" id="s_fx">استيراد من فودكس</button>` : ""}${periodPicker()}</div></div>${readonlyNote()}
+  return `<div class="bar"><h2>المبيعات اليومية</h2><div class="actions">${S.canWrite ? `<button class="btn ghost" type="button" id="s_fx">استيراد من فودكس</button>` : ""}${rgPicker()}</div></div>${readonlyNote()}
   <form class="card entry" id="fs"><h3 id="fsTitle">تسجيل مبيعات يوم</h3>
     <div class="fields">
       <div class="f"><label for="s_date">التاريخ</label><input id="s_date" type="date" required value="${n(S.settings.delayDays) >= 1 ? addDays(today(), -1) : today()}"></div>
@@ -1397,14 +1398,14 @@ function bindSales(){
 }
 function renderSalesList(){
   const el = $("#list"); if (!el) return;
-  const R = monthRange(S.y,S.m);
+  const R = curR();
   const rows = [...S.sales].filter(([d]) => inR(d,R)).sort((a,b)=>a[0]<b[0]?-1:1);
   const tot = {}; SALE_FIELDS.forEach(([k]) => tot[k] = rows.reduce((t,[,s])=>t+n(s[k]),0));
   const all = rows.reduce((t,[,s])=>t+saleTotal(s),0), cnt = rows.reduce((t,[,s])=>t+n(s.count),0);
   el.innerHTML = `<div class="tw stick"><table><thead><tr><th>التاريخ</th><th>اليوم</th>${SALE_FIELDS.map(([,l])=>`<th class="n">${l}</th>`).join("")}<th class="n">الإجمالي</th><th class="n">الفعلي</th><th class="n">عدد الفواتير</th><th class="n">متوسط الفاتورة</th><th>ملاحظات</th></tr></thead><tbody>
     ${rows.length ? rows.map(([d,s])=>{ const t = saleTotal(s); return `<tr class="click" data-d="${d}"><td class="num">${dmy(d)}${who(s.by)}</td><td>${dayName(d)}</td>${SALE_FIELDS.map(([k])=>`<td class="n">${money(n(s[k]))}</td>`).join("")}<td class="n"><b>${money(t)}</b></td><td class="n">${money(netSale(s))}</td><td class="n num">${has(s.count)?s.count:""}</td><td class="n">${n(s.count)?money(t/n(s.count)):""}</td><td>${esc(s.notes)}</td></tr>`; }).join("")
-      : `<tr><td colspan="13" class="empty">لا توجد مبيعات مسجلة في ${MONTHS[S.m-1]} ${S.y}</td></tr>`}
-    <tr class="tot"><td colspan="2">إجمالي الشهر</td>${SALE_FIELDS.map(([k])=>`<td class="n">${money(tot[k])}</td>`).join("")}<td class="n">${money(all)}</td><td class="n">${money(rows.reduce((t,[,s])=>t+netSale(s),0))}</td><td class="n num">${fmt0(cnt)}</td><td class="n">${cnt?money(all/cnt):""}</td><td></td></tr>
+      : `<tr><td colspan="13" class="empty">لا توجد مبيعات مسجلة في ${rgShort()}</td></tr>`}
+    <tr class="tot"><td colspan="2">إجمالي الفترة</td>${SALE_FIELDS.map(([k])=>`<td class="n">${money(tot[k])}</td>`).join("")}<td class="n">${money(all)}</td><td class="n">${money(rows.reduce((t,[,s])=>t+netSale(s),0))}</td><td class="n num">${fmt0(cnt)}</td><td class="n">${cnt?money(all/cnt):""}</td><td></td></tr>
   </tbody></table></div><p class="small muted">اضغط على أي يوم لتعديله.</p>`;
   el.querySelectorAll("tr.click").forEach(tr => tr.onclick = () => S.loadSale(tr.dataset.d));
 }
@@ -1412,7 +1413,7 @@ function renderSalesList(){
 /* ---------- INVOICES ---------- */
 function viewInvoices(){
   const c = S.settings.categories;
-  return `<div class="bar"><h2>الفواتير (مشتريات ومصروفات)</h2>${periodPicker()}</div>${readonlyNote()}
+  return `<div class="bar"><h2>الفواتير (مشتريات ومصروفات)</h2>${rgPicker()}</div>${readonlyNote()}
   <form class="card entry" id="fi"><h3 id="fiTitle">فاتورة جديدة</h3>
     <div class="fields">
       <div class="f"><label for="i_date">التاريخ</label><input id="i_date" type="date" required value="${today()}"></div>
@@ -1542,7 +1543,7 @@ function renderInvList(){
   const el = $("#list"); if (!el) return;
   const bl = $("#buyers"); if (bl) bl.innerHTML = buyerNames().map(v => `<option value="${esc(v)}">`).join("");
   const dl = $("#sups"); if (dl) dl.innerHTML = [...new Set([...S.suppliers.map(s => s.name), ...S.invoices.map(x=>normName(x.supplier)).filter(v => v && !supplierOf(v))])].map(s=>`<option value="${esc(s)}">`).join("");
-  const R = monthRange(S.y,S.m), F = S.invF || (S.invF = {today:false, pay:"", buyer:""}), td = today();
+  const R = curR(), F = S.invF || (S.invF = {today:false, pay:"", buyer:""}), td = today();
   const fOn = F.today || F.pay || F.buyer;
   const PAYF = [["","كل طرق الدفع"],["cash","كاش"],["bank","بنك (مدى + تحويل)"],["mada","مدى/بطاقة"],["transfer","تحويل بنكي"],["custody","من العهدة"],["credit","آجل (غير مدفوعة)"]];
   const payOk = x => { const p = F.pay, cr = isCredit(x); if (!p) return true; if (p === "credit") return cr; if (cr) return false;
@@ -1552,7 +1553,7 @@ function renderInvList(){
     .sort(F.today ? (a,b) => invEntAt(a) < invEntAt(b) ? -1 : 1 : (a,b)=> a.date<b.date?-1:a.date>b.date?1:(a.updatedAt||"")<(b.updatedAt||"")?-1:1);
   const bNames = buyerNames().filter(v => S.invoices.some(x => buyerKey(x.buyer) === buyerKey(v)));
   const fbar = `<div class="card inv-flt"><div class="inv-flt-row">
-      <div class="seg" role="group" aria-label="نطاق العرض"><button type="button" data-ivt="0" class="${F.today ? "" : "on"}">فواتير ${MONTHS[S.m-1]}</button><button type="button" data-ivt="1" class="${F.today ? "on" : ""}">أُدخلت اليوم</button></div>
+      <div class="seg" role="group" aria-label="نطاق العرض"><button type="button" data-ivt="0" class="${F.today ? "" : "on"}">فواتير ${rgShort()}</button><button type="button" data-ivt="1" class="${F.today ? "on" : ""}">أُدخلت اليوم</button></div>
       <label class="inv-flt-f"><span>طريقة الدفع</span><select id="ivf_pay">${PAYF.map(([k,l]) => `<option value="${k}" ${F.pay === k ? "selected" : ""}>${esc(l)}</option>`).join("")}</select></label>
       <label class="inv-flt-f"><span>المشتري</span><select id="ivf_buy"><option value="">كل المشترين</option>${bNames.map(v => `<option value="${esc(v)}" ${F.buyer && F.buyer !== "__none" && buyerKey(F.buyer) === buyerKey(v) ? "selected" : ""}>${esc(v)}</option>`).join("")}<option value="__none" ${F.buyer === "__none" ? "selected" : ""}>بدون مشتري</option></select></label>
       ${fOn ? `<button type="button" class="btn ghost sm" id="ivf_clr">مسح الفلاتر</button>` : ""}
@@ -1562,8 +1563,8 @@ function renderInvList(){
   const nv = !vatReg() && !rows.some(x => n(x.vat) > 0);
   el.innerHTML = fbar + `<div class="tw stick"><table><thead><tr><th>التاريخ</th><th>رقم الفاتورة</th><th>المورد / الجهة</th><th>التصنيف</th>${nv ? "" : '<th class="n">قبل الضريبة</th><th class="n">الضريبة</th>'}<th class="n">${nv ? "المبلغ" : "الإجمالي"}</th><th>طريقة الدفع</th><th>الحالة</th><th>الوسم</th><th>مرفق</th><th>ملاحظات</th></tr></thead><tbody>
     ${rows.length ? rows.map(x=>{ const stt = invStatus(x); return `<tr class="click ${stt[1]==="bad"?"unpaid":""}" data-id="${esc(x.id)}"><td class="num">${dmy(x.date)}${who(x.by)}${F.today ? `<div class="by">أُدخلت ${invEntTime(x)}</div>` : ""}</td><td>${esc(x.no)}</td><td>${esc(x.supplier)}${supplierOf(x.supplier) && supplierOf(x.supplier).name !== normName(x.supplier) ? `<div class="by">${esc(supplierOf(x.supplier).name)}</div>` : ""}${x.buyer ? `<div class="by">المشتري: ${esc(x.buyer)}</div>` : ""}</td><td>${esc(x.category)}</td>${nv ? "" : `<td class="n">${money(n(x.beforeTax))}</td><td class="n">${money(n(x.vat))}</td>`}<td class="n"><b>${money(invTotal(x))}</b></td><td>${isCredit(x) ? "آجل" : esc(x.pay)}${invCashDate(x) !== x.date ? `<div class="by">صُرفت ${dmy(invCashDate(x))}</div>` : ""}</td><td><span class="chip ${stt[1]}">${esc(stt[0])}</span>${stt[1]==="bad" && S.canWrite ? ` <button type="button" class="btn sm" data-payinv="${esc(x.id)}">سداد</button>` : ""}</td><td>${isProd(x)?`<span class="chip prod">إنتاج · ${pgIsSplit(x) ? `مقسّمة على ${pgParts(x).length} أقسام` : esc(PG_BY[pgOf(x)].name)}</span>`:""}</td><td>${x.att ? `<span class="chip info">${x.att} ${x.att > 1 ? "مرفقات" : "مرفق"}</span>` : ""}</td><td>${esc(x.notes)}</td></tr>`; }).join("")
-      : `<tr><td colspan="${nv ? 10 : 12}" class="empty">${F.today ? "لم تُدخل أي فاتورة اليوم" : `لا توجد فواتير في ${MONTHS[S.m-1]} ${S.y}`}${(F.pay || F.buyer) ? " بهذه الفلاتر" : ""}</td></tr>`}
-    <tr class="tot"><td colspan="4">${F.today ? "إجمالي ما أُدخل اليوم" : fOn ? "إجمالي النتائج" : "إجمالي الشهر"} (${rows.length} فاتورة)</td>${nv ? "" : `<td class="n">${money(sum("beforeTax"))}</td><td class="n">${money(sum("vat"))}</td>`}<td class="n">${money(rows.reduce((t,x)=>t+invTotal(x),0))}</td><td colspan="5" class="small">منها مصاريف إنتاج: <span class="num">${fmt(rows.filter(isProd).reduce((t,x)=>t+invTotal(x),0))}</span></td></tr>
+      : `<tr><td colspan="${nv ? 10 : 12}" class="empty">${F.today ? "لم تُدخل أي فاتورة اليوم" : `لا توجد فواتير في ${rgShort()}`}${(F.pay || F.buyer) ? " بهذه الفلاتر" : ""}</td></tr>`}
+    <tr class="tot"><td colspan="4">${F.today ? "إجمالي ما أُدخل اليوم" : fOn ? "إجمالي النتائج" : "إجمالي الفترة"} (${rows.length} فاتورة)</td>${nv ? "" : `<td class="n">${money(sum("beforeTax"))}</td><td class="n">${money(sum("vat"))}</td>`}<td class="n">${money(rows.reduce((t,x)=>t+invTotal(x),0))}</td><td colspan="5" class="small">منها مصاريف إنتاج: <span class="num">${fmt(rows.filter(isProd).reduce((t,x)=>t+invTotal(x),0))}</span></td></tr>
   </tbody></table></div><p class="small muted">اضغط على أي فاتورة لتعديلها أو حذفها.</p>`;
   el.querySelectorAll("tr.click").forEach(tr => tr.onclick = () => S.loadInv(tr.dataset.id));
   el.querySelectorAll("[data-ivt]").forEach(b => b.onclick = () => { F.today = b.dataset.ivt === "1"; renderInvList(); });
@@ -1576,7 +1577,7 @@ function renderInvList(){
 /* ---------- CUSTODY ---------- */
 function viewCustody(){
   const st = S.settings;
-  return `<div class="bar"><h2>سجل العهد</h2>${periodPicker()}</div>${readonlyNote()}
+  return `<div class="bar"><h2>سجل العهد</h2>${rgPicker()}</div>${readonlyNote()}
   <div id="cusBal"></div>
   <form class="card entry" id="fc"><h3 id="fcTitle">حركة عهدة جديدة</h3>
     <div class="fields">
@@ -1623,12 +1624,12 @@ function renderCusList(){
   if (bal){ const cb = custodyBalances();
     bal.innerHTML = cb.length ? `<div class="grid g3">${cb.map(x=>`<div class="kpi ${x.left<0?"orange":"dark"}"><span class="l">${esc(x.name)} · المتبقي لديه</span><span class="v num ${x.left<0?"neg":""}">${fmt(x.left)}</span><span class="small muted">استلم <span class="num">${fmt(x.rec)}</span> · صرف <span class="num">${fmt(x.spent)}</span> · أرجع <span class="num">${fmt(x.ret)}</span></span></div>`).join("")}</div>` : ""; }
   const el = $("#list"); if (!el) return;
-  const R = monthRange(S.y,S.m);
+  const R = curR();
   const rows = S.custody.filter(x => inR(x.date,R)).sort((a,b)=> a.date<b.date?-1:a.date>b.date?1:(a.updatedAt||"")<(b.updatedAt||"")?-1:1);
   const tchip = t => t==="استلام عهدة" ? `<span class="chip ok">${t}</span>` : t==="صرف من العهدة" ? `<span class="chip bad">${t}</span>` : `<span class="chip info">${esc(t)}</span>`;
   el.innerHTML = `<div class="tw stick"><table><thead><tr><th>التاريخ</th><th>الموظف</th><th>نوع الحركة</th><th class="n">المبلغ</th><th>المصدر</th><th>البيان</th><th>التصنيف</th><th>المرجع</th><th>ملاحظات</th></tr></thead><tbody>
     ${rows.length ? rows.map(x=>`<tr class="click" data-id="${esc(x.id)}"><td class="num">${dmy(x.date)}${who(x.by)}</td><td>${esc(x.employee)}</td><td>${tchip(x.type)}</td><td class="n"><b>${money(n(x.amount))}</b></td><td>${x.type==="صرف من العهدة"?"":(x.source==="تحويل بنكي"?'<span class="chip info" style="color:var(--bank)">تحويل بنكي</span>':"كاش")}</td><td>${esc(x.desc)}</td><td>${esc(x.category)}</td><td>${esc(x.ref)}</td><td>${esc(x.notes)}</td></tr>`).join("")
-      : `<tr><td colspan="9" class="empty">لا توجد حركات عهد في ${MONTHS[S.m-1]} ${S.y}</td></tr>`}
+      : `<tr><td colspan="9" class="empty">لا توجد حركات عهد في ${rgShort()}</td></tr>`}
   </tbody></table></div><p class="small muted">اضغط على أي حركة لتعديلها أو حذفها.</p>`;
   el.querySelectorAll("tr.click").forEach(tr => tr.onclick = () => S.loadCus(tr.dataset.id));
 }
@@ -1668,7 +1669,7 @@ function openApp(id, preset){
   };
 }
 function viewApps(){
-  return `<div class="bar"><h2>تحويلات تطبيقات التوصيل</h2>${periodPicker()}</div>${readonlyNote()}
+  return `<div class="bar"><h2>تحويلات تطبيقات التوصيل</h2>${rgPicker()}</div>${readonlyNote()}
     <div id="appSum"></div>
     <div class="actions"><button class="btn" type="button" id="a_new" ${S.canWrite?"":"disabled"}>تسجيل تحويل جديد</button>
       <span class="small muted">سجّل المبلغ الذي وصل البنك فعلاً، في يوم وصوله. يُضاف تلقائياً لرصيد البنك ويُخصم من المستحق.</span></div>
@@ -1682,12 +1683,12 @@ function renderAppsList(){
     <div class="kpi green"><span class="l">المحوَّل للبنك</span><span class="v num">${fmt(ar.paid)}</span><span class="small muted">الصافي المستحق <span class="num">${fmt(ar.due)}</span> بعد عمولة ${fmt0(commRate()*100)}%</span></div>
     <div class="kpi orange"><span class="l">أرصدة لم تُحوَّل بعد</span><span class="v num">${fmt(ar.left)}</span><span class="small muted">المتوقع التالي <span class="num">${ar.next?dmy(ar.next):"—"}</span></span></div></div>`;
   const el = $("#list"); if (!el) return;
-  const R0 = monthRange(S.y,S.m);
+  const R0 = curR();
   const rows = S.apps.filter(x => inR(x.date,R0)).sort((a,b)=>a.date<b.date?-1:1);
   el.innerHTML = `<div class="tw"><table><thead><tr><th>تاريخ الوصول</th><th>التطبيق</th><th class="n">المبلغ</th><th>عن الفترة</th><th>ملاحظات</th></tr></thead><tbody>
     ${rows.length ? rows.map(x=>`<tr class="click" data-id="${esc(x.id)}"><td class="num">${dmy(x.date)}${who(x.by)}</td><td>${esc(x.app)}</td><td class="n"><b>${money(n(x.amount))}</b></td><td class="num">${x.from?dmy(x.from):""}${x.to?" ← "+dmy(x.to):""}</td><td>${esc(x.notes)}</td></tr>`).join("")
-      : `<tr><td colspan="5" class="empty">لا توجد تحويلات في ${MONTHS[S.m-1]} ${S.y}</td></tr>`}
-    <tr class="tot"><td colspan="2">إجمالي الشهر</td><td class="n">${money(rows.reduce((t,x)=>t+n(x.amount),0))}</td><td colspan="2"></td></tr></tbody></table></div>`;
+      : `<tr><td colspan="5" class="empty">لا توجد تحويلات في ${rgShort()}</td></tr>`}
+    <tr class="tot"><td colspan="2">إجمالي الفترة</td><td class="n">${money(rows.reduce((t,x)=>t+n(x.amount),0))}</td><td colspan="2"></td></tr></tbody></table></div>`;
   el.querySelectorAll("tr.click").forEach(tr => tr.onclick = () => openApp(tr.dataset.id));
 }
 
@@ -1767,7 +1768,7 @@ async function exportXlsx(){
 
 /* ---------- RECONCILIATION ---------- */
 function viewRecon(){
-  return `<div class="bar"><h2>المطابقة اليومية · الكاش والبنك</h2>${periodPicker()}</div>${readonlyNote()}
+  return `<div class="bar"><h2>المطابقة اليومية · الكاش والبنك</h2>${rgPicker()}</div>${readonlyNote()}
     <div class="actions" style="justify-content:space-between"><div class="seg" role="tablist"><button type="button" data-m="cash">الخزنة (كاش)</button><button type="button" data-m="bank">البنك</button>${isStaff() ? "" : '<button type="button" data-m="stmt">كشف البنك</button>'}</div>
     <span class="small muted" id="rc_hint">اضغط على أي يوم لإدخال الجرد الفعلي أو الإيداع والسحب.</span></div>
     <div id="list"></div>`;
@@ -1792,9 +1793,9 @@ function renderReconList(){
   if (S.reconMode === "stmt" && !isStaff()){ const h = $("#rc_hint"); if (h) h.textContent = "حركات كشف حساب البنك ومطابقتها مع البرنامج"; renderBankStmt(el); return; }
   { const h = $("#rc_hint"); if (h) h.textContent = "اضغط على أي يوم لإدخال الجرد الفعلي أو الإيداع والسحب."; }
   if (S.reconMode === "stmt") S.reconMode = "bank";
-  const R = monthRange(S.y,S.m), all = ledger(), rows = all.filter(r => inR(r.date,R)), t = today();
+  const R = curR(), all = ledger(), rows = all.filter(r => inR(r.date,R)), t = today();
   if (!all.length){ el.innerHTML = needStart(); return; }
-  if (!rows.length){ el.innerHTML = `<div class="empty card">لا توجد أيام متابعة في ${MONTHS[S.m-1]} ${S.y}. تبدأ المتابعة من ${dmy(S.settings.startDate)}.</div>`; return; }
+  if (!rows.length){ el.innerHTML = `<div class="empty card">لا توجد أيام متابعة في ${rgShort()}. تبدأ المتابعة من ${dmy(S.settings.startDate)}.</div>`; return; }
   const z = v => Math.abs(v) < 0.005 ? `<span class="dash">—</span>` : money(v);
   const diff = v => v == null ? `<span class="dash">—</span>` : v === 0 ? `<span class="chip ok">مطابق</span>` : `<span class="chip ${v > 0 ? "ok" : "bad"}"><span class="num">${v>0?"+":""}${fmt(v)}</span></span>`;
   const act = v => v == null ? `<span class="dash">لم يُسجَّل</span>` : `<b>${money(v)}</b>`;
@@ -1811,9 +1812,9 @@ function renderReconList(){
         : (CU.cum > 0 ? ` — <b>مدفوعات سُجّلت من البنك ولم تُسحب أو تظهر في الكشف بعد</b> (أو مقبوضات لم تُسجَّل). عند سحبها يعود الفرق إلى الصفر.` : " — خرج من البنك أكثر من المسجَّل: غالباً سحب أو دفعة من البنك لم تُسجَّل فاتورتها.")}
       <div class="small muted" style="margin-top:4px">فرق اليوم الواحد قد يظهر زيادة ثم عجزاً بسبب توقيت السحب فقط؛ المعتمد هو هذا الفرق التراكمي.</div></div>`;
   const tiles = cash ? [
-      ["رصيد أول الشهر", first.cOpen, "dark"], ["داخل الخزنة", sum("cSales") + sum("wd"), "green"],
+      ["رصيد أول الفترة", first.cOpen, "dark"], ["داخل الخزنة", sum("cSales") + sum("wd"), "green"],
       ["خارج من الخزنة", sum("cPurch") + sum("cCus") + sum("dep"), "orange"], ["المتوقع حتى " + dmy(last.date), last.cashExp, ""] ]
-    : [ ["رصيد أول الشهر", first.bOpen, "dark"], ["مقبوضات البنك", sum("bankIn"), "green"],
+    : [ ["رصيد أول الفترة", first.bOpen, "dark"], ["مقبوضات البنك", sum("bankIn"), "green"],
       ["مدفوعات من البنك", sum("bankOut"), "orange"], ["المتوقع حتى " + dmy(last.date), last.bankExp, "blue"] ];
   const W = `<col style="width:112px"><col style="width:74px">`;
   let cols, grp, head, body, foot;
@@ -1822,13 +1823,13 @@ function renderReconList(){
     grp = `<tr class="grp"><th colspan="2"></th><th class="sep"></th><th colspan="2" class="g-in sep">داخل الخزنة</th><th colspan="3" class="g-out sep">خارج من الخزنة</th><th colspan="3" class="g-res sep">الرصيد</th><th class="sep"></th></tr>`;
     head = `<th>التاريخ</th><th>اليوم</th><th class="n sep">أول اليوم</th><th class="n sep">مبيعات كاش</th><th class="n">سحب من البنك</th><th class="n sep">مصروفات كاش</th><th class="n">صافي العهد</th><th class="n">إيداع في البنك</th><th class="n sep">المتوقع</th><th class="n">الفعلي (الجرد)</th><th class="n">الفرق</th><th class="sep">ملاحظات</th>`;
     body = rows.map(r => `<tr class="click ${r.date===t?"today":""}" data-d="${r.date}"><td class="num key">${dmy(r.date)}</td><td>${dayName(r.date)}</td><td class="n sep">${money(r.cOpen)}</td><td class="n sep">${z(r.cSales)}</td><td class="n">${z(r.wd)}</td><td class="n sep">${z(r.cPurch)}</td><td class="n">${z(r.cCus)}</td><td class="n">${z(r.dep)}</td><td class="n sep"><b>${money(r.cashExp)}</b></td><td class="n">${act(r.ac)}${r.ac != null && r.cAtCount !== r.cashExp ? `<div class="by">المتوقع وقت الجرد <span class="num">${fmt(r.cAtCount)}</span></div>` : ""}</td><td class="n">${diff(r.cDiff)}${cumCell(r)}</td><td class="sep">${esc(r.notes)}</td></tr>`).join("");
-    foot = `<tr class="tot"><td colspan="2">إجمالي الشهر</td><td class="n sep">${money(first.cOpen)}</td><td class="n sep">${money(sum("cSales"))}</td><td class="n">${money(sum("wd"))}</td><td class="n sep">${money(sum("cPurch"))}</td><td class="n">${money(sum("cCus"))}</td><td class="n">${money(sum("dep"))}</td><td class="n sep">${money(last.cashExp)}</td><td colspan="2"></td><td class="sep"></td></tr>`;
+    foot = `<tr class="tot"><td colspan="2">إجمالي الفترة</td><td class="n sep">${money(first.cOpen)}</td><td class="n sep">${money(sum("cSales"))}</td><td class="n">${money(sum("wd"))}</td><td class="n sep">${money(sum("cPurch"))}</td><td class="n">${money(sum("cCus"))}</td><td class="n">${money(sum("dep"))}</td><td class="n sep">${money(last.cashExp)}</td><td colspan="2"></td><td class="sep"></td></tr>`;
   } else {
     cols = W + `<col style="width:100px">`.repeat(6) + `<col style="width:104px"><col style="width:112px"><col style="width:96px"><col style="min-width:110px">`;
     grp = `<tr class="grp"><th colspan="2"></th><th class="sep"></th><th colspan="2" class="g-in sep">داخل البنك</th><th colspan="3" class="g-out sep">خارج / تسويات</th><th colspan="3" class="g-res sep">الرصيد</th><th class="sep"></th></tr>`;
     head = `<th>التاريخ</th><th>اليوم</th><th class="n sep">أول اليوم</th><th class="n sep">مدى وفيزا وتحويلات</th><th class="n">تحويلات التطبيقات</th><th class="n sep">مصروفات وعهد</th><th class="n">إيداع / سحب نقدي</th><th class="n">تسويات أخرى</th><th class="n sep">المتوقع</th><th class="n">الفعلي (كشف الحساب)</th><th class="n">الفرق</th><th class="sep">ملاحظات</th>`;
     body = rows.map(r => `<tr class="click ${r.date===t?"today":""}" data-d="${r.date}"><td class="num key">${dmy(r.date)}</td><td>${dayName(r.date)}</td><td class="n sep">${money(r.bOpen)}</td><td class="n sep">${z(r.cardIn)}</td><td class="n">${z(r.appIn)}</td><td class="n sep">${z(-r.bankOut)}</td><td class="n">${z(r.depwd)}</td><td class="n">${z(r.adj)}</td><td class="n sep"><b>${money(r.bankExp)}</b></td><td class="n">${act(r.ab)}</td><td class="n">${diff(r.bDiff)}${cumCell(r)}</td><td class="sep">${esc(r.notes)}</td></tr>`).join("");
-    foot = `<tr class="tot"><td colspan="2">إجمالي الشهر</td><td class="n sep">${money(first.bOpen)}</td><td class="n sep">${money(sum("cardIn"))}</td><td class="n">${money(sum("appIn"))}</td><td class="n sep">${money(-sum("bankOut"))}</td><td class="n">${money(sum("depwd"))}</td><td class="n">${money(sum("adj"))}</td><td class="n sep">${money(last.bankExp)}</td><td colspan="2"></td><td class="sep"></td></tr>`;
+    foot = `<tr class="tot"><td colspan="2">إجمالي الفترة</td><td class="n sep">${money(first.bOpen)}</td><td class="n sep">${money(sum("cardIn"))}</td><td class="n">${money(sum("appIn"))}</td><td class="n sep">${money(-sum("bankOut"))}</td><td class="n">${money(sum("depwd"))}</td><td class="n">${money(sum("adj"))}</td><td class="n sep">${money(last.bankExp)}</td><td colspan="2"></td><td class="sep"></td></tr>`;
   }
   el.innerHTML = `<div class="grid g4" style="margin-bottom:14px">${tiles.map(([l,v,c]) => `<div class="kpi ${c}"><span class="l">${l}</span><span class="v num">${fmt(v)}</span></div>`).join("")}</div>
     ${lastAct ? `<div class="note" style="margin-bottom:14px">آخر ${cash?"جرد للخزنة":"كشف حساب"}: <b class="num">${dmy(lastAct.date)}</b> · الفعلي <b class="num">${fmt(cash?lastAct.ac:lastAct.ab)}</b> · فرق اليوم ${diff(cash?lastAct.cDiff:lastAct.bDiff)}</div>` : ""}
@@ -6021,55 +6022,63 @@ function openPosDay(day){
 }
 const posAsSale = x => ({cash: x.cash || null, mada: x.mada || null, visa: x.visa || null, delivery: r2(x.lokit + x.hunger) || null});
 function viewPos(){
-  if (!S.posR) S.posR = posPreset("month");
-  return `<div class="bar"><h2>مبيعات الكاشير</h2><div class="rg-wrap"><button type="button" class="btn ghost rg-btn" id="pos_rng" aria-haspopup="dialog"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="3" fill="none" stroke="currentColor" stroke-width="2"/><path d="M3 10h18M8 3v4M16 3v4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg><span>${esc(posRLabel())}</span></button><div class="rg-pop" id="pos_pop" hidden></div></div></div>
+  return `<div class="bar"><h2>مبيعات الكاشير</h2>${rgPicker()}</div>
     <p class="small muted" style="margin:-4px 0 12px">المبيعات كما سجّلها برنامج الكاشير لحظة بلحظة، مقارنةً بالمبيعات المسجّلة في البرنامج (من فودكس). كل طلب يُحسب على يوم الوردية التي سُجّل فيها، فطلب الساعة 1 فجراً يتبع اليوم الذي فُتحت فيه الوردية.</p>
     <div id="list"></div>`;
 }
-/* date range for the cashier page: quick choices plus a calendar (week starts Saturday; tap a day, or a first and a last day) */
-function posPreset(k){
+/* shared date range for the list pages (sales, invoices, custody, transfers, reconciliation, cashier, apps):
+   quick choices plus a calendar (week starts Saturday; tap a day, or a first and a last day). One range, kept across pages. */
+function rgPreset(k){
   const t = today(), d = pd(t), dow = (d.getDay() + 1) % 7, ws = addDays(t, -dow);
   const m0 = iso(new Date(d.getFullYear(), d.getMonth(), 1)), pm0 = iso(new Date(d.getFullYear(), d.getMonth() - 1, 1)), pm1 = iso(new Date(d.getFullYear(), d.getMonth(), 0));
   const P = {today:[t, t, "اليوم"], yday:[addDays(t, -1), addDays(t, -1), "الأمس"], week:[ws, t, "هذا الأسبوع"], pweek:[addDays(ws, -7), addDays(ws, -1), "الأسبوع السابق"], month:[m0, t, "هذا الشهر"], pmonth:[pm0, pm1, "الشهر السابق"]}[k];
   return {a:P[0], b:P[1], k, label:P[2]};
 }
-const posRLabel = () => { const r = S.posR; if (!r) return ""; if (r.k) return `${r.label} · ${r.a === r.b ? dmy(r.a) : dmy(r.a).slice(0, 5) + " – " + dmy(r.b)}`; return r.a === r.b ? `${dayName(r.a)} ${dmy(r.a)}` : `${dmy(r.a)} – ${dmy(r.b)}`; };
-function posCal(){
-  const pop = $("#pos_pop"); if (!pop) return;
-  const t = today(), C = S.posCal || (S.posCal = {ym: (S.posR ? S.posR.b : t).slice(0, 7), first:null});
-  const [y, m] = C.ym.split("-").map(Number), first = new Date(y, m - 1, 1), days = new Date(y, m, 0).getDate(), off = (first.getDay() + 1) % 7;
-  const R = S.posR || {}, cells = [];
+const curRg = () => S.rng || (S.rng = rgPreset("month"));
+const curR = () => { const r = curRg(); return [r.a, r.b]; };
+/* the range in words: «هذا الشهر», «نوفمبر 2026» for a whole month, «الجمعة 20/11/2026» for one day, or «01/11 – 15/11/2026» */
+function rgShort(){
+  const r = curRg(), A = pd(r.a), B = pd(r.b), fullMonth = r.a.slice(8) === "01" && A.getMonth() === B.getMonth() && A.getFullYear() === B.getFullYear() && pd(addDays(r.b, 1)).getDate() === 1;
+  if (r.k) return r.label;
+  if (fullMonth) return `${MONTHS[A.getMonth()]} ${A.getFullYear()}`;
+  return r.a === r.b ? `${dayName(r.a)} ${dmy(r.a)}` : `${dmy(r.a).slice(0, 5)} – ${dmy(r.b)}`;
+}
+const rgLabel = () => { const r = curRg(); return r.k ? `${r.label} · ${r.a === r.b ? dmy(r.a) : dmy(r.a).slice(0, 5) + " – " + dmy(r.b)}` : rgShort(); };
+const rgPicker = () => `<div class="rg-wrap"><button type="button" class="btn ghost rg-btn" id="rg_btn" aria-haspopup="dialog"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="3" fill="none" stroke="currentColor" stroke-width="2"/><path d="M3 10h18M8 3v4M16 3v4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg><span>${esc(rgLabel())}</span></button><div class="rg-pop" id="rg_pop" hidden></div></div>`;
+function rgCal(){
+  const pop = $("#rg_pop"); if (!pop) return;
+  const t = today(), R = curRg(), C = S.rgCal || (S.rgCal = {ym: R.b.slice(0, 7), first:null});
+  const [y, m] = C.ym.split("-").map(Number), first = new Date(y, m - 1, 1), days = new Date(y, m, 0).getDate(), off = (first.getDay() + 1) % 7, cells = [];
   for (let i = 0; i < off; i++) cells.push('<span></span>');
   for (let k = 1; k <= days; k++){
-    const d = `${C.ym}-${String(k).padStart(2, "0")}`, fut = d > t, sel = C.first ? d === C.first : (d >= R.a && d <= R.b), edge = !C.first && (d === R.a || d === R.b);
-    cells.push(`<button type="button" class="rg-d ${sel ? "in" : ""} ${edge || (C.first && d === C.first) ? "edge" : ""} ${d === t ? "now" : ""}" data-d="${d}" ${fut ? "disabled" : ""}>${k}</button>`);
+    const d = `${C.ym}-${String(k).padStart(2, "0")}`, sel = C.first ? d === C.first : (d >= R.a && d <= R.b), edge = !C.first && (d === R.a || d === R.b);
+    cells.push(`<button type="button" class="rg-d ${sel ? "in" : ""} ${edge || (C.first && d === C.first) ? "edge" : ""} ${d === t ? "now" : ""}" data-d="${d}" ${d > t ? "disabled" : ""}>${k}</button>`);
   }
-  const canNext = C.ym < t.slice(0, 7);
-  pop.innerHTML = `<div class="rg-head"><button type="button" class="rg-nav" data-nav="1" aria-label="الشهر السابق">›</button><b>${MONTHS[m - 1]} ${y}</b><button type="button" class="rg-nav" data-nav="-1" aria-label="الشهر التالي" ${canNext ? "" : "disabled"}>‹</button></div>
+  pop.innerHTML = `<div class="rg-head"><button type="button" class="rg-nav" data-nav="1" aria-label="الشهر السابق">›</button><b>${MONTHS[m - 1]} ${y}</b><button type="button" class="rg-nav" data-nav="-1" aria-label="الشهر التالي" ${C.ym < t.slice(0, 7) ? "" : "disabled"}>‹</button></div>
     <div class="rg-grid">${["س","ح","ن","ث","ر","خ","ج"].map(w => `<span class="rg-w">${w}</span>`).join("")}${cells.join("")}</div>
     <p class="rg-hint">${C.first ? `من <b class="num">${dmy(C.first)}</b> — اختر يوم النهاية، أو اضغط نفس اليوم ليوم واحد` : "اضغط يوماً، أو يوم البداية ثم يوم النهاية"}</p>
     <div class="rg-pre">${[["today","اليوم"],["yday","الأمس"],["week","هذا الأسبوع"],["pweek","الأسبوع السابق"],["month","هذا الشهر"],["pmonth","الشهر السابق"]].map(([k, l]) => `<button type="button" class="${R.k === k ? "on" : ""}" data-pre="${k}">${l}</button>`).join("")}</div>`;
-  const apply = r => { S.posR = r; S.posCal = null; pop.hidden = true; const sp = $("#pos_rng span"); if (sp) sp.textContent = posRLabel(); renderPos(); };
-  pop.querySelectorAll("[data-nav]").forEach(b => b.onclick = e => { e.stopPropagation(); const dt = new Date(y, m - 1 - (+b.dataset.nav), 1); C.ym = iso(dt).slice(0, 7); posCal(); });
+  const apply = r => { S.rng = r; S.rgCal = null; pop.hidden = true; const e = pd(r.b); S.y = e.getFullYear(); S.m = e.getMonth() + 1; const sp = $("#rg_btn span"); if (sp) sp.textContent = rgLabel(); renderLists(); };
+  pop.querySelectorAll("[data-nav]").forEach(b => b.onclick = e => { e.stopPropagation(); C.ym = iso(new Date(y, m - 1 - (+b.dataset.nav), 1)).slice(0, 7); rgCal(); });
   pop.querySelectorAll("[data-d]").forEach(b => b.onclick = e => { e.stopPropagation(); const d = b.dataset.d;
-    if (!C.first){ C.first = d; posCal(); return; }
-    const a = d < C.first ? d : C.first, z = d < C.first ? C.first : d; apply({a, b:z}); });
-  pop.querySelectorAll("[data-pre]").forEach(b => b.onclick = e => { e.stopPropagation(); apply(posPreset(b.dataset.pre)); });
+    if (!C.first){ C.first = d; rgCal(); return; }
+    apply({a: d < C.first ? d : C.first, b: d < C.first ? C.first : d}); });
+  pop.querySelectorAll("[data-pre]").forEach(b => b.onclick = e => { e.stopPropagation(); apply(rgPreset(b.dataset.pre)); });
 }
-function bindPos(){
-  const btn = $("#pos_rng"), pop = $("#pos_pop"); if (!btn) return;
-  btn.onclick = e => { e.stopPropagation(); if (!pop.hidden){ pop.hidden = true; S.posCal = null; return; } S.posCal = null; pop.hidden = false; posCal(); };
+function rgBind(){
+  const btn = $("#rg_btn"), pop = $("#rg_pop"); if (!btn) return;
+  btn.onclick = e => { e.stopPropagation(); S.rgCal = null; if (!pop.hidden){ pop.hidden = true; return; } pop.hidden = false; rgCal(); };
   pop.onclick = e => e.stopPropagation();
-  if (!S.posRBound){ S.posRBound = true;
-    document.addEventListener("click", () => { const p = $("#pos_pop"); if (p && !p.hidden){ p.hidden = true; S.posCal = null; } });
-    document.addEventListener("keydown", e => { const p = $("#pos_pop"); if (e.key === "Escape" && p && !p.hidden){ p.hidden = true; S.posCal = null; } }); }
+  if (!S.rgBound){ S.rgBound = true;
+    const close = () => { const p = $("#rg_pop"); if (p && !p.hidden){ p.hidden = true; S.rgCal = null; } };
+    document.addEventListener("click", close); document.addEventListener("keydown", e => { if (e.key === "Escape") close(); }); }
 }
+function bindPos(){}
 function renderPos(){
   const el = $("#list"); if (!el) return;
   if (!S.pos || !S.pos.ready){ el.innerHTML = `<div class="empty card">جارٍ قراءة بيانات الكاشير…</div>`; return; }
   if (S.pos.err){ el.innerHTML = `<div class="note warn">تعذّرت قراءة بيانات الكاشير (${esc(S.pos.err)}).</div>`; return; }
-  if (!S.posR) S.posR = posPreset("month");
-  const all = posDays(), R = [S.posR.a, S.posR.b], t = today(), RL = S.posR.k ? S.posR.label : (S.posR.a === S.posR.b ? dmy(S.posR.a) : "الفترة المختارة");
+  const all = posDays(), R = curR(), t = today(), RL = rgShort();
   const days = [...all.values()].filter(x => inR(x.date, R)).sort((a, b) => a.date < b.date ? 1 : -1);
   const rec = d => S.sales.get(d) || null;
   const card = s => n(s.mada) + n(s.visa);
@@ -6096,7 +6105,7 @@ function renderPos(){
       <div class="small muted" style="margin-top:4px">تقديري حتى يصل أول كشف من هنقرستيشن: لا يشمل إضافة HPlus (4 ريال) ولا ضريبة القيمة المضافة على الرسوم إن وُجدت.</div></div>` : ""}
     ${days.length ? `<div class="tw stick"><table><thead><tr><th>يوم الوردية</th><th>اليوم</th><th class="n">الطلبات</th><th class="n">كاش</th><th class="n">مدى وفيزا</th><th class="n">لوكيت</th><th class="n">هنقرستيشن</th><th class="n">إجمالي الكاشير</th><th class="n">المسجّل في البرنامج</th><th>الفرق</th><th></th></tr></thead>
       <tbody>${rows}<tr class="tot"><td colspan="2">الإجمالي</td><td class="n num">${days.reduce((a, x) => a + x.count, 0)}</td><td class="n">${money(sum("cash"))}</td><td class="n">${money(r2(sum("mada") + sum("visa")))}</td><td class="n">${money(sum("lokit"))}</td><td class="n">${money(sum("hunger"))}</td><td class="n">${money(sum("total"))}</td><td class="n">${money(r2(days.reduce((a, x) => a + (rec(x.date) ? saleTotal(rec(x.date)) : 0), 0)))}</td><td colspan="2"></td></tr></tbody></table></div>`
-      : `<div class="empty card">لا توجد مبيعات في الكاشير في ${esc(posRLabel())}.</div>`}
+      : `<div class="empty card">لا توجد مبيعات في الكاشير في ${esc(rgLabel())}.</div>`}
     <p class="foot" style="margin-top:10px">«الفرق» = الكاشير − المسجّل. فودكس هو المعتمد حتى يستقر الكاشير؛ زر «اعتماد أرقام الكاشير» يكتب أرقام الكاشير مكان المسجّل لذلك اليوم (ويُحفظ ما كان قبله في سجل التعديلات).</p>`;
   el.querySelectorAll("tr[data-posday]").forEach(tr => tr.onclick = e => { if (e.target.closest("button")) return; openPosDay(tr.dataset.posday); });
   el.querySelectorAll("[data-posimp]").forEach(b => armDelete(b, async () => {
@@ -6244,7 +6253,7 @@ async function fixAttFlags(){
 }
 if (window.__accHost) window.__accStart = connect; else connect();
 </script>
-<script src="apps.js?v=3"></script>
+<script src="apps.js?v=4"></script>
 <script type="module" src="acc-fb.js?v=3"></script>
 </body>
 </html>
