@@ -4,7 +4,7 @@
 import * as F from "./fb.js";
 import { firebaseConfig } from "./firebase-config.js";
 
-const VERSION = "2.3.0";
+const VERSION = "2.3.1";
 const ADMIN_EMAIL = "abuabraj@gmail.com";
 const DEVICE_EMAIL = "cashier@aqeela-pos.app";
 const APP_NAME = `<span dir="ltr">Cashier AQ</span>`;
@@ -728,42 +728,69 @@ function openReports(tab) {
   modal(`${mh("التقارير")}<div class="rp-bar" id="rp-bar"></div><div class="mdl-b" id="orders-list"></div>`, { wide: true });
   drawOrdersList();
 }
+const RP_PERS = [["shift", "الوردية الحالية"], ["today", "اليوم"], ["yday", "أمس"], ["week", "هذا الأسبوع"], ["lweek", "الأسبوع الماضي"], ["month", "هذا الشهر"], ["lmonth", "الشهر الماضي"], ["custom", "تاريخ محدد…"]];
+function rpRange() {
+  const t = bizDay();
+  switch (RP.per) {
+    case "today": return [t, t];
+    case "yday": { const y = addDays(t, -1); return [y, y]; }
+    case "week": return [dshRange("week", t)[0], t];
+    case "lweek": return dshRange("week", addDays(dshRange("week", t)[0], -1));
+    case "month": return [dshRange("month", t)[0], t];
+    case "lmonth": return dshRange("month", addDays(dshRange("month", t)[0], -1));
+    case "custom": { let a = RP.a || t, b = RP.b || a; if (b < a) [a, b] = [b, a]; if (b > t) b = t; return [a, b]; }
+  }
+  return [t, t];
+}
 async function rpData() {
   const tm = !!S.device.test, mine = o => !!o.test === tm;
   if (RP.per === "shift") return S.shiftOrders.filter(mine);
-  if (RP.per === "today") { const d = bizDay(), m = new Map(); [...S.today, ...S.shiftOrders].forEach(o => { if (o.day === d && mine(o)) m.set(o.id, o); }); return [...m.values()]; }
-  const d = addDays(bizDay(), -1);
-  if (rpCache.key !== d) { rpCache = { key: d, list: null };
-    try { const s = await F.getDocs(F.query(C("orders"), F.where("day", "==", d))); rpCache.list = s.docs.map(x => x.data()); }
-    catch (e) { rpCache.key = ""; throw e; } }
+  const [a, b] = rpRange(), t = bizDay();
+  if (a === t && b === t) { const m = new Map(); [...S.today, ...S.shiftOrders].forEach(o => { if (o.day === t && mine(o)) m.set(o.id, o); }); return [...m.values()]; }
+  const key = a + "|" + b;
+  if (rpCache.key !== key || Date.now() - rpCache.at > 60e3) {
+    const s = await F.getDocs(F.query(C("orders"), F.where("day", ">=", a), F.where("day", "<=", b)));
+    rpCache = { key, at: Date.now(), list: s.docs.map(x => x.data()) };
+    if (b === t) { const m = new Map(rpCache.list.map(o => [o.id, o])); [...S.today, ...S.shiftOrders].forEach(o => { if (o.day >= a && o.day <= b) m.set(o.id, o); }); rpCache.list = [...m.values()]; }
+  }
   return rpCache.list.filter(mine);
 }
 const rpSel = (id, label, opts, v) => `<label class="rp-f"><span>${label}</span><select id="${id}"><option value="">الكل</option>${opts.map(([k, l]) => `<option value="${esc(k)}" ${v === k ? "selected" : ""}>${esc(l)}</option>`).join("")}</select></label>`;
 async function drawOrdersList() {
   const B = $("#orders-list"), BAR = $("#rp-bar"); if (!B || !BAR) return;
-  const pers = [["shift", "الوردية الحالية"], ["today", "اليوم"], ["yday", "أمس"]].filter(p => p[0] !== "shift" || S.shift);
+  const pers = RP_PERS.filter(p => p[0] !== "shift" || S.shift), [ra, rb] = rpRange();
   const items = S.menu.filter(m => m.active || m.cat).map(m => [m.name, m.name]);
   BAR.innerHTML = `<div class="rp-tabs">${[["sum", "الملخص"], ["orders", "الطلبات"], ["items", "الأصناف المباعة"]].map(([k, l]) => `<button data-rt="${k}" class="${RP.tab === k ? "on" : ""}">${l}</button>`).join("")}</div>
-    <div class="rp-ctl"><div class="seg2">${pers.map(([k, l]) => `<button data-rper="${k}" class="${RP.per === k ? "on" : ""}">${l}</button>`).join("")}</div>
+    <div class="rp-ctl"><label class="rp-f"><span>الفترة</span><select id="rpp" class="per">${pers.map(([k, l]) => `<option value="${k}" ${RP.per === k ? "selected" : ""}>${l}</option>`).join("")}</select></label>
+      ${RP.per === "custom" ? `<label class="rp-f"><span>من</span><input type="date" id="rpa" value="${ra}" max="${bizDay()}"></label><label class="rp-f"><span>إلى</span><input type="date" id="rpb" value="${rb}" max="${bizDay()}"></label>` : ""}
       ${rpSel("rty", "النوع", TYPES, RP.type)}${rpSel("rme", "الدفع", Object.entries(METHODS), RP.method)}
       ${RP.tab === "items" ? rpSel("rca", "القسم", CATS, RP.cat) : RP.tab === "orders" ? rpSel("rit", "الصنف", items, RP.item) : ""}
       ${RP.type || RP.method || RP.cat || RP.item ? `<button class="rp-clr" id="rclr">${ic("close")}مسح التصفية</button>` : ""}</div>`;
   $$("[data-rt]").forEach(b => b.onclick = () => { RP.tab = b.dataset.rt; drawOrdersList(); });
-  $$("[data-rper]").forEach(b => b.onclick = () => { RP.per = b.dataset.rper; drawOrdersList(); });
+  $$("[data-rper]").forEach(b => b.onclick = () => { RP.per = b.dataset.rper; RP.lim = 100; drawOrdersList(); });
+  $("#rpp").onchange = e => { RP.per = e.target.value; RP.lim = 100; if (RP.per === "custom" && !RP.a) { RP.a = addDays(bizDay(), -6); RP.b = bizDay(); } drawOrdersList(); };
+  $("#rpa") && ($("#rpa").onchange = e => { if (e.target.value) { RP.a = e.target.value; drawOrdersList(); } });
+  $("#rpb") && ($("#rpb").onchange = e => { if (e.target.value) { RP.b = e.target.value; drawOrdersList(); } });
   [["rty", "type"], ["rme", "method"], ["rca", "cat"], ["rit", "item"]].forEach(([id, k]) => { const e = $("#" + id); if (e) e.onchange = () => { RP[k] = e.value; drawOrdersList(); }; });
   $("#rclr") && ($("#rclr").onclick = () => { RP.type = RP.method = RP.cat = RP.item = ""; drawOrdersList(); });
-  let all; try { if (RP.per === "yday" && rpCache.key !== addDays(bizDay(), -1)) B.innerHTML = `<div class="empty" style="padding:50px">جارٍ التحميل…</div>`; all = await rpData(); }
-  catch (e) { B.innerHTML = `<div class="err">تعذّر تحميل طلبات أمس: ${esc(e.code || e.message)}</div>`; return; }
+  let all; const tok = RP.tok = (RP.tok || 0) + 1;
+  try { if (RP.per !== "shift" && !(ra === bizDay() && rb === ra) && rpCache.key !== ra + "|" + rb) B.innerHTML = `<div class="empty" style="padding:50px">جارٍ تحميل الطلبات…</div>`; all = await rpData(); }
+  catch (e) { B.innerHTML = `<div class="err">تعذّر تحميل الطلبات: ${esc(e.code || e.message)}</div>`; return; }
+  if (tok !== RP.tok) return;
   if (!$("#orders-list")) return;
   const F1 = all.filter(o => (!RP.type || o.type === RP.type) && (!RP.method || o.method === RP.method));
   const paid = F1.filter(o => o.status === "paid"), voids = F1.filter(o => o.status === "void"), unp = F1.filter(isUnpaid);
   const sum = a => r2(a.reduce((s, o) => s + o.total, 0)), net = sum(paid);
-  const head = `${S.device.test ? `<div class="note warn" style="margin-bottom:12px">الجهاز في الوضع التجريبي: الأرقام للطلبات <b>التجريبية</b> فقط.</div>` : ""}<p class="rp-per">${RP.per === "shift" && S.shift ? `الوردية منذ <span class="num">${hm(S.shift.openedAt)}</span> · فتحها ${esc(S.shift.openedBy?.name || "")}` : `يوم <span class="num">${dmy(RP.per === "yday" ? addDays(bizDay(), -1) : bizDay())}</span>`}</p>`;
+  const head = `${S.device.test ? `<div class="note warn" style="margin-bottom:12px">الجهاز في الوضع التجريبي: الأرقام للطلبات <b>التجريبية</b> فقط.</div>` : ""}<p class="rp-per">${RP.per === "shift" && S.shift ? `الوردية منذ <span class="num">${hm(S.shift.openedAt)}</span> · فتحها ${esc(S.shift.openedBy?.name || "")}` : ra === rb ? `يوم <span class="num">${dmy(ra)}</span>` : `من <span class="num">${dmy(ra)}</span> إلى <span class="num">${dmy(rb)}</span> · <span class="num">${Math.round((new Date(rb) - new Date(ra)) / 864e5) + 1}</span> يوم`}</p>`;
   if (RP.tab === "sum") {
     const by = (arr, key, names) => Object.entries(names).map(([k, l]) => { const g = arr.filter(o => o[key] === k); return [l, g.length, sum(g)]; }).filter(r => r[1]);
     const tbl = (t, rows) => `<div class="rp-card"><h4>${t}</h4>${rows.length ? `<table class="t"><thead><tr><th></th><th class="n">الطلبات</th><th class="n">المبلغ</th><th class="n">النسبة</th></tr></thead><tbody>${rows.map(([l, n, v]) => `<tr><td>${l}</td><td class="n num">${n}</td><td class="n">${money(v)}</td><td class="n num">${net ? (v / net * 100).toFixed(1) + "%" : "—"}</td></tr>`).join("")}</tbody><tfoot><tr><td>المجموع</td><td class="n num">${paid.length}</td><td class="n">${money(net)}</td><td></td></tr></tfoot></table>` : `<p class="muted small">لا توجد مبيعات</p>`}</div>`;
     const qty = paid.reduce((s, o) => s + o.lines.reduce((a, l) => a + l.qty, 0), 0), disc = paid.filter(o => o.discount);
-    const hrs = {}; paid.forEach(o => { const h = new Date(o.ts).getHours(); hrs[h] = (hrs[h] || 0) + o.total; }); const hk = Object.keys(hrs).map(Number).sort((a, b) => ((a - 4 + 24) % 24) - ((b - 4 + 24) % 24)), hm2 = Math.max(1, ...Object.values(hrs));
+    const multi = RP.per !== "shift" && ra !== rb, hrs = {};
+    if (multi) { for (let d = ra; d <= rb; d = addDays(d, 1)) hrs[d] = 0; paid.forEach(o => { if (o.day in hrs) hrs[o.day] += o.total; }); }
+    else paid.forEach(o => { const h = new Date(o.ts).getHours(); hrs[h] = (hrs[h] || 0) + o.total; });
+    const hk = multi ? Object.keys(hrs) : Object.keys(hrs).map(Number).sort((a, b) => ((a - 4 + 24) % 24) - ((b - 4 + 24) % 24)), hm2 = Math.max(1, ...Object.values(hrs));
+    const hl = k => multi ? `${+k.slice(8)}/${+k.slice(5, 7)}` : `${(k % 12) || 12}${k < 12 ? "ص" : "م"}`;
     B.innerHTML = head + `<div class="kpis rp-k">
       <div class="kpi"><span>صافي المبيعات</span><b>${money(net)}</b><span>ر.س</span></div><div class="kpi"><span>الطلبات المكتملة</span><b class="num">${paid.length}</b><span><span class="num">${qty}</span> صنف</span></div>
       <div class="kpi"><span>متوسط الطلب</span><b>${money(paid.length ? net / paid.length : 0)}</b></div>
@@ -771,7 +798,7 @@ async function drawOrdersList() {
       <div class="kpi bad"><span>الإلغاءات</span><b>${money(sum(voids))}</b><span><span class="num">${voids.length}</span> طلب${voids.some(o => o.void?.unpaid) ? ` · منها <span class="num">${voids.filter(o => o.void?.unpaid).length}</span> لم يُدفع` : ""}</span></div>
       <div class="kpi warn"><span>بانتظار الدفع</span><b>${money(sum(unp))}</b><span><span class="num">${unp.length}</span> طلب</span></div></div>
       <div class="rp-grid">${tbl("حسب طريقة الدفع", by(paid, "method", METHODS))}${tbl("حسب نوع الطلب", by(paid, "type", Object.fromEntries(TYPES)))}</div>
-      ${hk.length ? `<div class="rp-card"><h4>المبيعات حسب الساعة</h4><div class="rp-hrs">${hk.map(h => `<div><i style="height:${Math.max(3, hrs[h] / hm2 * 100)}%"></i><b class="num">${Math.round(hrs[h])}</b><span class="num">${(h % 12) || 12}${h < 12 ? "ص" : "م"}</span></div>`).join("")}</div></div>` : ""}`;
+      ${hk.length && paid.length ? `<div class="rp-card"><h4>${multi ? "المبيعات حسب اليوم" : "المبيعات حسب الساعة"}</h4><div class="rp-hrs ${hk.length > 16 ? "dense" : ""}">${hk.map(h => `<div title="${hl(h)}: ${m2(hrs[h])}"><i style="height:${hrs[h] ? Math.max(3, hrs[h] / hm2 * 100) : 0}%"></i><b class="num">${hrs[h] ? Math.round(hrs[h]) : ""}</b><span class="num">${hl(h)}</span></div>`).join("")}</div></div>` : ""}`;
   }
   if (RP.tab === "orders") {
     const q = RP.q.trim().replace(/^0+(?=\d)/, "");
@@ -782,10 +809,12 @@ async function drawOrdersList() {
     B.innerHTML = head + `<div class="rp-ob"><div class="seg2">${[["all", "الكل"], ["paid", "مكتمل"], ["unpaid", "بانتظار الدفع"], ["disc", "عليه خصم"], ["void", "ملغي"]].map(([k, l]) => `<button data-rst="${k}" class="${RP.status === k ? "on" : ""}">${l}</button>`).join("")}</div>
       <label class="srch rp-q">${ic("search")}<input id="rq" type="search" placeholder="رقم الطلب أو الجوال أو رمز التحقق" value="${esc(RP.q)}" autocomplete="off"></label></div>
       <p class="rp-sum"><b class="num">${L.length}</b> طلب · مكتمل <b class="num">${okL.length}</b> بمبلغ <b class="num">${m2(sum(okL))}</b> ر.س</p>
-      <div class="list">${L.length ? L.map(o => `<button class="row ${o.status === "void" ? "void" : ""}" data-o="${esc(o.id)}"><span class="no num">${pad(o.no, 4)}</span>
+      <div class="list">${L.length ? L.slice(0, RP.lim || 100).map(o => `<button class="row ${o.status === "void" ? "void" : ""}" data-o="${esc(o.id)}"><span class="no num">${pad(o.no, 4)}</span>
       <span><b>${o.lines.map(l => `${l.qty}× ${esc(l.name)}`).join("، ")}</b><br><span class="meta"><span class="num">${hm(o.ts)}</span> · ${esc(o.cashierName)} · ${TYPES.find(t => t[0] === o.type)?.[1] || ""} · ${o.method ? METHODS[o.method] : "لم يُدفع"}
       ${o.status === "void" ? ` <span class="chip bad">${o.void?.unpaid ? "ملغي — لم يُدفع" : "ملغي"}</span>` : ""}${isUnpaid(o) ? ` <span class="chip warn">بانتظار الدفع · <span class="num">${esc(o.phone || "")}</span></span>` : ""}${o.discount ? ` <span class="chip warn">خصم</span>` : ""}${o.test ? ` <span class="chip test">تجريبي</span>` : ""}${o._pending ? ` <span class="chip warn">لم يُرسل بعد</span>` : ""}</span></span>
-      <span class="money" style="font-weight:800;font-size:18px">${m2(o.total)}</span></button>`).join("") : `<div class="empty" style="padding:40px">لا توجد طلبات مطابقة</div>`}</div>`;
+      <span class="money" style="font-weight:800;font-size:18px">${m2(o.total)}</span></button>`).join("") : `<div class="empty" style="padding:40px">لا توجد طلبات مطابقة</div>`}</div>
+      ${L.length > (RP.lim || 100) ? `<button class="btn ghost block" id="rmore" style="margin-top:12px">عرض المزيد (<span class="num">${L.length - (RP.lim || 100)}</span> طلب متبقٍ)</button>` : ""}`;
+    $("#rmore") && ($("#rmore").onclick = () => { RP.lim = (RP.lim || 100) + 100; drawOrdersList(); });
     $$("[data-rst]").forEach(b => b.onclick = () => { RP.status = b.dataset.rst; drawOrdersList(); });
     const qi = $("#rq"); qi.oninput = () => { RP.q = qi.value; clearTimeout(RP.t); RP.t = setTimeout(() => { drawOrdersList().then(() => { const n = $("#rq"); if (n) { n.focus(); n.setSelectionRange(n.value.length, n.value.length); } }); }, 250); };
     $$("#orders-list [data-o]").forEach(b => b.onclick = () => openOrder(all.find(o => o.id === b.dataset.o)));

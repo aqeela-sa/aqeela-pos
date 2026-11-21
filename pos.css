@@ -342,3 +342,7 @@ body{background:var(--page)}
 .rp-it th[data-is]{cursor:pointer;color:var(--ink2)}
 .rp-it td{padding:11px 8px}
 @media (max-width:760px){.rp-grid{grid-template-columns:1fr}.rp-bar{padding:0 14px}.rp-f select{min-width:110px}.rp-ob .seg2{overflow-x:auto;max-width:100%}.seg2 button{white-space:nowrap}}
+.rp-f input[type=date]{min-height:42px;border:1px solid #D4D4DA;border-radius:10px;padding:0 10px;background:#fff;font-size:15px;color:var(--ink);min-width:150px}
+.rp-hrs.dense{gap:2px}.rp-hrs.dense b{display:none}.rp-hrs.dense span{font-size:9.5px}
+.rp-hrs.dense div:nth-child(2n) span{visibility:hidden}
+.rp-f select.per{min-width:170px;font-weight:600}
