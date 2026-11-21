@@ -904,6 +904,17 @@ nav.tabs a[hidden],.nav-more[hidden]{display:none!important}
 .inv-flt-f{display:flex;flex-direction:column;gap:4px;min-width:170px;flex:0 1 220px}.inv-flt-f>span{font-size:12px;font-weight:700;color:var(--muted,#777)}
 @media (max-width:640px){.inv-flt-row>.seg{width:100%}.inv-flt-f{flex:1 1 100%}}
 .sheet.pd-wide{max-width:min(1100px,96vw)!important;width:min(1100px,96vw)}
+.rg-wrap{position:relative}.rg-btn{display:inline-flex;align-items:center;gap:8px;font-weight:700}
+.rg-pop{position:absolute;top:calc(100% + 8px);inset-inline-end:0;z-index:40;width:min(330px,92vw);background:var(--card);border:1px solid var(--line);border-radius:16px;box-shadow:0 14px 40px rgba(0,0,0,.18);padding:14px}
+.rg-pop[hidden]{display:none}.rg-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}.rg-head b{font-size:16px}
+.rg-nav{width:34px;height:34px;border-radius:10px;border:1px solid var(--line);background:transparent;font-size:20px;line-height:1;cursor:pointer;color:inherit}.rg-nav:disabled{opacity:.3;cursor:default}
+.rg-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:3px;text-align:center}.rg-w{font-size:12px;color:var(--muted);padding:4px 0;font-weight:700}
+.rg-d{height:36px;border:0;border-radius:9px;background:transparent;font:inherit;font-variant-numeric:tabular-nums;cursor:pointer;color:inherit}
+.rg-d:hover:not(:disabled){background:var(--field,#f2f2f4)}.rg-d:disabled{opacity:.3;cursor:default}.rg-d.now{box-shadow:inset 0 0 0 1.5px var(--red,#C1121F)}
+.rg-d.in{background:rgba(193,18,31,.12)}.rg-d.edge{background:var(--red,#C1121F);color:#fff;font-weight:700}
+.rg-hint{font-size:12px;color:var(--muted);margin:8px 2px}.rg-pre{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.rg-pre button{border:1px solid var(--line);border-radius:10px;background:transparent;padding:9px;font:inherit;font-size:14px;cursor:pointer;color:inherit}.rg-pre button.on{border-color:var(--red,#C1121F);color:var(--red,#C1121F);font-weight:700}
+@media (max-width:640px){.rg-pop{position:fixed;inset:auto 10px 10px 10px;top:auto;width:auto}}
 </style>
 <style>
 #acc_login{position:fixed;inset:0;z-index:200;display:grid;place-items:center;padding:20px;background:linear-gradient(160deg,#C1121F,#8E0D17)}
@@ -5998,16 +6009,55 @@ function openPosDay(day){
 }
 const posAsSale = x => ({cash: x.cash || null, mada: x.mada || null, visa: x.visa || null, delivery: r2(x.lokit + x.hunger) || null});
 function viewPos(){
-  return `<div class="bar"><h2>مبيعات الكاشير</h2>${periodPicker()}</div>
+  if (!S.posR) S.posR = posPreset("month");
+  return `<div class="bar"><h2>مبيعات الكاشير</h2><div class="rg-wrap"><button type="button" class="btn ghost rg-btn" id="pos_rng" aria-haspopup="dialog"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="3" fill="none" stroke="currentColor" stroke-width="2"/><path d="M3 10h18M8 3v4M16 3v4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg><span>${esc(posRLabel())}</span></button><div class="rg-pop" id="pos_pop" hidden></div></div></div>
     <p class="small muted" style="margin:-4px 0 12px">المبيعات كما سجّلها برنامج الكاشير لحظة بلحظة، مقارنةً بالمبيعات المسجّلة في البرنامج (من فودكس). كل طلب يُحسب على يوم الوردية التي سُجّل فيها، فطلب الساعة 1 فجراً يتبع اليوم الذي فُتحت فيه الوردية.</p>
     <div id="list"></div>`;
 }
-function bindPos(){}
+/* date range for the cashier page: quick choices plus a calendar (week starts Saturday; tap a day, or a first and a last day) */
+function posPreset(k){
+  const t = today(), d = pd(t), dow = (d.getDay() + 1) % 7, ws = addDays(t, -dow);
+  const m0 = iso(new Date(d.getFullYear(), d.getMonth(), 1)), pm0 = iso(new Date(d.getFullYear(), d.getMonth() - 1, 1)), pm1 = iso(new Date(d.getFullYear(), d.getMonth(), 0));
+  const P = {today:[t, t, "اليوم"], yday:[addDays(t, -1), addDays(t, -1), "الأمس"], week:[ws, t, "هذا الأسبوع"], pweek:[addDays(ws, -7), addDays(ws, -1), "الأسبوع السابق"], month:[m0, t, "هذا الشهر"], pmonth:[pm0, pm1, "الشهر السابق"]}[k];
+  return {a:P[0], b:P[1], k, label:P[2]};
+}
+const posRLabel = () => { const r = S.posR; if (!r) return ""; if (r.k) return `${r.label} · ${r.a === r.b ? dmy(r.a) : dmy(r.a).slice(0, 5) + " – " + dmy(r.b)}`; return r.a === r.b ? `${dayName(r.a)} ${dmy(r.a)}` : `${dmy(r.a)} – ${dmy(r.b)}`; };
+function posCal(){
+  const pop = $("#pos_pop"); if (!pop) return;
+  const t = today(), C = S.posCal || (S.posCal = {ym: (S.posR ? S.posR.b : t).slice(0, 7), first:null});
+  const [y, m] = C.ym.split("-").map(Number), first = new Date(y, m - 1, 1), days = new Date(y, m, 0).getDate(), off = (first.getDay() + 1) % 7;
+  const R = S.posR || {}, cells = [];
+  for (let i = 0; i < off; i++) cells.push('<span></span>');
+  for (let k = 1; k <= days; k++){
+    const d = `${C.ym}-${String(k).padStart(2, "0")}`, fut = d > t, sel = C.first ? d === C.first : (d >= R.a && d <= R.b), edge = !C.first && (d === R.a || d === R.b);
+    cells.push(`<button type="button" class="rg-d ${sel ? "in" : ""} ${edge || (C.first && d === C.first) ? "edge" : ""} ${d === t ? "now" : ""}" data-d="${d}" ${fut ? "disabled" : ""}>${k}</button>`);
+  }
+  const canNext = C.ym < t.slice(0, 7);
+  pop.innerHTML = `<div class="rg-head"><button type="button" class="rg-nav" data-nav="1" aria-label="الشهر السابق">›</button><b>${MONTHS[m - 1]} ${y}</b><button type="button" class="rg-nav" data-nav="-1" aria-label="الشهر التالي" ${canNext ? "" : "disabled"}>‹</button></div>
+    <div class="rg-grid">${["س","ح","ن","ث","ر","خ","ج"].map(w => `<span class="rg-w">${w}</span>`).join("")}${cells.join("")}</div>
+    <p class="rg-hint">${C.first ? `من <b class="num">${dmy(C.first)}</b> — اختر يوم النهاية، أو اضغط نفس اليوم ليوم واحد` : "اضغط يوماً، أو يوم البداية ثم يوم النهاية"}</p>
+    <div class="rg-pre">${[["today","اليوم"],["yday","الأمس"],["week","هذا الأسبوع"],["pweek","الأسبوع السابق"],["month","هذا الشهر"],["pmonth","الشهر السابق"]].map(([k, l]) => `<button type="button" class="${R.k === k ? "on" : ""}" data-pre="${k}">${l}</button>`).join("")}</div>`;
+  const apply = r => { S.posR = r; S.posCal = null; pop.hidden = true; const sp = $("#pos_rng span"); if (sp) sp.textContent = posRLabel(); renderPos(); };
+  pop.querySelectorAll("[data-nav]").forEach(b => b.onclick = e => { e.stopPropagation(); const dt = new Date(y, m - 1 - (+b.dataset.nav), 1); C.ym = iso(dt).slice(0, 7); posCal(); });
+  pop.querySelectorAll("[data-d]").forEach(b => b.onclick = e => { e.stopPropagation(); const d = b.dataset.d;
+    if (!C.first){ C.first = d; posCal(); return; }
+    const a = d < C.first ? d : C.first, z = d < C.first ? C.first : d; apply({a, b:z}); });
+  pop.querySelectorAll("[data-pre]").forEach(b => b.onclick = e => { e.stopPropagation(); apply(posPreset(b.dataset.pre)); });
+}
+function bindPos(){
+  const btn = $("#pos_rng"), pop = $("#pos_pop"); if (!btn) return;
+  btn.onclick = e => { e.stopPropagation(); if (!pop.hidden){ pop.hidden = true; S.posCal = null; return; } S.posCal = null; pop.hidden = false; posCal(); };
+  pop.onclick = e => e.stopPropagation();
+  if (!S.posRBound){ S.posRBound = true;
+    document.addEventListener("click", () => { const p = $("#pos_pop"); if (p && !p.hidden){ p.hidden = true; S.posCal = null; } });
+    document.addEventListener("keydown", e => { const p = $("#pos_pop"); if (e.key === "Escape" && p && !p.hidden){ p.hidden = true; S.posCal = null; } }); }
+}
 function renderPos(){
   const el = $("#list"); if (!el) return;
   if (!S.pos || !S.pos.ready){ el.innerHTML = `<div class="empty card">جارٍ قراءة بيانات الكاشير…</div>`; return; }
   if (S.pos.err){ el.innerHTML = `<div class="note warn">تعذّرت قراءة بيانات الكاشير (${esc(S.pos.err)}).</div>`; return; }
-  const all = posDays(), R = monthRange(S.y, S.m), t = today();
+  if (!S.posR) S.posR = posPreset("month");
+  const all = posDays(), R = [S.posR.a, S.posR.b], t = today(), RL = S.posR.k ? S.posR.label : (S.posR.a === S.posR.b ? dmy(S.posR.a) : "الفترة المختارة");
   const days = [...all.values()].filter(x => inR(x.date, R)).sort((a, b) => a.date < b.date ? 1 : -1);
   const rec = d => S.sales.get(d) || null;
   const card = s => n(s.mada) + n(s.visa);
@@ -6026,15 +6076,15 @@ function renderPos(){
       <td>${!live.has(x.date) && x.date <= t && S.canEdit && !isPos ? `<button type="button" class="btn ghost sm" data-posimp="${x.date}">${s ? "اعتماد أرقام الكاشير" : "تسجيل من الكاشير"}</button>` : ""}</td></tr>`;
   }).join("");
   el.innerHTML = `<div class="grid g4" style="margin-bottom:14px">
-      <div class="kpi"><span class="l">مبيعات الكاشير · ${MONTHS[S.m-1]}</span><span class="v num">${fmt(sum("total"))}</span><span class="small muted">${days.reduce((a, x) => a + x.count, 0)} طلب في ${days.length} يوم</span></div>
+      <div class="kpi"><span class="l">مبيعات الكاشير · ${esc(RL)}</span><span class="v num">${fmt(sum("total"))}</span><span class="small muted">${days.reduce((a, x) => a + x.count, 0)} طلب في ${days.length} يوم</span></div>
       <div class="kpi green"><span class="l">كاش</span><span class="v num">${fmt(sum("cash"))}</span></div>
       <div class="kpi blue"><span class="l">مدى وفيزا</span><span class="v num">${fmt(r2(sum("mada") + sum("visa")))}</span></div>
       <div class="kpi orange"><span class="l">لوكيت وهنقرستيشن</span><span class="v num">${fmt(r2(sum("lokit") + sum("hunger")))}</span></div></div>
-    ${hs.n ? `<div class="note" style="margin-bottom:14px"><b>هنقرستيشن هذا الشهر حسب العقد:</b> ${hs.n} طلب بقيمة <b class="num">${fmt(hs.g)}</b> · العمولة 10% <span class="num">${fmt(hs.g * 0.1)}</span> + الدفع الإلكتروني 2.5% <span class="num">${fmt(hs.g * 0.025)}</span> + التوصيل <span class="num">${fmt(hs.d)}</span> = <b class="num">${fmt(hs.f)}</b> (${pct(hs.g ? hs.f / hs.g : 0)}) · الصافي المتوقع <b class="num">${fmt(hs.g - hs.f)}</b>
+    ${hs.n ? `<div class="note" style="margin-bottom:14px"><b>هنقرستيشن (${esc(RL)}) حسب العقد:</b> ${hs.n} طلب بقيمة <b class="num">${fmt(hs.g)}</b> · العمولة 10% <span class="num">${fmt(hs.g * 0.1)}</span> + الدفع الإلكتروني 2.5% <span class="num">${fmt(hs.g * 0.025)}</span> + التوصيل <span class="num">${fmt(hs.d)}</span> = <b class="num">${fmt(hs.f)}</b> (${pct(hs.g ? hs.f / hs.g : 0)}) · الصافي المتوقع <b class="num">${fmt(hs.g - hs.f)}</b>
       <div class="small muted" style="margin-top:4px">تقديري حتى يصل أول كشف من هنقرستيشن: لا يشمل إضافة HPlus (4 ريال) ولا ضريبة القيمة المضافة على الرسوم إن وُجدت.</div></div>` : ""}
     ${days.length ? `<div class="tw stick"><table><thead><tr><th>يوم الوردية</th><th>اليوم</th><th class="n">الطلبات</th><th class="n">كاش</th><th class="n">مدى وفيزا</th><th class="n">لوكيت</th><th class="n">هنقرستيشن</th><th class="n">إجمالي الكاشير</th><th class="n">المسجّل في البرنامج</th><th>الفرق</th><th></th></tr></thead>
       <tbody>${rows}<tr class="tot"><td colspan="2">الإجمالي</td><td class="n num">${days.reduce((a, x) => a + x.count, 0)}</td><td class="n">${money(sum("cash"))}</td><td class="n">${money(r2(sum("mada") + sum("visa")))}</td><td class="n">${money(sum("lokit"))}</td><td class="n">${money(sum("hunger"))}</td><td class="n">${money(sum("total"))}</td><td class="n">${money(r2(days.reduce((a, x) => a + (rec(x.date) ? saleTotal(rec(x.date)) : 0), 0)))}</td><td colspan="2"></td></tr></tbody></table></div>`
-      : `<div class="empty card">لا توجد مبيعات في الكاشير في ${MONTHS[S.m-1]} ${S.y}.</div>`}
+      : `<div class="empty card">لا توجد مبيعات في الكاشير في ${esc(posRLabel())}.</div>`}
     <p class="foot" style="margin-top:10px">«الفرق» = الكاشير − المسجّل. فودكس هو المعتمد حتى يستقر الكاشير؛ زر «اعتماد أرقام الكاشير» يكتب أرقام الكاشير مكان المسجّل لذلك اليوم (ويُحفظ ما كان قبله في سجل التعديلات).</p>`;
   el.querySelectorAll("tr[data-posday]").forEach(tr => tr.onclick = e => { if (e.target.closest("button")) return; openPosDay(tr.dataset.posday); });
   el.querySelectorAll("[data-posimp]").forEach(b => armDelete(b, async () => {
