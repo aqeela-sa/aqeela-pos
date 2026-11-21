@@ -382,3 +382,16 @@ body{background:var(--page)}
 .btn.wa .ic{width:20px;height:20px}
 .wa-t{display:inline-flex;align-items:center;gap:3px;color:#168F44;font-weight:600}.wa-t .ic{width:14px;height:14px}
 .chip.hg{background:#FEF3C7;color:#92400E}
+/* جوال العميل الاختياري في الدفع */
+.ph-f{margin:12px 0 0;text-align:start}
+.ph-f label{display:flex;align-items:center;gap:6px;font-size:13.5px;color:var(--mut);font-weight:600}
+.ph-f label .ic{width:16px;height:16px}.ph-f label small{font-weight:500}
+.ph-f input{min-height:48px;font-size:18px;letter-spacing:.5px;text-align:left}
+.ph-f input.bad{border-color:#DC2626;box-shadow:0 0 0 3px rgba(220,38,38,.12);background:#FFF7F7}
+.paycard .ph-f{max-width:340px;margin:14px auto 0}
+.ph-row{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}
+.ph-row .ph-f{margin:0}
+.ph-f.nm input{text-align:right;letter-spacing:0;font-size:16px}
+.paycard .ph-row{max-width:520px;margin:14px auto 0}
+.cashpay .ph-row{grid-template-columns:1fr}
+@media (max-width:560px){.ph-row{grid-template-columns:1fr}}

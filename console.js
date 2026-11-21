@@ -364,7 +364,7 @@ const typeTag = t => `<span class="cx-tag ${t === "lokit" ? "lk" : t === "hunger
 const mName = o => o.method ? A.METHODS[o.method] : "لم يُدفع";
 const statusTag = o => o.status === "void" ? `<span class="cx-tag bad">${o.void?.kind === "noshow" ? "ملغي — لم يحضر" : o.void?.unpaid ? "ملغي قبل الدفع" : "ملغي"}</span>` : isUnpaid(o) ? `<span class="cx-tag warn">بانتظار الدفع</span>` : o.prep === "open" ? `<span class="cx-tag blue">قيد التحضير</span>` : `<span class="cx-tag ok">مكتمل</span>`;
 function orderDrawer(o) {
-  const c = cogsOf(o), pk = o.pack || A.packOf(o.lines), pm = prepMin(o), ev = o.phone ? [[o.ts, "طلب اتصال أُرسل للمطبخ", `${esc(o.cashierName)} · جوال <span class="num">${esc(o.phone)}</span>${o.name ? ` (${esc(o.name)})` : ""}`]] : [[o.ts, "أُنشئ الطلب ودُفع", `${mName(o)} · ${esc(o.cashierName)}`]];
+  const c = cogsOf(o), pk = o.pack || A.packOf(o.lines), pm = prepMin(o), ev = o.via === "phone" ? [[o.ts, "طلب اتصال أُرسل للمطبخ", `${esc(o.cashierName)} · جوال <span class="num">${esc(o.phone)}</span>${o.name ? ` (${esc(o.name)})` : ""}`]] : [[o.ts, "أُنشئ الطلب ودُفع", `${mName(o)} · ${esc(o.cashierName)}`]];
   if (o.paidAt) ev.push([o.paidAt, "حضر العميل ودفع", `${mName(o)} · ${esc(o.paidBy || "")}`]);
   (o.typeChanges || []).forEach(x => ev.push([x.at, `تغيير النوع إلى ${A.TYPES.find(t => t[0] === x.to)?.[1]}`, esc(x.by)]));
   if (o.deliveredAt) ev.push([o.deliveredAt, "سُلّم للعميل", `${pm != null ? `بعد ${nf(pm, 0)} دقيقة` : ""}${o.deliveredBy ? " · " + esc(o.deliveredBy) : ""}`]);
