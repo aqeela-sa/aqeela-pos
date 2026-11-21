@@ -247,3 +247,11 @@
   .pk2-r{flex-direction:column}.pk2-p{border:0;padding:0;grid-template-columns:repeat(2,1fr)}.pk2-d{grid-template-columns:repeat(7,1fr)}
   .cx-kv{grid-template-columns:1fr 1fr}
 }
+/* العملاء */
+.cx-list{display:grid;gap:6px}
+.cx-li{display:grid;grid-template-columns:auto 1fr auto auto;gap:10px;align-items:center;text-align:start;padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:#fff;width:100%}
+.cx-li:hover{background:#FAFAFB}
+.cx-li small{color:#71717A;font-size:12px}
+.cx-t.sm td{padding:8px 10px}
+a.cx-btn{text-decoration:none;color:inherit;display:inline-flex;align-items:center}
+a.cx-btn.pri{color:#fff}

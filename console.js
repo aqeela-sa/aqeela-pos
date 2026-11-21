@@ -26,6 +26,9 @@ const TYPE_C = { dine: "#F28C28", take: "#C1121F", delivery: "#0E7490", lokit: "
 
 /* ---------- أيقونات (Material) ---------- */
 const P = {
+  people: "M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z",
+  chat: "M20 2H4c-1.1 0-1.99.9-1.99 2L2 22l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zM6 9h12v2H6V9zm8 5H6v-2h8v2zm4-6H6V6h12v2z",
+  call: "M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z",
   dash: "M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z",
   cart: "M7 18c-1.1 0-1.99.9-1.99 2S5.9 22 7 22s2-.9 2-2-.9-2-2-2zM1 2v2h2l3.6 7.59-1.35 2.45c-.16.28-.25.61-.25.96 0 1.1.9 2 2 2h12v-2H7.42c-.14 0-.25-.11-.25-.25l.03-.12.9-1.63h7.45c.75 0 1.41-.41 1.75-1.03l3.58-6.49A1.003 1.003 0 0020 4H5.21l-.94-2H1zm16 16c-1.1 0-1.99.9-1.99 2s.89 2 1.99 2 2-.9 2-2-.9-2-2-2z",
   trend: "M3.5 18.49l6-6.01 4 4L22 6.92l-1.41-1.41-7.09 7.97-4-4L2 16.99z",
@@ -54,12 +57,13 @@ const ic = (k, cls = "i") => `<svg class="${cls}" viewBox="0 0 24 24" aria-hidde
 const NAV = [
   { id: "dash", ic: "dash", t: "الملخص" },
   { id: "orders", ic: "cart", t: "الطلبات" },
+  { id: "customers", ic: "people", t: "العملاء" },
   { g: "reports", ic: "trend", t: "التقارير", items: [["sales", "المبيعات"], ["pays", "المدفوعات"], ["items", "تحليل القائمة"], ["disc", "الخصومات والإلغاءات"], ["shifts", "الورديات"]] },
   { id: "stock", ic: "bag", t: "المخزون" },
   { id: "menu", ic: "food", t: "قائمة المنتجات" },
   { g: "admin", ic: "gear", t: "إدارة", items: [["staff", "الكاشيرون والرموز"], ["store", "الإيصال والإعدادات"], ["verify", "التحقق من إيصال"]] },
 ];
-const TITLES = { dash: "الملخص", orders: "الطلبات", sales: "تقرير المبيعات", pays: "تقرير المدفوعات", items: "تحليل القائمة", disc: "الخصومات والإلغاءات", shifts: "الورديات", stock: "المخزون — التغليف", menu: "قائمة المنتجات والأسعار", staff: "الكاشيرون والرموز", store: "الإيصال والإعدادات", verify: "التحقق من إيصال" };
+const TITLES = { dash: "الملخص", orders: "الطلبات", customers: "العملاء", sales: "تقرير المبيعات", pays: "تقرير المدفوعات", items: "تحليل القائمة", disc: "الخصومات والإلغاءات", shifts: "الورديات", stock: "المخزون — التغليف", menu: "قائمة المنتجات والأسعار", staff: "الكاشيرون والرموز", store: "الإيصال والإعدادات", verify: "التحقق من إيصال" };
 const PARENT = { sales: "التقارير", pays: "التقارير", items: "التقارير", disc: "التقارير", shifts: "التقارير", staff: "إدارة", store: "إدارة", verify: "إدارة" };
 
 export function mount(api, tab) {
@@ -322,6 +326,7 @@ function table(host, key, cols, rows, o = {}) {
 
 /* التصدير */
 let EXP = [], EXTRA = {};
+const expT = (title, cols, rows, foot) => EXP.push({ title, cols: cols.map(([k, t]) => ({ k, t })), rows, foot });
 function expBtn(extra = []) { EXTRA = Object.fromEntries(extra.map(([id, , fn]) => [id, fn])); return `<button class="cx-btn" id="cxexp" data-x='${JSON.stringify(extra.map(([id, l]) => [id, l]))}'>${ic("cloud")}تصدير<svg class="i" viewBox="0 0 24 24" style="width:18px"><path d="${P.chev}"/></svg></button>`; }
 function bindExp() {
   const b = $("#cxexp"); if (!b) return; const extra = JSON.parse(b.dataset.x || "[]");
@@ -330,14 +335,15 @@ function bindExp() {
 }
 const plain = h => { const d = document.createElement("div"); d.innerHTML = String(h ?? ""); return d.textContent.replace(/[\u2066-\u2069\u200e\u200f]/g, "").trim(); };
 function expRows() {
-  const out = [[TITLES[st.page]], [`الفترة: ${st.page === "dash" ? "" : rLab(st.a, st.b)}`], []];
+  const per = st.page === "dash" ? rLab(...dashRange()) : st.page === "customers" && st.cAll !== false ? "كل الفترات" : ["menu", "stock"].includes(st.page) ? `حتى ${A.ymd(new Date())}` : rLab(st.a, st.b);
+  const out = [[TITLES[st.page]], [`الفترة: ${per}`], []];
   $$(".cx-st").forEach(x => out.push([x.querySelector("span")?.textContent, plain(x.querySelector("b")?.innerHTML).replace(/[^\d.,\-%]/g, "").replace(/,/g, ""), plain(x.querySelector("small")?.innerHTML || "")]));
   if ($$(".cx-st").length) out.push([]);
   for (const t of EXP) {
     if (EXP.length > 1) out.push([t.title]);
     out.push(t.cols.map(c => plain(c.t)));
     t.rows.forEach(r => out.push(t.cols.map(c => { if (/^ts$|At$/.test(c.k) && c.f) return plain(c.f(r));
-      const v = c.x ? c.x(r) : r[c.k] !== undefined ? r[c.k] : c.sv ? c.sv(r) : undefined; return typeof v === "number" ? r2(v) : plain(c.f ? c.f(r) : v); })));
+      const v = c.x ? c.x(r) : r[c.k] !== undefined ? r[c.k] : c.sv ? c.sv(r) : undefined; return typeof v === "number" ? r2(v) : plain(c.x ? v : c.f ? c.f(r) : v); })));
     if (t.foot) out.push(t.cols.map(c => plain(t.foot[c.k] ?? "").replace(/,/g, "").replace(/ر\.س/, "").trim()));
     out.push([]);
   }
@@ -346,7 +352,9 @@ function expRows() {
 let xlsxP = null;
 const loadXlsx = () => xlsxP ||= new Promise((res, rej) => { const s = document.createElement("script"); s.src = "https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"; s.onload = () => res(window.XLSX); s.onerror = () => { xlsxP = null; rej(); }; document.head.append(s); });
 async function exportNow(kind) {
-  const rows = expRows(), name = `${TITLES[st.page]}-${st.a}${st.b !== st.a ? "_" + st.b : ""}`;
+  if (LEGX) { EXP = []; LEGX(); }
+  const rows = expRows(), [ea, eb] = st.page === "dash" ? dashRange() : [st.a, st.b];
+  const name = st.page === "customers" && st.cAll !== false ? `العملاء-${A.ymd(new Date())}` : ["menu", "stock"].includes(st.page) ? `${TITLES[st.page]}-${A.ymd(new Date())}` : `${TITLES[st.page]}-${ea}${eb !== ea ? "_" + eb : ""}`;
   if (kind === "csv") return A.download(rows, name + ".csv");
   try { const X = await loadXlsx(), ws = X.utils.aoa_to_sheet(rows); ws["!cols"] = rows[3]?.map(() => ({ wch: 18 })) || []; const wb = X.utils.book_new(); wb.Workbook = { Views: [{ RTL: true }] }; X.utils.book_append_sheet(wb, ws, "التقرير"); X.writeFile(wb, name + ".xlsx"); }
   catch { A.toast("تصدير إكسل يحتاج اتصالاً بالإنترنت. استخدم CSV", true); }
@@ -387,7 +395,8 @@ function orderDrawer(o) {
 
 /* =================== الصفحات =================== */
 const PAGES = {};
-const page = (inner, opt = {}) => { $("#cxp").innerHTML = `<div class="cx-ph"><div><h1>${opt.h1 || TITLES[st.page]}</h1>${opt.sub ? `<p>${opt.sub}</p>` : ""}</div><div class="cx-acts">${opt.acts || ""}</div></div>${inner}`; };
+let LEGX = null;
+const page = (inner, opt = {}) => { LEGX = null; $("#cxp").innerHTML = `<div class="cx-ph"><div><h1>${opt.h1 || TITLES[st.page]}</h1>${opt.sub ? `<p>${opt.sub}</p>` : ""}</div><div class="cx-acts">${opt.acts || ""}</div></div>${inner}`; };
 
 /* ---------- الملخص ---------- */
 function dashRange() { return A.dshRange(st.p, st.d); }
@@ -397,7 +406,8 @@ PAGES.dash = async () => {
   page(`<div class="cx-tabs">${[["gen", "عام"], ["kitchen", "المطبخ"], ["cash", "الكاشيرون"]].map(([k, l]) => `<button data-dt="${k}" class="${st.dtab === k ? "on" : ""}">${l}</button>`).join("")}</div>
     <div class="cx-ctl"><div class="cx-seg">${[["day", "يوم"], ["week", "الأسبوع"], ["month", "شهر"]].map(([k, l]) => `<button data-p="${k}" class="${st.p === k ? "on" : ""}">${l}</button>`).join("")}</div>
       <button class="cx-btn" id="cxd">${ic("cal")}<span>${rLab(...R)}</span></button>${st.dtab === "gen" ? `<button class="cx-sw ${st.cmp ? "on" : ""}" id="cxcmp" type="button"><i></i>مقارنة</button>` : ""}<span class="cx-sp"></span>${fltBtn()}</div>
-    ${fltChips()}<div id="dbody">${loadingCards()}</div>`, { h1: `مرحباً، ${esc(userName())}` });
+    ${fltChips()}<div id="dbody">${loadingCards()}</div>`, { h1: `مرحباً، ${esc(userName())}`, acts: expBtn() });
+  bindExp();
   $$("[data-dt]").forEach(b => b.onclick = () => { st.dtab = b.dataset.dt; save(); PAGES.dash(); });
   $$("[data-p]").forEach(b => b.onclick = () => { st.p = b.dataset.p; save(); PAGES.dash(); });
   $("#cxd").onclick = e => picker(e.currentTarget, { mode: st.p, a: R[0], b: R[1], onPick: a => { st.d = a; PAGES.dash(); } });
@@ -463,6 +473,17 @@ function dashGen(L, Lp, R) {
     <div class="cx-card"><div class="cx-ch"><h3>أعلى الكاشيرين</h3><button class="cx-link" data-dtab="cash">التفاصيل</button></div>${donut(by(ok, "cashierName"))}</div>
     ${kpiCard({ t: "متوسط مدة التحضير", v: a.prep || 0, pv: st.cmp ? p.prep || 0 : null, inv: 1, html: a.prep == null ? `<span style="color:#A1A1AA">—</span>` : `<span class="num">${nf(a.prep, 1)}</span><small>دقيقة</small>`, s: S(ok, prepMin, "avg"), B, f: "min", color: "#0EA5E9" }).replace('<h3>متوسط مدة التحضير</h3>', '<h3>متوسط مدة التحضير</h3><button class="cx-link" data-dtab="kitchen">المطبخ</button>')}
   </div>`;
+  /* بيانات التصدير */
+  const K = [["الطلبات", a.n, p.n], ["صافي المبيعات", a.net, p.net], ["مجمل الربح", a.gp, p.gp], ["متوسط الطلب", a.avg, p.avg], ["مبلغ الخصم", a.disc, p.disc], ["مبلغ الإلغاء", a.vT, p.vT], ["نسبة التكلفة %", a.cpct, p.cpct], ["متوسط مدة التحضير (دقيقة)", a.prep, p.prep]];
+  expT("المؤشرات", [["t", "المؤشر"], ["v", "الفترة الحالية"], ...(st.cmp ? [["p", CMPLAB], ["d", "التغير %"]] : [])],
+    K.map(([t, v, pv]) => ({ t, v: v == null || !isFinite(v) ? "" : r2(v), p: pv == null || !isFinite(pv) ? "" : r2(pv), d: pv && isFinite(v) && isFinite(pv) ? r2((v - pv) / Math.abs(pv) * 100) : "" })));
+  const so = S(ok, () => 1), sn = S(ok, o => o.total), sd = S(ok, o => o.discount?.amount || 0), sv = S(vd, o => o.total);
+  expT(st.p === "day" ? "حسب الساعة" : "حسب اليوم", [["l", st.p === "day" ? "الساعة" : "اليوم"], ["o", "الطلبات"], ["n", "صافي المبيعات"], ["d", "الخصم"], ["v", "الإلغاء"]],
+    B.keys.map((k, i) => ({ l: B.tips[i], o: so[i] ?? "", n: sn[i] == null ? "" : r2(sn[i]), d: sd[i] == null ? "" : r2(sd[i]), v: sv[i] == null ? "" : r2(sv[i]) })).filter(r => r.o !== ""));
+  const mrows = by(ok, "method").sort((x, y) => y[1] - x[1]).map(([k, v]) => ({ k: A.METHODS[k] || k, n: ok.filter(o => o.method === k).length, v: r2(v) }));
+  expT("حسب طريقة الدفع", [["k", "طريقة الدفع"], ["n", "الطلبات"], ["v", "المبلغ"]], mrows);
+  expT("حسب نوع الطلب", [["k", "النوع"], ["n", "الطلبات"], ["v", "المبلغ"]], A.TYPES.map(([k, l]) => { const g = ok.filter(o => o.type === k); return { k: l, n: g.length, v: r2(g.reduce((s2, o) => s2 + o.total, 0)) }; }).filter(r => r.n));
+  expT("أعلى المنتجات", [["k", "المنتج"], ["v", "صافي البيع"]], Object.entries(items).sort((x, y) => y[1] - x[1]).map(([k, v]) => ({ k, v: r2(v) })));
   $$("[data-dtab]").forEach(b => b.onclick = () => { st.dtab = b.dataset.dtab; save(); PAGES.dash(); });
 }
 function dashKitchen(L) {
@@ -677,10 +698,98 @@ async function shiftDrawer(sh) {
     c ? `<button class="cx-btn pri" id="zp">${ic("print")}طباعة تقرير الوردية</button>` : "", d => { d.querySelector("#zp") && (d.querySelector("#zp").onclick = async () => A.printCanvas(await A.drawShiftReport(sh, []), true)); });
 }
 
+/* ---------- العملاء: يُجمَّع كل رقم جوال في سطر واحد مهما تكرر طلبه ---------- */
+let phoneCache = null;
+async function loadPhones() {
+  if (phoneCache && Date.now() - phoneCache.t < 45e3) return phoneCache.L;
+  const s = await A.F.getDocs(A.F.query(A.C("orders"), A.F.where("phone", ">=", "0")));
+  const L = s.docs.map(d => d.data()).filter(o => o.phone); phoneCache = { t: Date.now(), L }; return L;
+}
+const normPh = p => { let d = String(p || "").replace(/\D/g, ""); if (d.startsWith("966")) d = "0" + d.slice(3); if (d.length === 9 && d[0] === "5") d = "0" + d; return d; };
+function customers(L) {
+  const m = new Map();
+  L.forEach(o => { const k = normPh(o.phone); if (!k) return; const c = m.get(k) || m.set(k, { phone: k, orders: [], names: new Map() }).get(k); c.orders.push(o); if (o.name?.trim()) c.names.set(o.name.trim(), Math.max(c.names.get(o.name.trim()) || 0, o.ts)); });
+  return [...m.values()].map(c => {
+    const all = c.orders.sort((a, b) => b.ts - a.ts), ok = all.filter(isOk), ty = {};
+    ok.forEach(o => ty[o.type] = (ty[o.type] || 0) + 1);
+    const types = Object.entries(ty).sort((a, b) => b[1] - a[1]), names = [...c.names].sort((a, b) => b[1] - a[1]).map(x => x[0]);
+    return { phone: c.phone, name: names[0] || "", names, all, n: ok.length, value: r2(ok.reduce((s, o) => s + o.total, 0)), avg: ok.length ? ok.reduce((s, o) => s + o.total, 0) / ok.length : 0,
+      last: all[0].ts, first: all[all.length - 1].ts, types, mainType: types[0]?.[0] || "", noshow: all.filter(o => isVoid(o) && o.void?.unpaid).length, open: all.filter(isUnpaid).length };
+  });
+}
+const typesHtml = c => c.types.length ? c.types.map(([k, n]) => `${typeTag(k).replace("</span>", ` <b class="num">${n}</b></span>`)}`).join(" ") : `<span style="color:#A1A1AA">—</span>`;
+const typesTxt = c => c.types.map(([k, n]) => `${A.TYPES.find(t => t[0] === k)?.[1] || k} (${n})`).join("، ");
+PAGES.customers = async () => {
+  const [rb, rbind] = rangeBtn(PAGES.customers), all = st.cAll !== false;
+  page(`<div class="cx-ctl"><div class="cx-seg"><button data-ca="1" class="${all ? "on" : ""}">كل الفترات</button><button data-ca="0" class="${all ? "" : "on"}">فترة محددة</button></div>${all ? "" : rb}
+      <div style="position:relative;display:flex;align-items:center"><input class="cx-in" id="cq" placeholder="بحث بالاسم أو رقم الجوال" value="${esc(st.cq || "")}" style="width:240px;padding-inline-start:38px"><span style="position:absolute;inset-inline-start:10px;color:#A1A1AA;display:flex">${ic("search")}</span></div>
+      <span class="cx-sp"></span>${fltBtn()}</div>${fltChips()}<div id="cb">${loadingTable()}</div>`,
+    { sub: "كل عميل سُجّل رقم جواله في طلب، مرة واحدة مهما تكرر طلبه — اضغط على العميل لعرض طلباته", acts: expBtn() });
+  if (!all) rbind(); bindExp();
+  $$("[data-ca]").forEach(b => b.onclick = () => { st.cAll = b.dataset.ca === "1"; st.pg = 0; save(); PAGES.customers(); });
+  let L; try { L = await loadPhones(); bindFlt(PAGES.customers, L.map(o => o.cashierName)); } catch (e) { $("#cb").innerHTML = errBox(e); return; }
+  if (st.page !== "customers") return;
+  const draw = () => {
+    const src = applyF(L).filter(o => all || (o.day >= st.a && o.day <= st.b)), q = (st.cq || "").trim(), qd = normPh(q);
+    const C = customers(src).filter(c => !q || c.names.some(n => n.includes(q)) || (qd.length >= 3 && c.phone.includes(qd.replace(/^0/, ""))));
+    const rep = C.filter(c => c.n >= 2).length, val = C.reduce((s, c) => s + c.value, 0), ords = C.reduce((s, c) => s + c.n, 0);
+    EXP = [];
+    $("#cb").innerHTML = `<div class="cx-stats"><div class="cx-st"><span>عدد العملاء</span><b class="num">${ni(C.length)}</b></div>
+        <div class="cx-st"><span>عملاء متكررون</span><b class="num">${ni(rep)}</b><small>${C.length ? pct(rep / C.length * 100) + " طلبوا مرتين أو أكثر" : ""}</small></div>
+        <div class="cx-st"><span>طلباتهم المكتملة</span><b class="num">${ni(ords)}</b><small>${C.length ? `<span class="num">${nf(ords / C.length, 1)}</span> طلب لكل عميل` : ""}</small></div>
+        <div class="cx-st"><span>إجمالي قيمة طلباتهم</span><b class="num">${nf(val)}</b><small>ر.س</small></div></div>
+      <div class="cx-tcard"><div class="cx-tbar"><h3><span class="num">${ni(C.length)}</span> عميل</h3><span style="color:#71717A;font-size:13px">اضغط على عنوان أي عمود للترتيب، ومرة ثانية لعكسه</span></div><div id="ctb"></div></div>`;
+    table("#ctb", "customers", [
+      { k: "name", t: "الاسم", f: c => c.name ? `<b>${esc(c.name)}</b>${c.names.length > 1 ? ` <small style="color:#A1A1AA">+${c.names.length - 1}</small>` : ""}` : `<span style="color:#A1A1AA">بدون اسم</span>` },
+      { k: "phone", t: "الجوال", f: c => `<span class="num">${c.phone}</span>`, x: c => c.phone },
+      { k: "n", t: "عدد الطلبات", num: 1, f: c => `<b class="num">${ni(c.n)}</b>${c.open ? ` <span class="cx-tag warn">${c.open} بانتظار الدفع</span>` : ""}` },
+      { k: "last", t: "آخر طلب", f: c => `<span class="num">${A.bizDay(c.last)}</span> <small style="color:#A1A1AA">${ago(c.last)}</small>`, x: c => A.bizDay(c.last) },
+      { k: "value", t: "القيمة الإجمالية", num: 1, f: c => `<b class="num">${nf(c.value)}</b>` },
+      { k: "mainType", t: "نوع الطلب", sv: c => A.TYPES.find(t => t[0] === c.mainType)?.[1] || "", f: typesHtml, x: typesTxt },
+      { k: "noshow", t: "لم يحضر", num: 1, f: c => c.noshow ? `<span class="cx-tag bad num">${c.noshow}</span>` : `<span style="color:#A1A1AA">—</span>`, x: c => c.noshow }],
+      C, { sort: "last", pageSize: 50, onRow: custDrawer, title: "العملاء", empty: q ? "لا يوجد عميل مطابق" : "لا يوجد عملاء بعد. يُسجَّل العميل عند كتابة رقم جواله في الدفع أو في طلب الاتصال.",
+        foot: { name: "المجموع", n: ni(ords), value: nf(val) } });
+  };
+  let tmo; $("#cq").oninput = e => { st.cq = e.target.value; st.pg = 0; clearTimeout(tmo); tmo = setTimeout(draw, 200); };
+  draw();
+};
+function ago(ts) { const d = Math.floor((A.bizDay() > A.bizDay(ts) ? (new Date(A.bizDay()) - new Date(A.bizDay(ts))) / 864e5 : 0)); return d === 0 ? "اليوم" : d === 1 ? "أمس" : d < 30 ? `منذ ${d} يوم` : d < 365 ? `منذ ${Math.floor(d / 30)} شهر` : `منذ ${Math.floor(d / 365)} سنة`; }
+function custDrawer(c) {
+  const items = {}; c.all.filter(isOk).forEach(o => o.lines.forEach(l => items[l.name] = (items[l.name] || 0) + l.qty));
+  const top = Object.entries(items).sort((a, b) => b[1] - a[1]).slice(0, 5), wa = "966" + c.phone.slice(1);
+  drawer(`<h2>${esc(c.name || "عميل بدون اسم")}</h2><span class="cx-tag num">${c.phone}</span>`,
+    `<div class="cx-sec"><div class="cx-kv"><div><span>عدد الطلبات المكتملة</span><b class="num">${ni(c.n)}</b></div><div><span>القيمة الإجمالية</span><b class="num">${nf(c.value)} ر.س</b></div>
+      <div><span>متوسط الطلب</span><b class="num">${nf(c.avg)}</b></div><div><span>لم يحضر</span><b class="num">${c.noshow}</b></div>
+      <div><span>أول طلب</span><b class="num">${A.bizDay(c.first)}</b></div><div><span>آخر طلب</span><b><span class="num">${A.bizDay(c.last)}</span> <small style="color:#71717A;font-weight:500">${ago(c.last)}</small></b></div>
+      ${c.names.length > 1 ? `<div style="grid-column:1/-1"><span>أسماء سُجّلت بهذا الرقم</span><b>${c.names.map(esc).join("، ")}</b></div>` : ""}</div></div>
+    <div class="cx-sec"><h4>أنواع طلباته</h4><div style="display:flex;gap:6px;flex-wrap:wrap">${typesHtml(c)}</div></div>
+    ${top.length ? `<div class="cx-sec"><h4>أكثر ما يطلبه</h4><table class="cx-t sm"><tbody>${top.map(([n, q]) => `<tr><td>${esc(n)}</td><td class="n"><b class="num">${q}</b></td></tr>`).join("")}</tbody></table></div>` : ""}
+    <div class="cx-sec"><h4>طلباته (<span class="num">${c.all.length}</span>)</h4><div id="cdo"></div></div>`,
+    `<a class="cx-btn pri" href="https://wa.me/${wa}" target="_blank" rel="noopener">${ic("chat")}مراسلة واتساب</a><a class="cx-btn" href="tel:${c.phone}">${ic("call")}اتصال</a>`,
+    d => { const h = d.querySelector("#cdo"); h.innerHTML = `<div class="cx-list">${c.all.map(o => `<button class="cx-li" data-o="${esc(o.id)}"><b class="num">${pad(o.no, 4)}</b><span>${o.lines.map(l => `${l.qty}× ${esc(l.name)}`).join("، ")}<br><small><span class="num">${o.day}</span> · ${A.TYPES.find(t => t[0] === o.type)?.[1] || ""} · ${mName(o)}</small></span>${statusTag(o)}<b class="num">${nf(o.total)}</b></button>`).join("")}</div>`;
+      h.querySelectorAll("[data-o]").forEach(b => b.onclick = () => orderDrawer(c.all.find(o => o.id === b.dataset.o))); });
+}
+
 /* ---------- صفحات الإدارة (المحرّرات الحالية داخل تصميم اللوحة) ---------- */
-const legacy = (fn, sub) => () => { page(`<div class="cx-legacy"><div id="adm"></div></div>`, { sub }); fn(); };
-PAGES.stock = legacy(() => A.admStock(), "رصيد العلب والأكياس، ويُخصم تلقائياً مع كل طلب");
-PAGES.menu = legacy(() => A.admMenu(), "الأصناف وأسعار المطعم ولوكيت والتكلفة والترتيب");
+const legacy = (fn, sub, exp) => () => { page(`<div class="cx-legacy"><div id="adm"></div></div>`, { sub, acts: exp ? expBtn() : "" }); LEGX = exp || null; if (exp) bindExp(); fn(); };
+const yn = v => v ? "نعم" : "لا";
+function menuExp() {
+  const cat = k => A.CATS.find(c => c[0] === k)?.[1] || k;
+  const L = A.S.menu.slice().sort((x, y) => A.CATS.findIndex(c => c[0] === x.cat) - A.CATS.findIndex(c => c[0] === y.cat) || (x.sort ?? 0) - (y.sort ?? 0));
+  expT("قائمة المنتجات والأسعار", [["name", "الصنف"], ["cat", "القسم"], ["price", "سعر المطعم"], ["lokit", "سعر لوكيت"], ["hunger", "سعر هنقرستيشن"], ["cost", "تكلفة الطعام"], ["box", "علبة"], ["active", "ظاهر"], ["img", "صورة"]],
+    L.map(m => ({ name: m.name, cat: cat(m.cat), price: m.price ?? "", lokit: m.lokit ?? "", hunger: m.hunger ?? "", cost: m.cost ?? "", box: yn(m.box), active: yn(m.active), img: yn(m.img) })));
+}
+function stockExp() {
+  document.querySelectorAll("#adm .kpi").forEach(k => {
+    const t = k.querySelector("b")?.textContent.trim() || "", big = k.querySelector("b.num")?.textContent.trim();
+    const rows = []; if (big) rows.push({ a: "المتبقي تقديرياً", b: big });
+    k.querySelectorAll("table tr").forEach(tr => { const td = tr.querySelectorAll("td"); if (td.length >= 2) rows.push({ a: plain(td[0].innerHTML), b: plain(td[1].innerHTML) }); });
+    const last = [...k.querySelectorAll(":scope > span")].pop(); if (last) rows.push({ a: "ملاحظة", b: plain(last.innerHTML) });
+    expT(t, [["a", "البند"], ["b", "القيمة"]], rows);
+  });
+}
+PAGES.stock = legacy(() => A.admStock(), "رصيد العلب والأكياس، ويُخصم تلقائياً مع كل طلب", stockExp);
+PAGES.menu = legacy(() => A.admMenu(), "الأصناف وأسعار المطعم ولوكيت وهنقرستيشن والتكلفة والصور", menuExp);
 PAGES.staff = legacy(() => A.admStaff(), "أسماء الكاشيرين ورموز الدخول ورمز المدير");
-PAGES.store = legacy(() => A.admStore(), "بيانات الإيصال والشعار وملاحظات الأصناف واليوم التشغيلي");
+PAGES.store = legacy(() => A.admStore(), "بيانات الإيصال والشعار وملاحظات الأصناف ورسالة واتساب واليوم التشغيلي");
 PAGES.verify = legacy(() => A.admVerify(), "تأكد من صحة أي إيصال برقم الطلب ورمز التحقق");
