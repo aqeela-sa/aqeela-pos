@@ -255,3 +255,7 @@
 .cx-t.sm td{padding:8px 10px}
 a.cx-btn{text-decoration:none;color:inherit;display:inline-flex;align-items:center}
 a.cx-btn.pri{color:#fff}
+.pk2-d button:disabled{color:#E4E4E8;background:none!important;cursor:default}
+/* الجداول العريضة: مسافات أصغر حتى تظهر كل الأعمدة على شاشة اللابتوب والآيباد */
+@media (max-width:1500px){.cx-t th{padding:13px 11px}.cx-t td{padding:14px 11px}}
+.cx-tw{scrollbar-width:thin}

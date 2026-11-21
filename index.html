@@ -9,7 +9,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Cashier AQ">
 <link rel="manifest" href="manifest.webmanifest">
-<link rel="stylesheet" href="console.css?v=2.6.0">
+<link rel="stylesheet" href="console.css?v=2.6.1">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="icon" href="icons/icon-192.png">
 <title>Cashier AQ</title>
@@ -122,7 +122,7 @@ table.t tfoot td{font-weight:800}
 .kpi b{display:block;font-size:22px;margin-top:2px}
 .toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:end;margin-bottom:14px}
 .toolbar .f{margin:0}
-.mrow{display:grid;grid-template-columns:56px minmax(130px,2fr) minmax(90px,1.1fr) 66px 66px 66px 66px 52px 56px 52px;gap:8px;align-items:center;padding:8px 0;border-bottom:1px solid var(--line)}
+.mrow{display:grid;grid-template-columns:56px minmax(120px,1.5fr) minmax(84px,.9fr) 76px 76px 76px 76px 52px 52px 60px 52px;gap:8px;align-items:center;padding:8px 0;border-bottom:1px solid var(--line)}
 .mrow input,.mrow select{min-height:42px;border:1.5px solid var(--line);border-radius:10px;padding:0 10px;width:100%;font-size:15px;background:#fff}
 .mrow.h{font-size:12px;color:var(--mut);font-weight:700}
 .sw{position:relative;width:52px;height:30px;border-radius:15px;background:#D9D5D2;flex:none}
@@ -146,13 +146,13 @@ table.t tfoot td{font-weight:800}
 }
 @media (max-width:700px){.mrow{grid-template-columns:1fr 1fr}}
 </style>
-<link rel="stylesheet" href="pos.css?v=2.6.0">
+<link rel="stylesheet" href="pos.css?v=2.6.1">
 </head>
 <body>
 <div id="app"><div class="center"><div class="brand"><div class="logo"><img src="icons/logo.png" alt=""></div><h1 dir="ltr">Cashier AQ</h1><p>جارٍ التحميل…</p></div></div></div>
 <div id="print"></div>
 <noscript>يحتاج الكاشير إلى تفعيل JavaScript.</noscript>
-<script type="module" src="app.js?v=2.6.0"></script>
+<script type="module" src="app.js?v=2.6.1"></script>
 <script>
 if ("serviceWorker" in navigator) addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(() => {}));
 </script>

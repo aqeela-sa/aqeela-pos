@@ -4,7 +4,7 @@
 import * as F from "./fb.js";
 import { firebaseConfig } from "./firebase-config.js";
 
-const VERSION = "2.6.0";
+const VERSION = "2.6.1";
 const ADMIN_EMAIL = "abuabraj@gmail.com";
 const DEVICE_EMAIL = "cashier@aqeela-pos.app";
 const APP_NAME = `<span dir="ltr">Cashier AQ</span>`;
@@ -97,6 +97,7 @@ const C = (...p) => F.collection(db, ...p);
 function fire(p, what) { p.catch(e => { console.error(what, e); toast(`تعذّر الحفظ (${what}): ${e.code || e.message}`, true); }); return p; }
 
 addEventListener("online", () => { S.online = true; drawTop(); });
+addEventListener("keydown", e => { if (S.view === "pin" && !$("#ov") && $("#dots") && S.pinKey && !e.metaKey && !e.ctrlKey) S.pinKey(e.key); });
 addEventListener("offline", () => { S.online = false; drawTop(); });
 
 F.onAuthStateChanged(auth, u => {
@@ -230,6 +231,8 @@ function drawPin() {
   $$("[data-k]").forEach(b => b.onclick = () => { const k = b.dataset.k;
     if (k === "c") pin = ""; else if (k === "b") pin = pin.slice(0, -1); else if (pin.length < 4) pin += k;
     dots(); if (pin.length === 4) check(); });
+  /* لوحة مفاتيح خارجية: الأرقام والحذف */
+  S.pinKey = k => { if (/^\d$/.test(k) && pin.length < 4) { pin += k; dots(); if (pin.length === 4) check(); } else if (k === "Backspace") { pin = pin.slice(0, -1); dots(); } };
   $("#lo").onclick = () => { if (S.shift) return toast("قفّل الوردية المفتوحة أولاً", true); askManager("خروج الجهاز من الحساب", () => F.signOut(auth)); };
   if ($("#toadm")) $("#toadm").onclick = openAdmin;
 }
@@ -406,14 +409,14 @@ function drawCart() {
   $("#pkl").onclick = openParked; $("#park").onclick = parkCart;
   $("#cback").onclick = () => toggleCart(false);
   $("#disc").onclick = () => askManager("الخصم يحتاج رمز المدير", openDiscount);
-  $("#last").onclick = () => { const P = S.today.filter(x => x.status !== "open"), o = P.find(x => x.device === S.dev) || P[0]; if (!o) return toast("لا توجد طلبات اليوم"); printJob(o, { receipt: true }, true); };
+  $("#last").onclick = () => { const P = S.today.filter(x => x.status === "paid" && !!x.test === !!S.device.test), o = P.find(x => x.device === S.dev) || P[0]; if (!o) return toast("لا توجد طلبات اليوم"); printJob(o, { receipt: true }, true); };
   $$("[data-pay]").forEach(b => b.onclick = () => openPay(b.dataset.pay));
   $("#sendk") && ($("#sendk").onclick = sendKitchen);
   const cb = $("#cbar"); if (cb) { cb.innerHTML = `${ic("cart")}<span>عرض الطلب <b class="num">${n}</b></span><b class="num">${m2(total())} ر.س</b>`; cb.disabled = !L.length && !S.cartOpen; cb.onclick = () => toggleCart(true); }
 }
 function toggleCart(v) { S.cartOpen = v; $("#pos")?.classList.toggle("cart-open", v); }
 function removeLine(key) { S.cart.lines = S.cart.lines.filter(x => x.key !== key); if (S.cart.sel === key) S.cart.sel = null; if (!S.cart.lines.length) S.cart.discount = null; }
-/* بعد كل طلب يرجع النوع إلى «سفري» (الأكثر شيوعاً)، فلا ينتقل نوع الطلب السابق إلى التالي بالخطأ */
+/* بعد كل طلب تُفرَّغ السلة ويُمسح نوع الطلب، فيُختار النوع من جديد لكل طلب (إجباري قبل الدفع) */
 function resetCart() { S.cart = { type: null, lines: [], discount: null, sel: null }; S.cartOpen = false; $("#pos")?.classList.remove("cart-open"); drawTop(); drawCart(); drawMenu(); }
 function setType(t) {
   if (t === S.cart.type) return;
@@ -492,10 +495,10 @@ function openDiscount() {
 
 /* ----- payment ----- */
 /* نوع الطلب ظاهر في شاشة الدفع: تبديل محلي/سفري (نفس السعر) قبل التأكيد */
-let PT = null; /* الطلب الذي يُدفع: السلة الحالية أو طلب مفتوح */
-const typeBar = (tg = PT || S.cart) => isAgg(tg.type) ? `<div class="paytype"><span class="tchip lk ${tg.type}">${ic(TYPE_IC[tg.type])}${tName(tg.type)}</span></div>`
+let PT = null, PTT = null; /* الطلب الذي يُدفع: السلة الحالية أو طلب مفتوح؛ PTT نوعه المختار قبل التأكيد */
+const typeBar = (tg = PT ? { type: PTT } : S.cart) => isAgg(tg.type) ? `<div class="paytype"><span class="tchip lk ${tg.type}">${ic(TYPE_IC[tg.type])}${tName(tg.type)}</span></div>`
   : `<div class="paytype"><span>نوع الطلب</span><div class="seg2">${TYPES.filter(t => !isAgg(t[0])).map(([k, l]) => `<button data-pt="${k}" class="${tg.type === k ? "on" : ""}">${ic(TYPE_IC[k])}${l}</button>`).join("")}</div></div>`;
-const bindTypeBar = () => $$("#ov [data-pt]").forEach(b => b.onclick = () => { (PT || S.cart).type = b.dataset.pt; $$("#ov [data-pt]").forEach(x => x.classList.toggle("on", x === b)); drawTop(); drawCart(); });
+const bindTypeBar = () => $$("#ov [data-pt]").forEach(b => b.onclick = () => { if (PT) PTT = b.dataset.pt; else S.cart.type = b.dataset.pt; $$("#ov [data-pt]").forEach(x => x.classList.toggle("on", x === b)); if (!PT) { drawTop(); drawCart(); } });
 function payKeys(h) { if (S.kh) removeEventListener("keydown", S.kh); S.kh = h; addEventListener("keydown", h); }
 /* نوع الطلب إجباري: إن لم يُختر (محلي/سفري/توصيل) تظهر نافذة الاختيار قبل الدفع أو الإرسال للمطبخ */
 function needType(next) {
@@ -516,7 +519,7 @@ function takePhone() {
 }
 function openPay(method, ord) {
   if (!ord && !S.cart.type && S.cart.lines.length) return needType(() => openPay(method));
-  PT = ord || null; if (!ord && !S.cart.lines.length) return;
+  PT = ord || null; PTT = ord ? ord.type : null; if (!ord && !S.cart.lines.length) return;
   const T = ord ? ord.total : total(), n = (ord ? ord.lines : S.cart.lines).reduce((s, l) => s + l.qty, 0), hasDisc = ord ? !!ord.discount : !!S.cart.discount, dA = ord ? ord.discount?.amount || 0 : discAmt();
   if (method !== "cash") {
     const lk = isAgg(method);
@@ -599,13 +602,14 @@ function buildOrder(extra) {
   o.pack = packOf(o.lines); o.cogs = orderCogs(o); return o;
 }
 function keepLocal(o) {
-  const t = S.today.find(x => x.id === o.id); if (t) Object.assign(t, o); else S.today = [{ ...o, _pending: true }, ...S.today];
-  const h = S.shiftOrders.find(x => x.id === o.id); if (h) Object.assign(h, o); else S.shiftOrders = [o, ...S.shiftOrders];
+  const t = S.today.find(x => x.id === o.id); if (t) Object.assign(t, o); else if (o.day === bizDay()) S.today = [{ ...o, _pending: true }, ...S.today];
+  const h = S.shiftOrders.find(x => x.id === o.id); if (h) Object.assign(h, o); else if (S.shift && o.shiftId === S.shift.id) S.shiftOrders = [o, ...S.shiftOrders];
 }
 async function complete(method, given, change, ord) {
   /* ord: طلب مفتوح (أُرسل للمطبخ بدون دفع) يُدفع الآن */
   if (ord) {
-    const u = { status: "paid", method, given: method === "cash" ? r2(given) : null, change: method === "cash" ? r2(change) : 0, type: ord.type, paidAt: Date.now(), paidBy: S.cashier.name };
+    const nt = PTT || ord.type, u = { status: "paid", method, given: method === "cash" ? r2(given) : null, change: method === "cash" ? r2(change) : 0, type: nt, paidAt: Date.now(), paidBy: S.cashier.name };
+    if (nt !== ord.type) u.typeChanges = [...(ord.typeChanges || []), { from: ord.type, to: nt, at: u.paidAt, by: S.cashier.name }];
     if (ord.prep === "open") Object.assign(u, { prep: "done", deliveredAt: u.paidAt, deliveredBy: S.cashier.name });
     const o = Object.assign(ord, u); o.code = await receiptCode(o); u.code = o.code;
     fire(F.updateDoc(D("orders", o.id), u), "دفع الطلب"); keepLocal(o); drawTop();
@@ -627,12 +631,12 @@ const unpaidList = () => { const m = new Map(); [...S.shiftOrders, ...S.today].f
 const normPhone = v => { let d = String(v || "").replace(/[٠-٩]/g, c => "٠١٢٣٤٥٦٧٨٩".indexOf(c)).replace(/\D/g, ""); if (d.startsWith("00966")) d = "0" + d.slice(5); else if (d.startsWith("966")) d = "0" + d.slice(3); else if (d.length === 9 && d[0] === "5") d = "0" + d; return d; };
 function sendKitchen() {
   if (S.cart.lines.length && !S.cart.type) return needType(sendKitchen);
-  PT = null; if (!S.cart.lines.length || isAgg(S.cart.type)) return;
+  PT = null; PTT = null; if (!S.cart.lines.length || isAgg(S.cart.type)) return;
   modal(`${mh("إرسال للمطبخ — الدفع عند الاستلام")}<div class="mdl-b">
     <p class="small muted" style="margin:0 0 12px;line-height:1.7">للطلبات بالاتصال: تُطبع ورقة المطبخ الآن، ولا يُحسب الطلب في المبيعات حتى يحضر العميل ويدفع. إن لم يحضر يُلغى من «بانتظار الدفع».</p>
     ${typeBar()}
-    <div class="f"><label for="kph">رقم جوال العميل <b style="color:var(--bad)">*</b></label><input id="kph" type="tel" inputmode="tel" dir="ltr" maxlength="16" placeholder="05xxxxxxxx" autocomplete="off"></div>
-    <div class="f"><label for="knm">اسم العميل (اختياري)</label><input id="knm" maxlength="30" placeholder="مثال: أبو محمد" autocomplete="off"></div>
+    <div class="f"><label for="kph">رقم جوال العميل <b style="color:var(--bad)">*</b></label><input id="kph" type="tel" inputmode="tel" dir="ltr" maxlength="16" placeholder="05xxxxxxxx" autocomplete="off" value="${esc(S.cart.phone || "")}"></div>
+    <div class="f"><label for="knm">اسم العميل (اختياري)</label><input id="knm" maxlength="30" placeholder="مثال: أبو محمد" autocomplete="off" value="${esc(S.cart.name || "")}"></div>
     <div class="cp-r due"><span>المبلغ عند الاستلام</span><b class="num">${m2(total())}</b></div></div>
     <div class="mdl-f"><button class="btn ghost" data-close>رجوع</button><button class="btn wide" id="kok" style="background:#C2410C">${ic("fire")}إرسال للمطبخ</button></div>`);
   bindTypeBar(); setTimeout(() => $("#kph")?.focus(), 60);
@@ -650,6 +654,8 @@ function sendKitchen() {
 /* ----- تذكير العميل بواتساب: رسالة ثابتة جاهزة برقم الطلب ----- */
 const WA_DEFAULT = "عميلنا العزيز {الاسم}،\nطلبك رقم {رقم} من {المطعم} جاهز للاستلام 🌯\nالمبلغ المطلوب: {المبلغ} ريال\nتفضّل بالحضور لاستلامه، وبالعافية مقدماً.";
 function waText(o, tpl = S.config?.waMsg || WA_DEFAULT) {
+  /* الطلب المدفوع: لا نذكر «المبلغ المطلوب» */
+  if (o.status === "paid") tpl = tpl.split("\n").filter(l => !l.includes("{المبلغ}")).join("\n");
   return tpl.replace(/\s*\{الاسم\}/g, o.name ? " " + o.name : "").replace(/\{رقم\}/g, pad(o.no, 4)).replace(/\{المطعم\}/g, S.config?.store?.name || "")
     .replace(/\{المبلغ\}/g, m2(o.total)).replace(/\{الجوال\}/g, S.config?.store?.phone || "").trim();
 }
@@ -890,18 +896,19 @@ function orderDetail(o) {
 function openOrder(o) {
   if (!o) return; if (isUnpaid(o)) return payOpen(o);
   modal(`${mh(`طلب رقم <span class="num">${pad(o.no, 4)}</span>`)}<div class="mdl-b">${orderDetail(o)}</div>
-    <div class="mdl-f">${o.status !== "void" && (!o.shiftId || o.shiftId === S.shift?.id) ? `<button class="btn ghost" id="vd" style="margin-inline-end:auto;color:var(--bad)">إلغاء الطلب</button>` : o.status !== "void" ? `<span class="small muted" style="margin-inline-end:auto;align-self:center">لا يُلغى: الطلب من وردية أخرى${o.device !== S.dev ? " أو جهاز آخر" : " مقفلة"}</span>` : ""}${o.status !== "void" && o.type !== "lokit" ? `<button class="btn ghost" id="ct">${ic("swap")}تغيير إلى ${o.type === "dine" ? "سفري" : "محلي"}</button>` : ""}<button class="btn ghost" id="bk">رجوع</button><button class="btn ghost" id="rk">${ic("fire")}المطبخ</button><button class="btn" id="rp">${ic("print")}الإيصال</button></div>`);
+    <div class="mdl-f">${o.status !== "void" && (!o.shiftId || o.shiftId === S.shift?.id) ? `<button class="btn ghost" id="vd" style="margin-inline-end:auto;color:var(--bad)">إلغاء الطلب</button>` : o.status !== "void" ? `<span class="small muted" style="margin-inline-end:auto;align-self:center">لا يُلغى: الطلب من وردية أخرى${o.device !== S.dev ? " أو جهاز آخر" : " مقفلة"}</span>` : ""}${o.status !== "void" && !isAgg(o.type) ? `<button class="btn ghost" id="ct">${ic("swap")}تغيير النوع</button>` : ""}<button class="btn ghost" id="bk">رجوع</button><button class="btn ghost" id="rk">${ic("fire")}المطبخ</button><button class="btn" id="rp">${ic("print")}الإيصال</button></div>`, { mid: true });
   $("#bk").onclick = openOrders; $("#rp").onclick = () => printJob(o, { receipt: true }, true); $("#rk").onclick = () => printJob(o, { kitchen: true }, true);
-  $("#ct") && ($("#ct").onclick = () => { const to = o.type === "dine" ? "take" : "dine", ch = { from: o.type, to, at: Date.now(), by: S.cashier?.name || "" };
-    const u = { type: to, typeChanges: [...(o.typeChanges || []), ch] }; Object.assign(o, u); fire(F.updateDoc(D("orders", o.id), u), "نوع الطلب");
-    toast(`صار الطلب ${pad(o.no, 4)} ${TYPES.find(t => t[0] === to)[1]}`); if (o.prep === "open") printJob(o, { kitchen: true }, true); openOrder(o); });
+  $("#ct") && ($("#ct").onclick = () => popMenu($("#ct"), `<div class="pm-h"><b>تغيير نوع الطلب <span class="num">${pad(o.no, 4)}</span></b><small>الحالي: ${tName(o.type)}</small></div>${TYPES.filter(t => !isAgg(t[0]) && t[0] !== o.type).map(([k, l]) => `<button id="ct_${k}">${ic(TYPE_IC[k])}<span>${l}</span></button>`).join("")}`,
+    Object.fromEntries(TYPES.filter(t => !isAgg(t[0]) && t[0] !== o.type).map(([to]) => ["ct_" + to, () => { const ch = { from: o.type, to, at: Date.now(), by: S.cashier?.name || "" };
+      const u = { type: to, typeChanges: [...(o.typeChanges || []), ch] }; Object.assign(o, u); keepLocal(o); fire(F.updateDoc(D("orders", o.id), u), "نوع الطلب");
+      toast(`صار الطلب ${pad(o.no, 4)} ${tName(to)}`); if (o.prep === "open") printJob(o, { kitchen: true }, true); openOrder(o); }]))));
   $("#vd") && ($("#vd").onclick = () => askManager(`إلغاء الطلب ${pad(o.no, 4)} بمبلغ ${m2(o.total)}`, () => {
     modal(`${mh("سبب الإلغاء")}<div class="mdl-b"><div class="f"><label for="vr">السبب (يظهر في التقرير)</label><input id="vr" placeholder="مثال: خطأ في الطلب، العميل ألغى"></div>
       <p class="small muted" style="margin:0">${o.method === "cash" ? `أعِد ${m2(o.total)} ر.س للعميل من الدرج.` : isAgg(o.method) ? `تأكد من إلغاء الطلب في ${tName(o.method)} أيضاً.` : "إن كان المبلغ قد خُصم من بطاقة العميل فأعِده من جهاز الدفع."}</p></div>
       <div class="mdl-f"><button class="btn ghost" data-close>تراجع</button><button class="btn" id="vok" style="background:var(--bad)">تأكيد الإلغاء</button></div>`);
     $("#vok").onclick = () => { const r = $("#vr").value.trim(); if (!r) return toast("اكتب سبب الإلغاء", true);
       const v = { at: Date.now(), reason: r, by: "manager", cashierId: S.cashier.id, cashierName: S.cashier.name };
-      const t = S.today.find(x => x.id === o.id); if (t) Object.assign(t, { status: "void", void: v });
+      Object.assign(o, { status: "void", void: v }); keepLocal(o);
       fire(F.updateDoc(D("orders", o.id), { status: "void", void: v }), "الإلغاء");
       toast(`تم إلغاء الطلب ${pad(o.no, 4)}`); openOrders(); };
   }));
@@ -1343,14 +1350,15 @@ function admMenu() {
     <input data-f="hunger" type="number" step="0.25" min="0" inputmode="decimal" dir="ltr" value="${m.hunger ?? ""}" placeholder="—" aria-label="سعر هنقرستيشن">
     <input data-f="cost" type="number" step="0.01" min="0" inputmode="decimal" dir="ltr" value="${m.cost ?? ""}" placeholder="—" aria-label="تكلفة الطعام">
     <button class="sw ${m.box ? "on" : ""}" data-f="box" aria-label="يُقدَّم في علبة ورقية"></button>
+    <button class="sw ${m.addon ? "on" : ""}" data-f="addon" aria-label="إضافة تُضاف على صنف (مثل الجبن)"></button>
     <input data-f="sort" type="number" step="1" inputmode="numeric" dir="ltr" value="${m.sort ?? 0}" aria-label="الترتيب">
     <button class="sw ${m.active ? "on" : ""}" data-f="active" aria-label="ظاهر في الكاشير"></button></div>`;
   A.innerHTML = `<div class="note" style="margin-bottom:12px">سعر لوكيت أو هنقرستيشن الفارغ يعني أن الصنف غير متوفر فيه. اضغط على مربع الصورة لإضافة صورة الصنف (تُصغَّر تلقائياً). «تكلفة الطعام» للحبة الواحدة بدون التغليف (من برنامج المحاسبة). «علبة» للأصناف التي تُقدَّم في علبة ورقية، ويُحسب لكل منها علبة وكيس. الأصناف المُطفأة تختفي من الكاشير وتبقى في التقارير.</div>
-    <div class="mrow h"><span>صورة</span><span>الصنف</span><span>القسم</span><span>سعر المطعم</span><span>سعر لوكيت</span><span>سعر هنقرستيشن</span><span>تكلفة الطعام</span><span>علبة</span><span>الترتيب</span><span>ظاهر</span></div>
+    <div class="mrow h"><span>صورة</span><span>الصنف</span><span>القسم</span><span>سعر المطعم</span><span>سعر لوكيت</span><span>سعر هنقرستيشن</span><span>تكلفة الطعام</span><span>علبة</span><span>إضافة</span><span>الترتيب</span><span>ظاهر</span></div>
     <div id="mrows">${rows.map(row).join("")}</div>
     <div style="display:flex;gap:10px;margin-top:14px;flex-wrap:wrap"><button class="btn ghost" id="madd">+ صنف جديد</button><span class="sp"></span><button class="btn" id="msv">حفظ المنيو</button></div>
-    <p class="small muted">الإضافات (مثل الجبن) تُضاف على الصنف المحدد في السلة. لجعل صنف جديد «إضافة» اختر قسم الإضافات واكتب في اسمه كلمة «جبن» أو أضفه ثم أخبرني.</p>`;
-  const bind = () => { $$("#mrows [data-f=active],#mrows [data-f=box]").forEach(b => b.onclick = () => b.classList.toggle("on"));
+    <p class="small muted">«إضافة»: صنف يُضاف على الصنف المحدد في السلة بدل أن يكون سطراً مستقلاً (مثل الجبن). «الترتيب»: الأصغر يظهر أولاً.</p>`;
+  const bind = () => { $$("#mrows [data-f=active],#mrows [data-f=box],#mrows [data-f=addon]").forEach(b => b.onclick = () => b.classList.toggle("on"));
     $$("#mrows .mimg").forEach(w => { const i = +w.closest(".mrow").dataset.r, r = rows[i];
       const pick = w.querySelector("[data-pick]"), rm = w.querySelector("[data-rmimg]");
       pick.onclick = () => { const f = document.createElement("input"); f.type = "file"; f.accept = "image/*";
@@ -1364,9 +1372,9 @@ function admMenu() {
     $$("#mrows .mrow").forEach(e => { const i = +e.dataset.r, o = rows[i], g = f => e.querySelector(`[data-f=${f}]`);
       const v = { name: g("name").value.trim(), cat: g("cat").value, price: g("price").value === "" ? null : r2(g("price").value), lokit: g("lokit").value === "" ? null : r2(g("lokit").value), hunger: g("hunger").value === "" ? null : r2(g("hunger").value), sort: +g("sort").value || 0, active: g("active").classList.contains("on"), cost: g("cost").value === "" ? null : r2(g("cost").value), box: g("box").classList.contains("on") };
       if (!v.name && !o.id) return; if (!v.name) err ||= "اسم صنف فارغ"; if (v.price == null || v.price < 0) err ||= `سعر المطعم مطلوب: ${v.name || "صنف جديد"}`;
-      v.addon = o.id ? !!o.addon : v.cat === "extras" && /جبن|إضافة|اضافة/.test(v.name);
+      v.addon = g("addon").classList.contains("on");
       if (o.imgChanged) v.img = o.img || null;
-      const changed = !o.id || o.imgChanged || ["name", "cat", "price", "lokit", "hunger", "sort", "active", "cost", "box"].some(k => (o[k] ?? null) !== v[k]);
+      const changed = !o.id || o.imgChanged || ["name", "cat", "price", "lokit", "hunger", "sort", "active", "cost", "box", "addon"].some(k => (o[k] ?? (k === "addon" || k === "box" ? false : null)) !== v[k]);
       if (changed) { batch.set(D("menu", o.id || "m" + Date.now().toString(36) + rid(2)), { ...(o.id ? { ref: o.ref ?? null } : { ref: null }), ...v, updatedAt: Date.now() }, { merge: true }); n++; } });
     if (err) return toast(err, true); if (!n) return toast("لا تغييرات");
     try { await batch.commit(); toast(`تم حفظ ${n} صنف ✓`); admMenu(); } catch (e) { toast("تعذّر الحفظ: " + (e.code || e.message), true); }

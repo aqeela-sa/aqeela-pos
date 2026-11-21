@@ -164,11 +164,12 @@ function picker(anchor, o) {
       while (w <= last) { L.push([w, A.addDays(w, 6)]); w = A.addDays(w, 7); }
       return head(`${AR_M[m]} ${y}`) + `<div class="pk2-w">${L.map(([s, e]) => `<button data-wk="${s}|${e}" class="${o.a === s ? "on" : ""}">${dLab(s)} - ${dLab(e)}</button>`).join("")}</div>`;
     }
-    const f = new Date(y, m, 1), start = A.addDays(A.ymd(f), -f.getDay()), cells = [...Array(42).keys()].map(i => A.addDays(start, i));
+    /* الأسبوع يبدأ السبت مثل تقارير المطعم */
+    const f = new Date(y, m, 1), start = A.addDays(A.ymd(f), -((f.getDay() + 1) % 7)), cells = [...Array(42).keys()].map(i => A.addDays(start, i));
     const lo = half || o.a, hi = half ? null : o.b;
-    const cal = head(`${AR_M[m]} ${y}`) + `<div class="pk2-d">${["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"].map(d => `<i>${d}</i>`).join("")}${cells.map(d => {
+    const cal = head(`${AR_M[m]} ${y}`) + `<div class="pk2-d">${["س", "ح", "ن", "ث", "ر", "خ", "ج"].map(d => `<i>${d}</i>`).join("")}${cells.map(d => {
       const cls = [+d.slice(5, 7) !== m + 1 ? "out" : "", lo && hi && d > lo && d < hi ? "in" : "", d === lo || d === hi ? "end" : "", d === t ? "today" : ""].join(" ");
-      return `<button data-dy="${d}" class="${cls}">${+d.slice(8)}</button>`; }).join("")}</div>`;
+      return `<button data-dy="${d}" class="${cls}" ${d > t ? "disabled" : ""}>${+d.slice(8)}</button>`; }).join("")}</div>`;
     if (o.mode === "day") return cal;
     return `<div class="pk2-r"><div>${cal}<p class="pk2-hint">${half ? "اختر يوم النهاية" : "اختر يوم البداية ثم يوم النهاية"}</p></div><div class="pk2-p">${presets.map(([l, a, b]) => `<button data-pr="${a}|${b}" class="${o.a === a && o.b === b ? "on" : ""}">${l}</button>`).join("")}</div></div>`;
   };
