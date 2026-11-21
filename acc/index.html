@@ -924,6 +924,7 @@ nav.tabs a[hidden],.nav-more[hidden]{display:none!important}
   <nav class="tabs" id="tabs">
     <a href="#dashboard" data-v="dashboard">لوحة التحكم</a>
     <a href="#sales" data-v="sales">المبيعات</a>
+    <a href="#pos" data-v="pos" class="more">مبيعات الكاشير</a>
     <a href="#invoices" data-v="invoices">الفواتير</a>
     <a href="#prodcost" data-v="prodcost">تكاليف الإنتاج</a>
     <a href="#suppliers" data-v="suppliers" class="more">الموردون</a>
@@ -5947,9 +5948,81 @@ function armDelete(b, fn){
 }
 
 /* ---------- routing / render ---------- */
+/* ---------- CASHIER (Cashier AQ) ---------- */
+/* a cashier order belongs to the business day of the shift it was rung up in (a 1 a.m. order counts on the evening the shift opened) */
+const POS_M = ["cash","mada","visa","lokit","hunger"];
+/* HungerStation contract (18/11/2026): 10% service + 2.5% online payment on the order total, plus a delivery charge by basket value */
+const hsDelivery = t => t >= 80 ? 13 : t >= 60 ? 11 : t >= 50 ? 9 : t >= 40 ? 8 : 7;
+const hsFee = t => r2(t * 0.125 + hsDelivery(t));
+function posDays(){
+  const P = S.pos; if (!P || !P.ready) return null;
+  const sday = new Map((P.shifts || []).map(x => [x.id, x.day])), by = new Map();
+  for (const o of (P.orders || [])){
+    if (o.test) continue;
+    const d = (o.shiftId && sday.get(o.shiftId)) || o.day; if (!d) continue;
+    const x = by.get(d) || {date:d, cash:0, mada:0, visa:0, lokit:0, hunger:0, count:0, voids:0, voidAmt:0, open:0, openAmt:0, disc:0, hsN:0, hsGross:0, hsFee:0, hsDel:0, last:0};
+    const t = n(o.total);
+    if (o.status === "void"){ x.voids++; x.voidAmt += t; }
+    else if (o.status === "open"){ x.open++; x.openAmt += t; }
+    else if (POS_M.includes(o.method)){
+      x[o.method] += t; x.count++; x.disc += n(o.discount && o.discount.amount);
+      if (o.method === "hunger"){ x.hsN++; x.hsGross += t; x.hsFee += hsFee(t); x.hsDel += hsDelivery(t); }
+    }
+    x.last = Math.max(x.last, n(o.paidAt || o.ts)); by.set(d, x);
+  }
+  by.forEach(x => { POS_M.forEach(k => x[k] = r2(x[k])); x.total = r2(POS_M.reduce((a, k) => a + x[k], 0)); x.hsFee = r2(x.hsFee); });
+  return by;
+}
+const posAsSale = x => ({cash: x.cash || null, mada: x.mada || null, visa: x.visa || null, delivery: r2(x.lokit + x.hunger) || null});
+function viewPos(){
+  return `<div class="bar"><h2>مبيعات الكاشير</h2>${periodPicker()}</div>
+    <p class="small muted" style="margin:-4px 0 12px">المبيعات كما سجّلها برنامج الكاشير لحظة بلحظة، مقارنةً بالمبيعات المسجّلة في البرنامج (من فودكس). كل طلب يُحسب على يوم الوردية التي سُجّل فيها، فطلب الساعة 1 فجراً يتبع اليوم الذي فُتحت فيه الوردية.</p>
+    <div id="list"></div>`;
+}
+function bindPos(){}
+function renderPos(){
+  const el = $("#list"); if (!el) return;
+  if (!S.pos || !S.pos.ready){ el.innerHTML = `<div class="empty card">جارٍ قراءة بيانات الكاشير…</div>`; return; }
+  if (S.pos.err){ el.innerHTML = `<div class="note warn">تعذّرت قراءة بيانات الكاشير (${esc(S.pos.err)}).</div>`; return; }
+  const all = posDays(), R = monthRange(S.y, S.m), t = today();
+  const days = [...all.values()].filter(x => inR(x.date, R)).sort((a, b) => a.date < b.date ? 1 : -1);
+  const rec = d => S.sales.get(d) || null;
+  const card = s => n(s.mada) + n(s.visa);
+  const chip = v => Math.abs(v) < 0.005 ? '<span class="chip ok">مطابق</span>' : `<span class="chip ${v > 0 ? "warn" : "bad"}"><span class="num">${v > 0 ? "+" : ""}${fmt(v)}</span></span>`;
+  const sum = k => r2(days.reduce((a, x) => a + n(x[k]), 0));
+  const hs = days.reduce((a, x) => ({n:a.n + x.hsN, g:a.g + x.hsGross, f:a.f + x.hsFee, d:a.d + x.hsDel}), {n:0, g:0, f:0, d:0});
+  const live = new Set((S.pos.shifts || []).filter(z => z.status === "open").map(z => z.day));
+  const rows = days.map(x => {
+    const s = rec(x.date), st = s ? saleTotal(s) : null, diff = s ? r2(x.total - st) : null, isPos = s && s.source === "pos";
+    const det = s ? [["كاش", x.cash - n(s.cash)], ["بطاقات", x.mada + x.visa - card(s)], ["تطبيقات", x.lokit + x.hunger - n(s.delivery)]].filter(([, v]) => Math.abs(v) >= 0.005).map(([l, v]) => `${l} <span class="num">${v > 0 ? "+" : ""}${fmt(v)}</span>`).join(" · ") : "";
+    return `<tr><td class="num key">${dmy(x.date)}${live.has(x.date) ? ' <span class="chip info">الوردية مفتوحة</span>' : ""}</td><td>${dayName(x.date)}</td>
+      <td class="n num">${x.count}</td><td class="n">${money(x.cash)}</td><td class="n">${money(x.mada + x.visa)}</td><td class="n">${money(x.lokit)}</td><td class="n">${money(x.hunger)}</td>
+      <td class="n"><b>${money(x.total)}</b>${x.voids ? `<div class="by">ملغاة ${x.voids} · <span class="num">${fmt(x.voidAmt)}</span></div>` : ""}${x.open ? `<div class="by neg">غير مدفوعة ${x.open} · <span class="num">${fmt(x.openAmt)}</span></div>` : ""}</td>
+      <td class="n">${s ? `${money(st)}<div class="by">${isPos ? "من الكاشير" : "من فودكس"}${s.count ? ` · ${s.count} طلب` : ""}</div>` : '<span class="dash">لم يُسجَّل</span>'}</td>
+      <td>${s ? chip(diff) : ""}${det && !isPos ? `<div class="by">${det}</div>` : ""}</td>
+      <td>${!live.has(x.date) && x.date <= t && S.canEdit && !isPos ? `<button type="button" class="btn ghost sm" data-posimp="${x.date}">${s ? "اعتماد أرقام الكاشير" : "تسجيل من الكاشير"}</button>` : ""}</td></tr>`;
+  }).join("");
+  el.innerHTML = `<div class="grid g4" style="margin-bottom:14px">
+      <div class="kpi"><span class="l">مبيعات الكاشير · ${MONTHS[S.m-1]}</span><span class="v num">${fmt(sum("total"))}</span><span class="small muted">${days.reduce((a, x) => a + x.count, 0)} طلب في ${days.length} يوم</span></div>
+      <div class="kpi green"><span class="l">كاش</span><span class="v num">${fmt(sum("cash"))}</span></div>
+      <div class="kpi blue"><span class="l">مدى وفيزا</span><span class="v num">${fmt(r2(sum("mada") + sum("visa")))}</span></div>
+      <div class="kpi orange"><span class="l">لوكيت وهنقرستيشن</span><span class="v num">${fmt(r2(sum("lokit") + sum("hunger")))}</span></div></div>
+    ${hs.n ? `<div class="note" style="margin-bottom:14px"><b>هنقرستيشن هذا الشهر حسب العقد:</b> ${hs.n} طلب بقيمة <b class="num">${fmt(hs.g)}</b> · العمولة 10% <span class="num">${fmt(hs.g * 0.1)}</span> + الدفع الإلكتروني 2.5% <span class="num">${fmt(hs.g * 0.025)}</span> + التوصيل <span class="num">${fmt(hs.d)}</span> = <b class="num">${fmt(hs.f)}</b> (${pct(hs.g ? hs.f / hs.g : 0)}) · الصافي المتوقع <b class="num">${fmt(hs.g - hs.f)}</b>
+      <div class="small muted" style="margin-top:4px">تقديري حتى يصل أول كشف من هنقرستيشن: لا يشمل إضافة HPlus (4 ريال) ولا ضريبة القيمة المضافة على الرسوم إن وُجدت.</div></div>` : ""}
+    ${days.length ? `<div class="tw stick"><table><thead><tr><th>يوم الوردية</th><th>اليوم</th><th class="n">الطلبات</th><th class="n">كاش</th><th class="n">مدى وفيزا</th><th class="n">لوكيت</th><th class="n">هنقرستيشن</th><th class="n">إجمالي الكاشير</th><th class="n">المسجّل في البرنامج</th><th>الفرق</th><th></th></tr></thead>
+      <tbody>${rows}<tr class="tot"><td colspan="2">الإجمالي</td><td class="n num">${days.reduce((a, x) => a + x.count, 0)}</td><td class="n">${money(sum("cash"))}</td><td class="n">${money(r2(sum("mada") + sum("visa")))}</td><td class="n">${money(sum("lokit"))}</td><td class="n">${money(sum("hunger"))}</td><td class="n">${money(sum("total"))}</td><td class="n">${money(r2(days.reduce((a, x) => a + (rec(x.date) ? saleTotal(rec(x.date)) : 0), 0)))}</td><td colspan="2"></td></tr></tbody></table></div>`
+      : `<div class="empty card">لا توجد مبيعات في الكاشير في ${MONTHS[S.m-1]} ${S.y}.</div>`}
+    <p class="foot" style="margin-top:10px">«الفرق» = الكاشير − المسجّل. فودكس هو المعتمد حتى يستقر الكاشير؛ زر «اعتماد أرقام الكاشير» يكتب أرقام الكاشير مكان المسجّل لذلك اليوم (ويُحفظ ما كان قبله في سجل التعديلات).</p>`;
+  el.querySelectorAll("[data-posimp]").forEach(b => armDelete(b, async () => {
+    const d = b.dataset.posimp, x = all.get(d), ex = S.sales.get(d);
+    const data = {...(ex ? strip(ex) : {}), date:d, ...posAsSale(x), transfer: ex ? (ex.transfer ?? null) : null, credit: ex ? (ex.credit ?? null) : null, count: x.count || null, source:"pos", notes: "من الكاشير" + (ex && ex.source === "foodics" ? " (بدل فودكس)" : "")};
+    await recWrite("sales", d, data, null, "تم تسجيل مبيعات اليوم من الكاشير");
+  }));
+}
 const VIEWS = {
   dashboard:{v:viewDashboard, list:renderDash},
   sales:{v:viewSales, bind:bindSales, list:renderSalesList},
+  pos:{v:viewPos, bind:bindPos, list:renderPos},
   invoices:{v:viewInvoices, bind:bindInvoices, list:renderInvList},
   prodcost:{v:viewProdCost, bind:bindProdCost, list:renderProdCost},
   suppliers:{v:viewSuppliers, bind:bindSuppliers, list:renderSuppliersList},
@@ -6062,6 +6135,11 @@ async function connect(){
   sub("itemSales","itemSales", a => S.itemSales = a);
   render();
   if (S.isOwner) setTimeout(fixAttFlags, 8000);
+  if (S.isOwner && window.__accFb && window.__accFb.pos){
+    const from = addDays(S.settings.startDate || "2026-11-14", -1);
+    window.__accFb.pos.watch(from, d => { S.pos = {...d, ready:true, at:Date.now()}; if (["pos","sales"].includes(S.view)) renderLists(); },
+      e => { S.pos = {orders:[], shifts:[], ready:true, err: e && (e.code || e.message)}; if (S.view === "pos") renderLists(); });
+  }
 }
 /* once: records marked as having pictures that were never attached lose the mark, so «مرفق» means a picture really exists */
 async function fixAttFlags(){
@@ -6079,6 +6157,6 @@ async function fixAttFlags(){
 }
 if (window.__accHost) window.__accStart = connect; else connect();
 </script>
-<script type="module" src="acc-fb.js?v=1"></script>
+<script type="module" src="acc-fb.js?v=2"></script>
 </body>
 </html>

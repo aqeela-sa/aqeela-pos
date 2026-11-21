@@ -90,7 +90,17 @@ const downloads = {
 window.claude = {
   use: async k => k === "db" ? db : k === "user" ? userApi : k === "downloads" ? downloads : (() => { throw new Error("unavailable"); })()
 };
-window.__accFb = { db, user: userApi, roleOf, ADMIN_EMAIL };
+/* the cashier's own records (orders and shifts), read-only, for the owner: the accounting program compares and imports from them */
+const pos = {
+  watch(fromDay, cb, onErr){
+    let orders = null, shifts = null;
+    const fire = () => { if (orders && shifts) cb({ orders, shifts }); };
+    const u1 = F.onSnapshot(F.query(F.collection(fs, "orders"), F.where("day", ">=", fromDay)), q => { orders = q.docs.map(d => ({ id: d.id, ...d.data() })); fire(); }, e => onErr && onErr(e));
+    const u2 = F.onSnapshot(F.query(F.collection(fs, "shifts"), F.where("day", ">=", fromDay)), q => { shifts = q.docs.map(d => ({ id: d.id, ...d.data() })); fire(); }, e => onErr && onErr(e));
+    return () => { u1(); u2(); };
+  }
+};
+window.__accFb = { db, user: userApi, roleOf, ADMIN_EMAIL, pos };
 
 /* ---------- sign-in screen ---------- */
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
