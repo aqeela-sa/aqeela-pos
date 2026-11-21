@@ -22,7 +22,7 @@ const rLab = (a, b) => a === b ? dFull(a) : a.slice(0, 7) === b.slice(0, 7) ? `$
 const tm = t => { const d = new Date(t); let h = d.getHours(); const ap = h < 12 ? "ص" : "م"; h = h % 12 || 12; return `${h}:${pad(d.getMinutes())} ${ap}`; };
 const hrLab = h => `${(h % 12) || 12}${h < 12 ? "ص" : "م"}`;
 const COLORS = ["#C1121F", "#1F4E9E", "#F28C28", "#2A9D8F", "#7B2CBF", "#E9C46A", "#6B7280", "#0EA5E9"];
-const TYPE_C = { dine: "#F28C28", take: "#C1121F", lokit: "#7B2CBF" };
+const TYPE_C = { dine: "#F28C28", take: "#C1121F", delivery: "#0E7490", lokit: "#7B2CBF", hunger: "#B45309" };
 
 /* ---------- أيقونات (Material) ---------- */
 const P = {
@@ -360,7 +360,7 @@ function drawer(head, body, foot, bind) {
   d.innerHTML = `<div class="cx-drh">${head}<span class="cx-sp"></span><button class="cx-ib" data-x aria-label="إغلاق">${ic("close")}</button></div><div class="cx-drb">${body}</div>${foot ? `<div class="cx-drf">${foot}</div>` : ""}`;
   document.body.append(s, d); d.querySelector("[data-x]").onclick = closeDrawer; bind?.(d);
 }
-const typeTag = t => `<span class="cx-tag ${t === "lokit" ? "lk" : t === "dine" ? "warn" : ""}">${A.TYPES.find(x => x[0] === t)?.[1] || t}</span>`;
+const typeTag = t => `<span class="cx-tag ${t === "lokit" ? "lk" : t === "hunger" ? "hg" : t === "delivery" ? "blue" : t === "dine" ? "warn" : ""}">${A.TYPES.find(x => x[0] === t)?.[1] || t}</span>`;
 const mName = o => o.method ? A.METHODS[o.method] : "لم يُدفع";
 const statusTag = o => o.status === "void" ? `<span class="cx-tag bad">${o.void?.kind === "noshow" ? "ملغي — لم يحضر" : o.void?.unpaid ? "ملغي قبل الدفع" : "ملغي"}</span>` : isUnpaid(o) ? `<span class="cx-tag warn">بانتظار الدفع</span>` : o.prep === "open" ? `<span class="cx-tag blue">قيد التحضير</span>` : `<span class="cx-tag ok">مكتمل</span>`;
 function orderDrawer(o) {

@@ -140,7 +140,7 @@
 .cx-t .wrap{white-space:normal;min-width:180px}
 .cx-tag{display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:999px;font-size:12px;font-weight:700;background:var(--line2);color:var(--ink2)}
 .cx-tag.ok{background:var(--okbg);color:var(--ok)}.cx-tag.bad{background:var(--badbg);color:var(--bad)}.cx-tag.warn{background:var(--warnbg);color:var(--warn)}
-.cx-tag.lk{background:#F1E9FA;color:#6B2FA3}.cx-tag.blue{background:#E8F0FC;color:#1D4ED8}.cx-tag.test{background:#FEF3C7;color:#92400E}
+.cx-tag.lk{background:#F1E9FA;color:#6B2FA3}.cx-tag.hg{background:#FEF3C7;color:#92400E}.cx-tag.blue{background:#E8F0FC;color:#1D4ED8}.cx-tag.test{background:#FEF3C7;color:#92400E}
 .cx-pg{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px 18px;border-top:1px solid var(--line);font-size:14px;color:var(--mut)}
 .cx-pg button{border:0;background:none;color:var(--acc);font-weight:600;font-size:15px;padding:6px 10px}
 .cx-pg button:disabled{color:var(--mut2);cursor:default}

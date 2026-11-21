@@ -346,3 +346,28 @@ body{background:var(--page)}
 .rp-hrs.dense{gap:2px}.rp-hrs.dense b{display:none}.rp-hrs.dense span{font-size:9.5px}
 .rp-hrs.dense div:nth-child(2n) span{visibility:hidden}
 .rp-f select.per{min-width:170px;font-weight:600}
+/* صورة الصنف في قائمة المنتجات */
+.mimg{position:relative;width:52px;height:52px}
+.mimg-b{width:52px;height:52px;border-radius:10px;border:1.5px dashed #C9C9D0;display:grid;place-items:center;color:#A1A1AA;overflow:hidden;background:#FAFAFB}
+.mimg-b.has{border:1px solid var(--line);padding:0}.mimg-b img{width:100%;height:100%;object-fit:cover;display:block}
+.mimg-x{position:absolute;top:-6px;left:-6px;width:22px;height:22px;border-radius:50%;background:#18181B;color:#fff;display:grid;place-items:center}
+.mimg-x .ic{width:14px;height:14px}
+/* الأنواع الخمسة: محلي/سفري/توصيل في صف، ولوكيت/هنقرستيشن في صف */
+.c-type{grid-template-columns:repeat(6,1fr)}
+.c-type button{grid-column:span 2;min-height:42px;font-size:15px}
+.c-type button.lokit,.c-type button.hunger{grid-column:span 3}
+.c-type button.on.hunger{background:#B45309;color:#fff}
+.pay-hunger{background:#B45309}.btn.pay-hunger{color:#fff}
+.pc-ic.hunger{background:#B45309}
+.tchip.lk.hunger{background:#FEF3C7;color:#92400E}
+/* صور الأصناف */
+.item.has-img{padding:0 0 12px;min-height:0;gap:8px}
+.item.has-img::before{z-index:1}
+.item .pimg{display:block;width:100%;aspect-ratio:16/10;background:#F4F4F6;overflow:hidden}
+.item .pimg img{width:100%;height:100%;object-fit:cover;display:block}
+.item.has-img .nm,.item.has-img .ft{padding:0 12px}
+.item.has-img .q{top:10px;box-shadow:0 0 0 2px #fff;z-index:2}
+.item.has-img.in .nm{padding-left:12px}
+.item.has-img:disabled .pimg{filter:grayscale(1)}
+.item .pimg.ph{display:grid;place-items:center;background:color-mix(in srgb,var(--c) 14%,#fff);color:color-mix(in srgb,var(--c) 80%,#000);font-size:26px;font-weight:700}
+.mrow input,.mrow select{padding:0 8px}
