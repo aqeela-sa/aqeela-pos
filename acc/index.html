@@ -5709,12 +5709,15 @@ function bindPosClean(){
     const posSales = [...S.sales.values()].filter(x => x.source === "pos").map(x => x.date || x.id).sort();
     const line = (t, G, sh) => `<div class="dy-kv"><span>${t}</span><b>${G.n ? `${G.n} طلب (${G.paid} مدفوع، <span class="num">${fmt(G.sum)}</span>) · ${G.from === G.to ? `<span class="num">${dmy(G.from)}</span>` : `من <span class="num">${dmy(G.from)}</span> إلى <span class="num">${dmy(G.to)}</span>`} · ${sh} وردية` : `لا يوجد${sh ? ` · ${sh} وردية` : ""}`}</b></div>`;
     out.innerHTML = `<div style="margin-top:12px">${line("طلبات الوضع التجريبي", tG, testS.length)}${line("طلبات عادية (غير مُعلَّمة تجريبي)", rG, realS.length)}
-      ${openSh.length ? `<div class="note warn" style="margin-top:10px"><b>وردية مفتوحة الآن:</b> ${openSh.map(x => `${esc((x.openedBy || {}).name || "")} منذ <span class="num">${dmy(x.day)}</span>${x.test ? " (تجريبية)" : ""}`).join("، ")}. أقفلها من الكاشير أولاً؛ الوردية المفتوحة وطلباتها لا تُمسح.</div>` : ""}
+      ${openSh.length ? `<div class="note warn" style="margin-top:10px"><b>وردية مفتوحة الآن:</b> ${openSh.map(x => `${esc((x.openedBy || {}).name || "")} منذ <span class="num">${dmy(x.day)}</span>${x.test ? " (تجريبية)" : ""}`).join("، ")}. الورديات المفتوحة وطلباتها لا تُمسح، إلا إذا فعّلت الخيار التالي.
+        <label class="tag" for="pc_open" style="margin-top:8px"><input type="checkbox" id="pc_open"> امسح الورديات المفتوحة أيضاً (المتروكة من التجارب على أي جهاز). أقفل وردية الآيباد الحالية قبلها.</label></div>` : ""}
       ${posSales.length ? `<div class="note warn" style="margin-top:10px"><b>انتبه:</b> مبيعات هذه الأيام في صفحة المبيعات مسجّلة «من الكاشير»: ${posSales.map(d => `<span class="num">${dmy(d)}</span>`).join("، ")}. إن كانت من طلبات تجربة فاحذفها أو أعد إدخالها من فودكس بعد المسح.</div>` : ""}
-      <div class="actions" style="margin-top:12px"><button class="btn ghost" type="button" id="pc_test" ${testO.filter(o => !openIds.has(o.shiftId)).length || testS.length ? "" : "disabled"}>مسح طلبات التجربة فقط</button>
-      <button class="btn danger" type="button" id="pc_all" ${A.orders.filter(o => !openIds.has(o.shiftId)).length || testS.length || realS.length ? "" : "disabled"}>مسح كل طلبات الكاشير</button></div></div>`;
+      <div class="actions" style="margin-top:12px"><button class="btn ghost" type="button" id="pc_test" ${testO.length || testS.length ? "" : "disabled"}>مسح طلبات التجربة فقط</button>
+      <button class="btn danger" type="button" id="pc_all" ${A.orders.length || A.shifts.length ? "" : "disabled"}>مسح كل طلبات الكاشير</button></div></div>`;
     const run = async (orders, shifts, msg) => {
-      try { const o = await window.__accFb.pos.remove("orders", orders.filter(x => !openIds.has(x.shiftId)).map(x => x.id)); const s = await window.__accFb.pos.remove("shifts", shifts.map(x => x.id));
+      const incl = !!($("#pc_open") && $("#pc_open").checked), keep = o => !incl && openIds.has(o.shiftId);
+      if (incl) shifts = [...shifts, ...openSh.filter(x => shifts === testS ? x.test : true)];
+      try { const o = await window.__accFb.pos.remove("orders", orders.filter(x => !keep(x)).map(x => x.id)); const s = await window.__accFb.pos.remove("shifts", shifts.map(x => x.id));
         toast(`${msg}: ${o} طلب و${s} وردية`); b.click(); }
       catch(e){ toast("تعذّر المسح: " + (e.code || e.message || e)); } };
     if ($("#pc_test")) armDelete($("#pc_test"), () => run(testO, testS, "تم مسح بيانات التجربة"), "اضغط مرة أخرى لمسح بيانات التجربة");
