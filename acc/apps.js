@@ -61,6 +61,15 @@ function pfLedger(pf){
   return {days, tr, net, got, bal: r2(net - got), late: r2(days.filter(x => x.st === "late" || (x.st === "part" && t > addDays(x.due, 2))).reduce((a, x) => a + x.left, 0)), extra: r2(Math.max(0, pool))};
 }
 
+/* the platforms' cut for one shift day, from the cashier and the contracts (null until both are loaded); cached per data change */
+let pfDC = {key:null, by:null};
+function pfDayComm(d){
+  if (!S.pos || !S.pos.ready || !S.platforms) return null;
+  const key = `${S.pos.at}|${S.pfVer || 0}`;
+  if (pfDC.key !== key){ const by = new Map(); for (const p of S.platforms) for (const r of pfOrders(p)) by.set(r.day, (by.get(r.day) || 0) + r.f.total); pfDC = {key, by}; }
+  return r2(pfDC.by.get(d) || 0);
+}
+
 /* ---------- data ---------- */
 let pfUnsub = null;
 function startPlatforms(){
@@ -70,9 +79,10 @@ function startPlatforms(){
     if (!all.length && !S.pfSeeded){ S.pfSeeded = true;
       for (const p of PF_SEED){ const {id, ...r} = p; try { await S.db.doc("platforms/" + id).set({...r, createdAt:new Date().toISOString(), by:S.uid || "", history:[]}); } catch(e){} }
       return; }
+    S.pfVer = (S.pfVer || 0) + 1;
     S.platforms = all.sort((a, b) => (a.order ?? 9) - (b.order ?? 9) || (a.name < b.name ? -1 : 1));
     if (!S.pfSel || !S.platforms.find(p => p.id === S.pfSel)) S.pfSel = (S.platforms[0] || {}).id;
-    if (S.view === "platforms") renderPlatforms();
+    if (S.view === "platforms") renderPlatforms(); else if (["dashboard","sales","reports","accounting","cfo"].includes(S.view)) renderLists();
   }, () => {});
 }
 async function pfSave(pf, patch, msg){

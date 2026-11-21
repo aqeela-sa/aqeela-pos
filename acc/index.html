@@ -1017,7 +1017,14 @@ const saleTotal = s => SALE_FIELDS.reduce((t,[k]) => t + n(s[k]), 0);
 const lvOf = p => { const v = p*100; return v < 40 ? "lv1" : v < 45 ? "lv2" : v < 47 ? "lv3" : "lv4"; };
 const invTotal = x => n(x.beforeTax) + n(x.vat);
 const commRate = () => Math.min(100, Math.max(0, n(S.settings.appCommission))) / 100;
-const netSale = s => saleTotal(s) - n(s.delivery) * commRate();
+/* the delivery platforms' cut of one day's sales: exact, contract by contract and order by order, once that day's sales are taken
+   from the cashier (source "pos"); before that, the delivery total (all apps together, from Foodics) × the overall rate in the settings */
+function saleComm(s, d){
+  if (!s) return 0; d = d || s.date;
+  if (s.source === "pos" && typeof pfDayComm === "function"){ const v = pfDayComm(d); if (v != null) return v; }
+  return n(s.delivery) * commRate();
+}
+const netSale = s => saleTotal(s) - saleComm(s);
 const isProd = x => x.production === true || (x.production == null && (S.settings.productionCategories||[]).includes(x.category));
 const money = (x, cls="") => `<span class="num ${cls}">${fmt(x)}</span>`;
 function toast(msg){ const t=$("#toast"); t.textContent=msg; t.classList.add("show"); clearTimeout(toast.h); toast.h=setTimeout(()=>t.classList.remove("show"),2600); }
@@ -1100,7 +1107,7 @@ function balances(rows){
 function appReceivable(){
   const st = S.settings, start = st.startDate || "0000";
   let due = 0, paid = 0, last = null;
-  S.sales.forEach((s,d) => { if (d >= start) due += n(s.delivery) * (1 - commRate()); });
+  S.sales.forEach((s,d) => { if (d >= start) due += n(s.delivery) - saleComm(s, d); });
   S.recon.forEach((r,d) => { if (has(r.appTransfer)){ paid += n(r.appTransfer); if (!last || d > last.date) last = {date:d, amt:n(r.appTransfer)}; } });
   for (const x of S.apps){ paid += n(x.amount); if (!last || x.date > last.date) last = {date:x.date, amt:n(x.amount)}; }
   let gross = 0; S.sales.forEach((s,d) => { if (d >= start) gross += n(s.delivery); });
@@ -1132,7 +1139,7 @@ function monthStats(y,m){
   const unpaid = invs.filter(x => x.status === "غير مدفوعة").reduce((t,x)=>t+invTotal(x),0);
   const cats = new Map();
   for (const x of invs){ const c = x.category || "بدون تصنيف"; cats.set(c,(cats.get(c)||0)+invTotal(x)); }
-  const comm = by.find(x=>x.k==="delivery").v * commRate();
+  const comm = sales.reduce((t,s)=>t+saleComm(s),0);
   const netSales = total - comm;
   // current month: compare cost with sales of the same days — sales are entered the next day, so stop at the last day that has sales
   const lastSale = [...S.sales].filter(([d,s]) => inR(d,R) && saleTotal(s) > 0).map(([d]) => d).sort().pop();
@@ -1288,7 +1295,7 @@ function renderDash(){
     <div class="card"><h3>المبيعات حسب الطريقة</h3><div class="tw"><table><thead><tr><th>الطريقة</th><th class="n">المبلغ</th><th class="n">النسبة</th></tr></thead><tbody>
       ${st.by.map(x=>`<tr><td>${x.l}</td><td class="n barcell"><i style="width:${(x.v/maxBy*100).toFixed(1)}%"></i>${money(x.v)}</td><td class="n num">${st.total?pct(x.v/st.total):"0.0%"}</td></tr>`).join("")}
       <tr class="tot"><td>الإجمالي</td><td class="n">${money(st.total)}</td><td class="n num">${st.total?"100.0%":"0.0%"}</td></tr>
-      <tr><td>− عمولة التوصيل (<span class="num">${fmt0(commRate()*100)}%</span>)</td><td class="n">${money(-st.comm,"v neg")}</td><td></td></tr>
+      <tr><td>− عمولة التطبيقات (<span class="num">${st.total && n((st.by.find(x=>x.k==="delivery")||{}).v) ? pct(st.comm / st.by.find(x=>x.k==="delivery").v) : fmt0(commRate()*100) + "%"}</span>)</td><td class="n">${money(-st.comm,"v neg")}</td><td></td></tr>
       <tr class="tot"><td>المبيعات الفعلية</td><td class="n">${money(st.netSales)}</td><td></td></tr></tbody></table></div></div>
     <div class="card"><h3>الفواتير حسب التصنيف</h3><div class="tw"><table><thead><tr><th>التصنيف</th><th class="n">المبلغ</th><th class="n">النسبة</th></tr></thead><tbody>
       ${st.cats.length ? st.cats.map(x=>`<tr><td>${esc(x.c)}</td><td class="n barcell"><i style="width:${(x.v/maxC*100).toFixed(1)}%"></i>${money(x.v)}</td><td class="n num">${pct(x.v/st.invTotal)}</td></tr>`).join("") : `<tr><td colspan="3" class="empty">لا توجد فواتير في هذا الشهر</td></tr>`}
@@ -1322,7 +1329,7 @@ function renderDash(){
       <div class="small muted">تُحسب من الفواتير الموسومة «مصاريف إنتاج» + التغليف المستهلك. <span class="chip ${prodLv[0]}">${st.netSales>0?prodLv[1]:"—"}</span></div></div></div>
     <div class="bal apps"><div class="hd">مستحقات التطبيقات</div><div class="bd">
       <div class="big num">${fmt(ar.left)}<small>ر.س</small></div>
-      <div class="small">صافي مبيعات التوصيل (بعد ${fmt0(commRate()*100)}%) <b class="num">${fmt(ar.due)}</b> − المحوَّل <b class="num">${fmt(ar.paid)}</b></div>
+      <div class="small">صافي مبيعات التوصيل (بعد العمولة${ar.gross ? ` <span class="num">${pct(1 - ar.due / ar.gross)}</span>` : ""}) <b class="num">${fmt(ar.due)}</b> − المحوَّل <b class="num">${fmt(ar.paid)}</b></div>
       <div class="small muted">${ar.last ? `آخر تحويل <span class="num">${dmy(ar.last.date)}</span> بمبلغ <span class="num">${fmt(ar.last.amt)}</span>` : "لم يُسجَّل أي تحويل بعد"} · المتوقع التالي <span class="num">${ar.next?dmy(ar.next):"—"}</span></div>
       <div class="actions"><button class="btn sm" type="button" id="d_app" ${S.canWrite?"":"disabled"}>تسجيل تحويل من التطبيقات</button><a class="small" href="#apps">كل التحويلات</a></div></div></div>
   </div>`;
@@ -2001,7 +2008,7 @@ function rangeStats(a,b){
   const sales = [...S.sales].filter(([d]) => inR(d,R)).map(([d,s]) => ({...s, date:d})).sort((x,y) => x.date < y.date ? -1 : 1);
   const by = SALE_FIELDS.map(([k,l]) => ({k, l, v: sumBy(sales, s => n(s[k]))}));
   const total = sumBy(by, x => x.v), delivery = by.find(x => x.k === "delivery").v;
-  const comm = delivery * commRate(), netSales = total - comm;
+  const comm = sumBy(sales, s => saleComm(s)), netSales = total - comm;
   const days = sales.filter(s => saleTotal(s) > 0).length;
   const invs = S.invoices.filter(x => inR(x.date,R)).sort((x,y) => x.date < y.date ? -1 : 1);
   const cus = S.custody.filter(x => inR(x.date,R));
@@ -2021,7 +2028,7 @@ function rangeStats(a,b){
 function receivableAt(d){
   const start = S.settings.startDate || "0000";
   let due = 0, paid = 0;
-  S.sales.forEach((s,k) => { if (k >= start && k <= d) due += n(s.delivery) * (1 - commRate()); });
+  S.sales.forEach((s,k) => { if (k >= start && k <= d) due += n(s.delivery) - saleComm(s, k); });
   S.recon.forEach((r,k) => { if (k <= d && has(r.appTransfer)) paid += n(r.appTransfer); });
   for (const x of S.apps) if (x.date <= d) paid += n(x.amount);
   return {due, paid, left: due - paid};
@@ -2484,11 +2491,11 @@ function accJournal(){
       {acc:"1101", dr:n(st.openingCash)}, {acc:"1102", dr:n(st.openingBank)}, {acc:"3201", cr:n(st.openingCash)+n(st.openingBank)}]);
   // sales
   S.sales.forEach((s, d) => {
-    const cash = n(s.cash), mada = n(s.mada) + n(s.visa), tr = n(s.transfer), cred = n(s.credit), del = n(s.delivery);
+    const cash = n(s.cash), mada = n(s.mada) + n(s.visa), tr = n(s.transfer), cred = n(s.credit), del = n(s.delivery), dc = saleComm(s, d);
     const gross = cash + mada + tr + cred, k = vatOn(d) ? 1/(1+vatRate()) : 1;
     add(d, "sales", d, `مبيعات يوم ${dmy(d)}`, [
       {acc:"1101", dr:cash}, {acc: delay ? "1103" : "1102", dr:mada}, {acc:"1102", dr:tr}, {acc:"1105", dr:cred},
-      {acc:"1104", dr: del*(1-cr_)}, {acc:"5301", dr: del*cr_},
+      {acc:"1104", dr: del - dc}, {acc:"5301", dr: dc},
       {acc:"4101", cr: gross*k}, {acc:"4102", cr: del*k}, {acc:"2201", cr:(gross+del)*(1-k)}]);
     if (delay && mada && !bankCovers(BSJ, addDays(d, delay))) add(addDays(d, delay), "sales", d, `تحصيل مدى وفيزا مبيعات ${dmy(d)}`, [{acc:"1102", dr:mada}, {acc:"1103", cr:mada}]);
   });
@@ -3553,8 +3560,8 @@ const vatOutCat = c => VAT_OUT.has(catAccount(c)) || /رسوم حكومية|بل
 function vatReturnData(a, b){
   const v = accCfg().vat, reg = !!(v.registered && v.from), rate = vatRate(), from = reg ? (a < v.from ? v.from : a) : a;
   const k = 1 / (1 + rate), est = !reg;
-  let gross = 0, del = 0;
-  S.sales.forEach((s, d) => { if (d >= from && d <= b){ gross += n(s.cash) + n(s.mada) + n(s.visa) + n(s.transfer) + n(s.credit); del += n(s.delivery); } });
+  let gross = 0, del = 0, delComm = 0;
+  S.sales.forEach((s, d) => { if (d >= from && d <= b){ gross += n(s.cash) + n(s.mada) + n(s.visa) + n(s.transfer) + n(s.credit); del += n(s.delivery); delComm += saleComm(s, d); } });
   const salesTot = gross + del, salesBase = r2(salesTot * k), salesVat = r2(salesTot - salesBase);
   const skip = acc => /^3201/.test(acc) || acc === "2201" || acc === "2103" || acc === "5405" || /^3101/.test(acc);
   const inv = S.invoices.filter(x => x.date >= from && x.date <= b && x.pay !== "من العهدة" && !skip(catAccount(x.category)));
@@ -3566,7 +3573,7 @@ function vatReturnData(a, b){
   const std = [...withVat, ...estInv];
   const base0 = sumBy(withVat, x => n(x.beforeTax)), vat0 = sumBy(withVat, x => n(x.vat));
   const estTot = sumBy(estInv, invTotal) + sumBy(estCus, x => n(x.amount));
-  const comm = r2(del * commRate()), commVat = est ? r2(comm - comm * k) : 0;
+  const comm = r2(delComm), commVat = est ? r2(comm - comm * k) : 0;
   const stdBase = r2(base0 + estTot * k), stdVat = r2(vat0 + (estTot - estTot * k));
   const non = inv.filter(x => !(n(x.vat) > 0) && !estInv.includes(x)), nonCus = cus.filter(x => !estCus.includes(x));
   const nonAmt = r2(sumBy(non, invTotal) + sumBy(nonCus, x => n(x.amount)));
@@ -5959,9 +5966,9 @@ Object.assign(REPORTS, {
 /* ---------- small UI utilities ---------- */
 function ensureOpt(sel, v){ if (v && ![...sel.options].some(o => o.value === v)){ const o = document.createElement("option"); o.textContent = v; sel.appendChild(o); } }
 function disarm(b){ if (!b) return; b.classList.remove("arm"); if (b.dataset.label) b.textContent = b.dataset.label; }
-function armDelete(b, fn){
+function armDelete(b, fn, confirmText){
   b.dataset.label = b.textContent;
-  b.onclick = async () => { if (!b.classList.contains("arm")){ b.classList.add("arm"); b.textContent = "اضغط مرة أخرى لتأكيد الحذف"; clearTimeout(b._t); b._t = setTimeout(()=>disarm(b),4000); return; } clearTimeout(b._t); disarm(b); await fn(); };
+  b.onclick = async () => { if (!b.classList.contains("arm")){ b.classList.add("arm"); b.textContent = confirmText || "اضغط مرة أخرى لتأكيد الحذف"; clearTimeout(b._t); b._t = setTimeout(()=>disarm(b),4000); return; } clearTimeout(b._t); disarm(b); await fn(); };
 }
 
 /* ---------- routing / render ---------- */
@@ -6096,7 +6103,7 @@ function renderPos(){
     const d = b.dataset.posimp, x = all.get(d), ex = S.sales.get(d);
     const data = {...(ex ? strip(ex) : {}), date:d, ...posAsSale(x), transfer: ex ? (ex.transfer ?? null) : null, credit: ex ? (ex.credit ?? null) : null, count: x.count || null, source:"pos", notes: "من الكاشير" + (ex && ex.source === "foodics" ? " (بدل فودكس)" : "")};
     await recWrite("sales", d, data, null, "تم تسجيل مبيعات اليوم من الكاشير");
-  }));
+  }, "اضغط مرة أخرى للتأكيد"));
 }
 const VIEWS = {
   dashboard:{v:viewDashboard, list:renderDash},
@@ -6217,7 +6224,7 @@ async function connect(){
   if (S.isOwner && typeof startPlatforms === "function") startPlatforms();
   if (S.isOwner && window.__accFb && window.__accFb.pos){
     const from = addDays(S.settings.startDate || "2026-11-14", -1);
-    window.__accFb.pos.watch(from, d => { S.pos = {...d, ready:true, at:Date.now()}; if (["pos","sales","platforms"].includes(S.view)) renderLists(); },
+    window.__accFb.pos.watch(from, d => { S.pos = {...d, ready:true, at:Date.now()}; if (["pos","sales","platforms","dashboard","reports","accounting"].includes(S.view)) renderLists(); },
       e => { S.pos = {orders:[], shifts:[], ready:true, err: e && (e.code || e.message)}; if (S.view === "pos") renderLists(); });
   }
 }
@@ -6237,7 +6244,7 @@ async function fixAttFlags(){
 }
 if (window.__accHost) window.__accStart = connect; else connect();
 </script>
-<script src="apps.js?v=1"></script>
+<script src="apps.js?v=2"></script>
 <script type="module" src="acc-fb.js?v=3"></script>
 </body>
 </html>
