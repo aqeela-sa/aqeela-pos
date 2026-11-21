@@ -4,7 +4,7 @@
 import * as F from "./fb.js";
 import { firebaseConfig } from "./firebase-config.js";
 
-const VERSION = "2.2.0";
+const VERSION = "2.3.0";
 const ADMIN_EMAIL = "abuabraj@gmail.com";
 const DEVICE_EMAIL = "cashier@aqeela-pos.app";
 const APP_NAME = `<span dir="ltr">Cashier AQ</span>`;
@@ -296,7 +296,7 @@ function drawTop() {
 const topBtns = np => { const nu = unpaidList().length; return `${S.device.test ? `<span class="tchip test">تجريبي</span>` : ""}
     <button class="tbtn ${nu ? "due" : ""}" id="unp" title="طلبات أُرسلت للمطبخ ولم تُدفع">${ic("clock")}<span class="tl">بانتظار الدفع</span>${nu ? `<b class="bd num">${nu}</b>` : ""}</button>
     <button class="tbtn ${np ? "hot" : ""}" id="prp" title="طلبات قيد التحضير">${ic("fire")}<span class="tl">قيد التحضير</span>${np ? `<b class="bd num">${np}</b>` : ""}</button>
-    <button class="tbtn" id="ord" title="طلبات اليوم">${ic("receipt")}<span class="tl">الطلبات</span></button>
+    <button class="tbtn" id="ord" title="التقارير: المبيعات والطلبات والأصناف">${ic("dash")}<span class="tl">التقارير</span></button>
     <button class="tbtn who" id="me" title="الكاشير والوردية">${ic("person")}<span class="tw"><b>${esc(S.cashier?.name || "")}</b><small>وردية <span class="num">${S.shift ? hm(S.shift.openedAt) : ""}</span></small></span>${ic("chev", "cv")}</button>
     <button class="tbtn sq" id="more" title="القائمة" aria-label="القائمة">${ic("menu")}</button>`; };
 function bindTop(partial) {
@@ -308,7 +308,7 @@ function bindTop(partial) {
     $("#qx").onclick = () => { S.q = ""; q.value = ""; $("#qx").hidden = true; drawMenu(); };
   }
   $("#me").onclick = e => cashierMenu(e.currentTarget);
-  $("#ord").onclick = openOrders; $("#prp").onclick = openPrep; $("#unp").onclick = openUnpaid;
+  $("#ord").onclick = () => openReports(); $("#prp").onclick = openPrep; $("#unp").onclick = openUnpaid;
   $("#more").onclick = openMore;
 }
 function cashierMenu(btn) {
@@ -719,21 +719,91 @@ function drawPrep() {
 setInterval(() => { if ($("#prep-list")) drawPrep(); }, 30e3);
 
 /* ----- orders today ----- */
-function openOrders() {
-  watchToday();
-  modal(`${mh(`طلبات اليوم <span class="muted small num">${dmy(bizDay())}</span>`)}<div class="mdl-b" id="orders-list"></div>`, { wide: true });
+/* ----- تقارير الكاشير (أثناء العمل): الملخص، الطلبات، الأصناف المباعة — بدون التكلفة والأرباح ----- */
+const RP = { tab: "sum", per: "shift", type: "", method: "", cat: "", item: "", status: "all", q: "", isort: "q" };
+let rpCache = { key: "", list: null };
+function openOrders() { openReports("orders"); }
+function openReports(tab) {
+  watchToday(); if (tab) RP.tab = tab; if (RP.per === "shift" && !S.shift) RP.per = "today";
+  modal(`${mh("التقارير")}<div class="rp-bar" id="rp-bar"></div><div class="mdl-b" id="orders-list"></div>`, { wide: true });
   drawOrdersList();
 }
-function drawOrdersList() {
-  const B = $("#orders-list"); if (!B) return; const L = S.today, tm = !!S.device.test, ok = L.filter(o => o.status === "paid" && !!o.test === tm);
-  const sum = m => r2(ok.filter(o => o.method === m).reduce((s, o) => s + o.total, 0));
-  B.innerHTML = `${tm ? `<div class="note warn" style="margin-bottom:10px">الأرقام أدناه للطلبات <b>التجريبية</b> فقط، لأن الجهاز في الوضع التجريبي. المبيعات الفعلية لا تتأثر بها.</div>` : L.some(o => o.test) ? `<p class="small muted" style="margin:0 0 8px">الطلبات التجريبية تظهر في القائمة ولا تدخل في الأرقام.</p>` : ""}<div class="kpis"><div class="kpi"><span>الطلبات</span><b class="num">${ok.length}</b></div><div class="kpi"><span>الإجمالي</span><b>${money(ok.reduce((s, o) => s + o.total, 0))}</b></div>
-    ${Object.entries(METHODS).map(([k, l]) => `<div class="kpi"><span>${l}</span><b>${money(sum(k))}</b></div>`).join("")}</div>
-    <div class="list">${L.length ? L.map(o => `<button class="row ${o.status === "void" ? "void" : ""}" data-o="${esc(o.id)}"><span class="no num">${pad(o.no, 4)}</span>
-      <span><b>${o.lines.map(l => `${l.qty}× ${esc(l.name)}`).join("، ")}</b><br><span class="meta"><span class="num">${hm(o.ts)}</span> · ${esc(o.cashierName)} · ${TYPES.find(t => t[0] === o.type)[1]} · ${METHODS[o.method]}
+async function rpData() {
+  const tm = !!S.device.test, mine = o => !!o.test === tm;
+  if (RP.per === "shift") return S.shiftOrders.filter(mine);
+  if (RP.per === "today") { const d = bizDay(), m = new Map(); [...S.today, ...S.shiftOrders].forEach(o => { if (o.day === d && mine(o)) m.set(o.id, o); }); return [...m.values()]; }
+  const d = addDays(bizDay(), -1);
+  if (rpCache.key !== d) { rpCache = { key: d, list: null };
+    try { const s = await F.getDocs(F.query(C("orders"), F.where("day", "==", d))); rpCache.list = s.docs.map(x => x.data()); }
+    catch (e) { rpCache.key = ""; throw e; } }
+  return rpCache.list.filter(mine);
+}
+const rpSel = (id, label, opts, v) => `<label class="rp-f"><span>${label}</span><select id="${id}"><option value="">الكل</option>${opts.map(([k, l]) => `<option value="${esc(k)}" ${v === k ? "selected" : ""}>${esc(l)}</option>`).join("")}</select></label>`;
+async function drawOrdersList() {
+  const B = $("#orders-list"), BAR = $("#rp-bar"); if (!B || !BAR) return;
+  const pers = [["shift", "الوردية الحالية"], ["today", "اليوم"], ["yday", "أمس"]].filter(p => p[0] !== "shift" || S.shift);
+  const items = S.menu.filter(m => m.active || m.cat).map(m => [m.name, m.name]);
+  BAR.innerHTML = `<div class="rp-tabs">${[["sum", "الملخص"], ["orders", "الطلبات"], ["items", "الأصناف المباعة"]].map(([k, l]) => `<button data-rt="${k}" class="${RP.tab === k ? "on" : ""}">${l}</button>`).join("")}</div>
+    <div class="rp-ctl"><div class="seg2">${pers.map(([k, l]) => `<button data-rper="${k}" class="${RP.per === k ? "on" : ""}">${l}</button>`).join("")}</div>
+      ${rpSel("rty", "النوع", TYPES, RP.type)}${rpSel("rme", "الدفع", Object.entries(METHODS), RP.method)}
+      ${RP.tab === "items" ? rpSel("rca", "القسم", CATS, RP.cat) : RP.tab === "orders" ? rpSel("rit", "الصنف", items, RP.item) : ""}
+      ${RP.type || RP.method || RP.cat || RP.item ? `<button class="rp-clr" id="rclr">${ic("close")}مسح التصفية</button>` : ""}</div>`;
+  $$("[data-rt]").forEach(b => b.onclick = () => { RP.tab = b.dataset.rt; drawOrdersList(); });
+  $$("[data-rper]").forEach(b => b.onclick = () => { RP.per = b.dataset.rper; drawOrdersList(); });
+  [["rty", "type"], ["rme", "method"], ["rca", "cat"], ["rit", "item"]].forEach(([id, k]) => { const e = $("#" + id); if (e) e.onchange = () => { RP[k] = e.value; drawOrdersList(); }; });
+  $("#rclr") && ($("#rclr").onclick = () => { RP.type = RP.method = RP.cat = RP.item = ""; drawOrdersList(); });
+  let all; try { if (RP.per === "yday" && rpCache.key !== addDays(bizDay(), -1)) B.innerHTML = `<div class="empty" style="padding:50px">جارٍ التحميل…</div>`; all = await rpData(); }
+  catch (e) { B.innerHTML = `<div class="err">تعذّر تحميل طلبات أمس: ${esc(e.code || e.message)}</div>`; return; }
+  if (!$("#orders-list")) return;
+  const F1 = all.filter(o => (!RP.type || o.type === RP.type) && (!RP.method || o.method === RP.method));
+  const paid = F1.filter(o => o.status === "paid"), voids = F1.filter(o => o.status === "void"), unp = F1.filter(isUnpaid);
+  const sum = a => r2(a.reduce((s, o) => s + o.total, 0)), net = sum(paid);
+  const head = `${S.device.test ? `<div class="note warn" style="margin-bottom:12px">الجهاز في الوضع التجريبي: الأرقام للطلبات <b>التجريبية</b> فقط.</div>` : ""}<p class="rp-per">${RP.per === "shift" && S.shift ? `الوردية منذ <span class="num">${hm(S.shift.openedAt)}</span> · فتحها ${esc(S.shift.openedBy?.name || "")}` : `يوم <span class="num">${dmy(RP.per === "yday" ? addDays(bizDay(), -1) : bizDay())}</span>`}</p>`;
+  if (RP.tab === "sum") {
+    const by = (arr, key, names) => Object.entries(names).map(([k, l]) => { const g = arr.filter(o => o[key] === k); return [l, g.length, sum(g)]; }).filter(r => r[1]);
+    const tbl = (t, rows) => `<div class="rp-card"><h4>${t}</h4>${rows.length ? `<table class="t"><thead><tr><th></th><th class="n">الطلبات</th><th class="n">المبلغ</th><th class="n">النسبة</th></tr></thead><tbody>${rows.map(([l, n, v]) => `<tr><td>${l}</td><td class="n num">${n}</td><td class="n">${money(v)}</td><td class="n num">${net ? (v / net * 100).toFixed(1) + "%" : "—"}</td></tr>`).join("")}</tbody><tfoot><tr><td>المجموع</td><td class="n num">${paid.length}</td><td class="n">${money(net)}</td><td></td></tr></tfoot></table>` : `<p class="muted small">لا توجد مبيعات</p>`}</div>`;
+    const qty = paid.reduce((s, o) => s + o.lines.reduce((a, l) => a + l.qty, 0), 0), disc = paid.filter(o => o.discount);
+    const hrs = {}; paid.forEach(o => { const h = new Date(o.ts).getHours(); hrs[h] = (hrs[h] || 0) + o.total; }); const hk = Object.keys(hrs).map(Number).sort((a, b) => ((a - 4 + 24) % 24) - ((b - 4 + 24) % 24)), hm2 = Math.max(1, ...Object.values(hrs));
+    B.innerHTML = head + `<div class="kpis rp-k">
+      <div class="kpi"><span>صافي المبيعات</span><b>${money(net)}</b><span>ر.س</span></div><div class="kpi"><span>الطلبات المكتملة</span><b class="num">${paid.length}</b><span><span class="num">${qty}</span> صنف</span></div>
+      <div class="kpi"><span>متوسط الطلب</span><b>${money(paid.length ? net / paid.length : 0)}</b></div>
+      <div class="kpi"><span>الخصومات</span><b>${money(sum(disc.map(o => ({ total: o.discount.amount }))))}</b><span><span class="num">${disc.length}</span> طلب</span></div>
+      <div class="kpi bad"><span>الإلغاءات</span><b>${money(sum(voids))}</b><span><span class="num">${voids.length}</span> طلب${voids.some(o => o.void?.unpaid) ? ` · منها <span class="num">${voids.filter(o => o.void?.unpaid).length}</span> لم يُدفع` : ""}</span></div>
+      <div class="kpi warn"><span>بانتظار الدفع</span><b>${money(sum(unp))}</b><span><span class="num">${unp.length}</span> طلب</span></div></div>
+      <div class="rp-grid">${tbl("حسب طريقة الدفع", by(paid, "method", METHODS))}${tbl("حسب نوع الطلب", by(paid, "type", Object.fromEntries(TYPES)))}</div>
+      ${hk.length ? `<div class="rp-card"><h4>المبيعات حسب الساعة</h4><div class="rp-hrs">${hk.map(h => `<div><i style="height:${Math.max(3, hrs[h] / hm2 * 100)}%"></i><b class="num">${Math.round(hrs[h])}</b><span class="num">${(h % 12) || 12}${h < 12 ? "ص" : "م"}</span></div>`).join("")}</div></div>` : ""}`;
+  }
+  if (RP.tab === "orders") {
+    const q = RP.q.trim().replace(/^0+(?=\d)/, "");
+    const L = F1.filter(o => (!RP.item || o.lines.some(l => l.name === RP.item || l.mods.some(m => m.name === RP.item)))
+      && (RP.status === "all" || (RP.status === "paid" ? o.status === "paid" : RP.status === "unpaid" ? isUnpaid(o) : RP.status === "void" ? o.status === "void" : RP.status === "disc" ? o.discount && o.status !== "void" : true))
+      && (!q || String(o.no) === q || String(o.no).includes(q) || (o.code || "").toUpperCase().includes(q.toUpperCase()) || (q.length >= 4 && (o.phone || "").includes(q)))).sort((a, b) => b.ts - a.ts);
+    const okL = L.filter(o => o.status === "paid");
+    B.innerHTML = head + `<div class="rp-ob"><div class="seg2">${[["all", "الكل"], ["paid", "مكتمل"], ["unpaid", "بانتظار الدفع"], ["disc", "عليه خصم"], ["void", "ملغي"]].map(([k, l]) => `<button data-rst="${k}" class="${RP.status === k ? "on" : ""}">${l}</button>`).join("")}</div>
+      <label class="srch rp-q">${ic("search")}<input id="rq" type="search" placeholder="رقم الطلب أو الجوال أو رمز التحقق" value="${esc(RP.q)}" autocomplete="off"></label></div>
+      <p class="rp-sum"><b class="num">${L.length}</b> طلب · مكتمل <b class="num">${okL.length}</b> بمبلغ <b class="num">${m2(sum(okL))}</b> ر.س</p>
+      <div class="list">${L.length ? L.map(o => `<button class="row ${o.status === "void" ? "void" : ""}" data-o="${esc(o.id)}"><span class="no num">${pad(o.no, 4)}</span>
+      <span><b>${o.lines.map(l => `${l.qty}× ${esc(l.name)}`).join("، ")}</b><br><span class="meta"><span class="num">${hm(o.ts)}</span> · ${esc(o.cashierName)} · ${TYPES.find(t => t[0] === o.type)?.[1] || ""} · ${o.method ? METHODS[o.method] : "لم يُدفع"}
       ${o.status === "void" ? ` <span class="chip bad">${o.void?.unpaid ? "ملغي — لم يُدفع" : "ملغي"}</span>` : ""}${isUnpaid(o) ? ` <span class="chip warn">بانتظار الدفع · <span class="num">${esc(o.phone || "")}</span></span>` : ""}${o.discount ? ` <span class="chip warn">خصم</span>` : ""}${o.test ? ` <span class="chip test">تجريبي</span>` : ""}${o._pending ? ` <span class="chip warn">لم يُرسل بعد</span>` : ""}</span></span>
-      <span class="money" style="font-weight:800;font-size:18px">${m2(o.total)}</span></button>`).join("") : `<div class="empty" style="padding:40px">لا توجد طلبات اليوم بعد</div>`}</div>`;
-  $$("#orders-list [data-o]").forEach(b => b.onclick = () => openOrder(S.today.find(o => o.id === b.dataset.o)));
+      <span class="money" style="font-weight:800;font-size:18px">${m2(o.total)}</span></button>`).join("") : `<div class="empty" style="padding:40px">لا توجد طلبات مطابقة</div>`}</div>`;
+    $$("[data-rst]").forEach(b => b.onclick = () => { RP.status = b.dataset.rst; drawOrdersList(); });
+    const qi = $("#rq"); qi.oninput = () => { RP.q = qi.value; clearTimeout(RP.t); RP.t = setTimeout(() => { drawOrdersList().then(() => { const n = $("#rq"); if (n) { n.focus(); n.setSelectionRange(n.value.length, n.value.length); } }); }, 250); };
+    $$("#orders-list [data-o]").forEach(b => b.onclick = () => openOrder(all.find(o => o.id === b.dataset.o)));
+  }
+  if (RP.tab === "items") {
+    const catOf = id => S.menu.find(m => m.id === id)?.cat || "", it = {};
+    const add = (k, name, cat, q, v) => { const x = it[k] || (it[k] = { name, cat, q: 0, v: 0, n: new Set() }); x.q += q; x.v += v; };
+    paid.forEach(o => { const f = o.subtotal ? o.total / o.subtotal : 1; o.lines.forEach(l => { add(l.id || l.name, l.name, catOf(l.id), l.qty, l.qty * l.price * f); it[l.id || l.name].n.add(o.id);
+      l.mods.forEach(m => { add(m.id || m.name, m.name, catOf(m.id), l.qty, l.qty * m.price * f); it[m.id || m.name].n.add(o.id); }); }); });
+    let R = Object.values(it).filter(x => !RP.cat || x.cat === RP.cat);
+    R.sort((a, b) => RP.isort === "v" ? b.v - a.v : RP.isort === "name" ? a.name.localeCompare(b.name, "ar") : b.q - a.q || b.v - a.v);
+    const tq = R.reduce((s, x) => s + x.q, 0), tv = R.reduce((s, x) => s + x.v, 0), arrow = k => RP.isort === k ? " ▾" : "";
+    B.innerHTML = head + `<table class="t rp-it"><thead><tr><th data-is="name">الصنف${arrow("name")}</th><th>القسم</th><th class="n" data-is="q">الكمية${arrow("q")}</th><th class="n">الطلبات</th><th class="n" data-is="v">صافي المبيعات${arrow("v")}</th><th class="n">النسبة</th></tr></thead>
+      <tbody>${R.length ? R.map(x => `<tr><td><b>${esc(x.name)}</b></td><td class="muted">${CATS.find(c => c[0] === x.cat)?.[1] || ""}</td><td class="n num"><b>${x.q}</b></td><td class="n num">${x.n.size}</td><td class="n">${money(x.v)}</td><td class="n num">${tv ? (x.v / tv * 100).toFixed(1) + "%" : ""}</td></tr>`).join("") : `<tr><td colspan="6" class="muted" style="text-align:center;padding:30px">لا توجد مبيعات</td></tr>`}</tbody>
+      ${R.length ? `<tfoot><tr><td>المجموع</td><td></td><td class="n num">${tq}</td><td></td><td class="n">${money(tv)}</td><td></td></tr></tfoot>` : ""}</table>
+      <p class="small muted" style="margin:10px 0 0">صافي المبيعات بعد توزيع خصم الطلب على أصنافه. الإضافات (مثل الجبن) تظهر كأصناف مستقلة.</p>`;
+    $$("[data-is]").forEach(h => h.onclick = () => { RP.isort = h.dataset.is; drawOrdersList(); });
+  }
 }
 function orderDetail(o) {
   return `<table class="t"><tbody>${o.lines.map(l => `<tr><td>${l.qty} × ${esc(l.name)}${l.mods.map(m => `<br><span class="small muted">+ ${esc(m.name)} ${m2(m.price)}</span>`).join("")}${(l.notes || []).length || l.note ? `<br><span class="small" style="color:var(--blue);font-weight:700">• ${esc([...(l.notes || []), ...(l.note ? [l.note] : [])].join(" · "))}</span>` : ""}</td><td class="n">${money(l.total)}</td></tr>`).join("")}</tbody>
@@ -765,7 +835,7 @@ function openOrder(o) {
 /* ----- more menu & device settings ----- */
 function openMore() {
   modal(`${mh("القائمة")}<div class="mdl-b"><div class="list">
-    <button class="row" id="m-ord"><span class="ri">${ic("receipt")}</span><span><b>طلبات اليوم</b><br><span class="meta">عرض، إعادة طباعة، إلغاء</span></span><span></span></button>
+    <button class="row" id="m-ord"><span class="ri">${ic("dash")}</span><span><b>التقارير</b><br><span class="meta">المبيعات، الطلبات (إعادة طباعة، إلغاء)، الأصناف المباعة</span></span><span></span></button>
     <button class="row" id="m-sh"><span class="ri">${ic("clock")}</span><span><b>الوردية</b><br><span class="meta">مفتوحة منذ <span class="num">${S.shift ? hm(S.shift.openedAt) : ""}</span> · إيداع، صرف، تقفيل</span></span><span></span></button>
     <button class="row" id="m-sw"><span class="ri">${ic("swap")}</span><span><b>تبديل الكاشير</b><br><span class="meta">الكاشير الحالي: ${esc(S.cashier.name)}</span></span><span></span></button>
     <button class="row" id="m-dev"><span class="ri">${ic("gear")}</span><span><b>إعدادات الجهاز والطابعة</b><br><span class="meta">تحتاج رمز المدير</span></span><span></span></button>
