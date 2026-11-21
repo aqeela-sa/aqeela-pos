@@ -32,8 +32,24 @@ const pfDayOf = (o, sday) => (o.shiftId && sday.get(o.shiftId)) || o.day;
 function pfOrders(pf){
   const P = S.pos; if (!P || !P.ready || !pf.posKey) return [];
   const sday = new Map((P.shifts || []).map(x => [x.id, x.day]));
-  return (P.orders || []).filter(o => !o.test && o.status === "paid" && (o.method === pf.posKey || (o.type === pf.posKey && !o.method)))
+  const rows = (P.orders || []).filter(o => !o.test && o.status === "paid" && (o.method === pf.posKey || (o.type === pf.posKey && !o.method)))
     .map(o => { const day = pfDayOf(o, sday), t = n(o.total), c = pfContract(pf, day); return {o, day, t, c, f: pfFee(c, t)}; });
+  return pf.id === PF_SALES_APP ? rows.concat(pfFromSales(pf, rows, sday)) : rows;
+}
+/* days whose Lokit orders were not rung up on the cashier (taken in Foodics and entered on the sales page): the sales page's
+   «تطبيقات التوصيل» for that day, less any HungerStation orders the cashier recorded that day, is Lokit's; one row per day */
+const PF_SALES_APP = "lokit";
+function pfFromSales(pf, rows, sday){
+  const have = new Set(rows.map(r => r.day)), st = S.settings.startDate || "", other = new Map();
+  for (const o of (S.pos.orders || [])) if (!o.test && o.status === "paid" && o.method && o.method !== pf.posKey && (S.platforms || []).some(p => p.posKey === o.method)){ const d = pfDayOf(o, sday); other.set(d, (other.get(d) || 0) + n(o.total)); }
+  const out = [];
+  for (const s of (S.sales ? S.sales.values() : [])){
+    const day = s.date || s.id; if (!day || (st && day < st) || have.has(day)) continue;
+    const t = r2(n(s.delivery) - (other.get(day) || 0)); if (t <= 0.004) continue;
+    const c = pfContract(pf, day), comm = t * n(c && c.commissionPct) / 100, pay = t * n(c && c.paymentPct) / 100;
+    out.push({o:null, src:"sales", day, t, c, approx: !!(c && ((c.tiers || []).length || n(c.perOrder))), f:{comm, pay, del:0, extra:0, total: comm + pay}});
+  }
+  return out;
 }
 /* transfers count from the day the cashier started recording this platform's orders; earlier ones settle sales the cashier never saw */
 const pfStart = pf => { const d = pfOrders(pf).map(r => r.day).sort()[0]; return pf.trackFrom || d || null; };
@@ -44,7 +60,7 @@ function pfLedger(pf){
   const by = new Map();
   for (const r of pfOrders(pf)){
     const x = by.get(r.day) || {date:r.day, n:0, sales:0, comm:0, pay:0, del:0, extra:0, fees:0, net:0, c:r.c};
-    x.n++; x.sales += r.t; x.comm += r.f.comm; x.pay += r.f.pay; x.del += r.f.del; x.extra += r.f.extra; x.fees += r.f.total; x.net += r.t - r.f.total;
+    if (r.o) x.n++; else { x.src = "sales"; x.approx = r.approx; } x.sales += r.t; x.comm += r.f.comm; x.pay += r.f.pay; x.del += r.f.del; x.extra += r.f.extra; x.fees += r.f.total; x.net += r.t - r.f.total;
     by.set(r.day, x);
   }
   const days = [...by.values()].sort((a, b) => a.date < b.date ? -1 : 1);
@@ -71,7 +87,7 @@ let pfDC = {key:null, by:null};
 function pfDayComm(d){
   if (!S.pos || !S.pos.ready || !S.platforms) return null;
   const key = `${S.pos.at}|${S.pfVer || 0}`;
-  if (pfDC.key !== key){ const by = new Map(); for (const p of S.platforms) for (const r of pfOrders(p)) by.set(r.day, (by.get(r.day) || 0) + r.f.total); pfDC = {key, by}; }
+  if (pfDC.key !== key){ const by = new Map(); for (const p of S.platforms) for (const r of pfOrders(p)) if (r.o) by.set(r.day, (by.get(r.day) || 0) + r.f.total); pfDC = {key, by}; }
   return r2(pfDC.by.get(d) || 0);
 }
 
@@ -142,21 +158,21 @@ function pfDaily(pf, el){
   const sum = k => r2(days.reduce((a, x) => a + n(x[k]), 0)), tr = L.tr.filter(x => inR(x.date, R));
   const last = L.tr[L.tr.length - 1];
   el.innerHTML = `<div class="grid g4" style="margin-bottom:14px">
-      <div class="kpi"><span class="l">مبيعات ${esc(pf.name)} · ${rgShort()}</span><span class="v num">${fmt(sum("sales"))}</span><span class="small muted">${sum("n")} طلب</span></div>
+      <div class="kpi"><span class="l">مبيعات ${esc(pf.name)} · ${rgShort()}</span><span class="v num">${fmt(sum("sales"))}</span><span class="small muted">${sum("n")} طلب من الكاشير${days.some(x => x.src) ? " + أيام من صفحة المبيعات" : ""}</span></div>
       <div class="kpi orange"><span class="l">العمولة والرسوم</span><span class="v num">${fmt(sum("fees"))}</span><span class="small muted">النسبة الفعلية <span class="num">${sum("sales") ? pct(sum("fees") / sum("sales")) : "—"}</span></span></div>
       <div class="kpi green"><span class="l">الصافي المستحق لك</span><span class="v num">${fmt(sum("net"))}</span><span class="small muted">عن ${rgShort()}</span></div>
       <div class="kpi ${L.late > 0.009 ? "orange" : "dark"}"><span class="l">الرصيد المستحق ${pfStart(pf) ? `منذ <span class="num">${dmy(pfStart(pf))}</span>` : ""}</span><span class="v num">${fmt(Math.max(0, L.bal))}</span><span class="small muted">${L.late > 0.009 ? `منه متأخر <span class="num">${fmt(L.late)}</span> · ` : ""}آخر تحويل ${last ? `<span class="num">${dmy(last.date)}</span> (${fmt(n(last.amount))})` : "—"}</span></div></div>
     ${L.late > 0.009 ? `<div class="note warn" style="margin-bottom:12px"><b>تنبيه:</b> مبالغ مرّ موعد تحويلها المتوقع ولم تصل: <b class="num">${fmt(L.late)}</b>. راجع كشف البنك أو تواصل مع ${esc(pf.name)}.</div>` : ""}
     ${L.extra > 0.009 ? `<div class="note" style="margin-bottom:12px">وصل من ${esc(pf.name)} أكثر من المستحق المحسوب بـ <b class="num">${fmt(L.extra)}</b> — قد تكون رسوم العقد أعلى من الفعلية، أو تحويل لم يُسجَّل باسم التطبيق الصحيح.</div>` : ""}
     <div class="tw stick"><table><thead><tr><th>يوم الوردية</th><th class="n">الطلبات</th><th class="n">المبيعات</th><th class="n">العمولة</th><th class="n">الدفع الإلكتروني</th><th class="n">التوصيل</th><th class="n">رسوم أخرى</th><th class="n">الصافي المستحق</th><th>موعد التحويل المتوقع</th><th class="n">وصل منه</th><th>الحالة</th></tr></thead><tbody>
-    ${days.length ? days.map(x => `<tr><td class="num key">${dmy(x.date)} <span class="small muted">${dayName(x.date)}</span></td><td class="n num">${x.n}</td><td class="n">${money(x.sales)}</td><td class="n">${money(x.comm)}</td><td class="n">${money(x.pay)}</td><td class="n">${money(x.del)}</td><td class="n">${money(x.extra)}</td>
+    ${days.length ? days.map(x => `<tr><td class="num key">${dmy(x.date)} <span class="small muted">${dayName(x.date)}</span></td><td class="n">${x.src ? `<span class="small muted" title="من صفحة المبيعات (فودكس) — لم تُسجَّل في الكاشير">من المبيعات</span>` : `<span class="num">${x.n}</span>`}</td><td class="n">${money(x.sales)}${x.approx ? ` <span class="small muted">تقريبي</span>` : ""}</td><td class="n">${money(x.comm)}</td><td class="n">${money(x.pay)}</td><td class="n">${money(x.del)}</td><td class="n">${money(x.extra)}</td>
       <td class="n"><b>${money(x.net)}</b></td><td class="num">${dmy(x.due)}</td><td class="n">${money(x.recv)}</td><td><span class="chip ${PF_ST[x.st][0]}">${PF_ST[x.st][1]}</span></td></tr>`).join("")
       : `<tr><td colspan="11" class="empty">لا توجد طلبات ${esc(pf.name)} في ${rgShort()}</td></tr>`}
     <tr class="tot"><td>الإجمالي</td><td class="n num">${sum("n")}</td><td class="n">${money(sum("sales"))}</td><td class="n">${money(sum("comm"))}</td><td class="n">${money(sum("pay"))}</td><td class="n">${money(sum("del"))}</td><td class="n">${money(sum("extra"))}</td><td class="n">${money(sum("net"))}</td><td></td><td class="n">${money(sum("recv"))}</td><td></td></tr></tbody></table></div>
     <div class="bar" style="margin:18px 0 8px;border:0;padding:0"><h3 style="margin:0">التحويلات الواصلة من ${esc(pf.name)}</h3><button type="button" class="btn sm" id="pf_tr">تسجيل تحويل</button></div>
     <div class="tw"><table><thead><tr><th>تاريخ الوصول</th><th class="n">المبلغ</th><th>عن الفترة</th><th>ملاحظات</th></tr></thead><tbody>
     ${tr.length ? tr.map(x => `<tr class="click" data-app="${esc(x.id)}"><td class="num">${dmy(x.date)}${who(x.by)}</td><td class="n"><b>${money(n(x.amount))}</b></td><td class="num">${x.from ? dmy(x.from) : ""}${x.to ? " ← " + dmy(x.to) : ""}</td><td>${esc(x.notes || "")}</td></tr>`).join("") : `<tr><td colspan="4" class="empty">لا توجد تحويلات في ${rgShort()}</td></tr>`}</tbody></table></div>
-    <p class="foot" style="margin-top:10px">الصافي = المبيعات − الرسوم حسب العقد الساري يوم الطلب، محسوباً طلباً طلباً من الكاشير. التحويلات الواصلة تُخصم من أقدم الأيام أولاً. «متأخر» = مرّ موعد التحويل المتوقع بيومين ولم يصل. اكتب اسم التطبيق في التحويل كما هو (${esc(pf.name)}) ليُحتسب له.</p>`;
+    <p class="foot" style="margin-top:10px">الصافي = المبيعات − الرسوم حسب العقد الساري يوم الطلب، محسوباً طلباً طلباً من الكاشير. ${pf.id === PF_SALES_APP ? "الأيام التي لم تُسجَّل طلباتها في الكاشير تؤخذ من صفحة المبيعات (خانة تطبيقات التوصيل) وتظهر «من المبيعات»." : ""} التحويلات الواصلة تُخصم من أقدم الأيام أولاً. «متأخر» = مرّ موعد التحويل المتوقع بيومين ولم يصل. اكتب اسم التطبيق في التحويل كما هو (${esc(pf.name)}) ليُحتسب له.</p>`;
   $("#pf_tr").onclick = () => openApp(null, {app: pf.name});
   el.querySelectorAll("[data-app]").forEach(tr => tr.onclick = () => openApp(tr.dataset.app));
 }
