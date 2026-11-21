@@ -915,6 +915,10 @@ nav.tabs a[hidden],.nav-more[hidden]{display:none!important}
 .rg-hint{font-size:12px;color:var(--muted);margin:8px 2px}.rg-pre{display:grid;grid-template-columns:1fr 1fr;gap:6px}
 .rg-pre button{border:1px solid var(--line);border-radius:10px;background:transparent;padding:9px;font:inherit;font-size:14px;cursor:pointer;color:inherit}.rg-pre button.on{border-color:var(--red,#C1121F);color:var(--red,#C1121F);font-weight:700}
 @media (max-width:640px){.rg-pop{position:fixed;inset:auto 10px 10px 10px;top:auto;width:auto}}
+.pf-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px;margin-bottom:6px}
+.pf-card{display:flex;flex-direction:column;gap:4px;text-align:right;font:inherit;color:inherit;background:var(--card);border:1px solid var(--line);border-radius:16px;padding:14px 16px;cursor:pointer}
+.pf-card b{font-size:17px}.pf-card.on{border:2px solid var(--red,#C1121F);padding:13px 15px}.pf-v{font-size:22px;font-weight:800;margin-top:4px}
+.pos{color:#1B5E20}.neg{color:#B3261E}
 </style>
 <style>
 #acc_login{position:fixed;inset:0;z-index:200;display:grid;place-items:center;padding:20px;background:linear-gradient(160deg,#C1121F,#8E0D17)}
@@ -941,6 +945,7 @@ nav.tabs a[hidden],.nav-more[hidden]{display:none!important}
     <a href="#suppliers" data-v="suppliers" class="more">الموردون</a>
     <a href="#custody" data-v="custody">العهد</a>
     <a href="#pos" data-v="pos">مبيعات الكاشير</a>
+    <a href="#platforms" data-v="platforms">التطبيقات</a>
     <a href="#payroll" data-v="payroll" class="more">الموظفين</a>
     <a href="#daily" data-v="daily" class="more">الملخص اليومي</a>
     <a href="#guide" data-v="guide" class="more">دليل العمل اليومي</a>
@@ -1625,7 +1630,7 @@ function renderCusList(){
 function appForm(x){
   x = x || {};
   const ar = appReceivable();
-  const names = [...new Set(S.apps.map(a=>a.app).filter(Boolean))];
+  const names = [...new Set([...(S.platforms || []).map(p => p.name), ...S.apps.map(a=>a.app)].filter(Boolean))];
   return `<form class="entry" id="fa"><h3 style="margin:0">${x.id?"تعديل تحويل":"تسجيل تحويل من تطبيقات التوصيل"}</h3>
     <div class="note">المستحق حالياً قبل هذا التحويل: <b class="num">${fmt(ar.left + (x.id ? n(x.amount) : 0))}</b> ر.س</div>
     <div class="fields">
@@ -1640,8 +1645,8 @@ function appForm(x){
     <div class="actions"><button class="btn" type="submit" ${S.canWrite?"":"disabled"}>حفظ</button><button class="btn ghost" type="button" id="a_close">إغلاق</button>
       ${x.id && S.canWrite ? `<button class="btn danger sm" type="button" id="a_del">حذف التحويل</button>` : ""}</div></form>`;
 }
-function openApp(id){
-  const x = id ? S.apps.find(a => a.id === id) : null;
+function openApp(id, preset){
+  const x = id ? S.apps.find(a => a.id === id) : (preset || null);
   $("#sheet").innerHTML = appForm(x); $("#modal").classList.add("open"); setTimeout(()=>$("#a_amt").focus(),50);
   const hint = () => { const a = $("#a_from").value, b = $("#a_to").value; if (!a || !b){ $("#a_hint").textContent = ""; return; }
     let g = 0; S.sales.forEach((s,d) => { if (d >= a && d <= b) g += n(s.delivery); });
@@ -6209,9 +6214,10 @@ async function connect(){
   sub("itemSales","itemSales", a => S.itemSales = a);
   render();
   if (S.isOwner) setTimeout(fixAttFlags, 8000);
+  if (S.isOwner && typeof startPlatforms === "function") startPlatforms();
   if (S.isOwner && window.__accFb && window.__accFb.pos){
     const from = addDays(S.settings.startDate || "2026-11-14", -1);
-    window.__accFb.pos.watch(from, d => { S.pos = {...d, ready:true, at:Date.now()}; if (["pos","sales"].includes(S.view)) renderLists(); },
+    window.__accFb.pos.watch(from, d => { S.pos = {...d, ready:true, at:Date.now()}; if (["pos","sales","platforms"].includes(S.view)) renderLists(); },
       e => { S.pos = {orders:[], shifts:[], ready:true, err: e && (e.code || e.message)}; if (S.view === "pos") renderLists(); });
   }
 }
@@ -6231,6 +6237,7 @@ async function fixAttFlags(){
 }
 if (window.__accHost) window.__accStart = connect; else connect();
 </script>
-<script type="module" src="acc-fb.js?v=2"></script>
+<script src="apps.js?v=1"></script>
+<script type="module" src="acc-fb.js?v=3"></script>
 </body>
 </html>

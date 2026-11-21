@@ -93,11 +93,12 @@ window.claude = {
 /* the cashier's own records (orders and shifts), read-only, for the owner: the accounting program compares and imports from them */
 const pos = {
   watch(fromDay, cb, onErr){
-    let orders = null, shifts = null;
-    const fire = () => { if (orders && shifts) cb({ orders, shifts }); };
+    let orders = null, shifts = null, menu = [];
+    const fire = () => { if (orders && shifts) cb({ orders, shifts, menu }); };
     const u1 = F.onSnapshot(F.query(F.collection(fs, "orders"), F.where("day", ">=", fromDay)), q => { orders = q.docs.map(d => ({ id: d.id, ...d.data() })); fire(); }, e => onErr && onErr(e));
     const u2 = F.onSnapshot(F.query(F.collection(fs, "shifts"), F.where("day", ">=", fromDay)), q => { shifts = q.docs.map(d => ({ id: d.id, ...d.data() })); fire(); }, e => onErr && onErr(e));
-    return () => { u1(); u2(); };
+    const u3 = F.onSnapshot(F.collection(fs, "menu"), q => { menu = q.docs.map(d => ({ id: d.id, ...d.data() })); fire(); }, () => {});
+    return () => { u1(); u2(); u3(); };
   }
 };
 window.__accFb = { db, user: userApi, roleOf, ADMIN_EMAIL, pos };
