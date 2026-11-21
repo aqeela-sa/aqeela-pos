@@ -4,7 +4,7 @@
 import * as F from "./fb.js";
 import { firebaseConfig } from "./firebase-config.js";
 
-const VERSION = "1.7.1";
+const VERSION = "2.0.0";
 const ADMIN_EMAIL = "abuabraj@gmail.com";
 const DEVICE_EMAIL = "cashier@aqeela-pos.app";
 const APP_NAME = `<span dir="ltr">Cashier AQ</span>`;
@@ -142,6 +142,7 @@ function route() {
   if (!S.configReady || !S.menuReady) return;
   if (!S.config || !S.menu.length) return render(isAdmin() ? "setup" : "notready");
   if (S.view === "admin") return;
+  if (isAdmin() && location.hash.startsWith("#/admin") && S.view !== "admin") return openAdmin();
   const c = S.cashier && S.config.cashiers.find(x => x.id === S.cashier.id && x.active);
   if (!c) { S.cashier = null; ls.set("cashier", null); }
   if (S.view === "pos" && S.cashier && S.shift) { drawMenu(); drawCart(); drawTop(); return; }
@@ -151,6 +152,7 @@ function route() {
 
 /* ---------- screens ---------- */
 function render(view, msg) {
+  if (S.view === "admin" && view !== "admin") window.__cxUnmount?.();
   if (S.view !== view) closeModal(); S.view = view; const A = $("#app");
   if (view === "boot") A.innerHTML = `<div class="center"><div class="brand"><div class="logo"><img src="icons/logo.png" alt=""></div><h1>${APP_NAME}</h1><p>جارٍ التحميل…</p></div></div>`;
   if (view === "login") return drawLogin(msg);
@@ -158,7 +160,7 @@ function render(view, msg) {
   if (view === "notready") A.innerHTML = `<div class="center"><div class="panel"><div class="brand"><div class="logo"><img src="icons/logo.png" alt=""></div><h1>الكاشير غير مُجهّز بعد</h1><p>يجب أن يدخل المدير مرة واحدة من حسابه لتجهيز المنيو والإعدادات.</p></div>
     <button class="btn ghost block" id="lo">تسجيل الخروج</button></div></div>`, $("#lo").onclick = () => F.signOut(auth);
   if (view === "pin") return drawPin();
-  if (view === "admin") return drawAdminPage();
+  if (view === "admin") return openAdmin();
   if (view === "pos") { if (!S.shift) return render("openshift"); return drawPos(); }
   if (view === "openshift") return drawOpenShift();
 }
@@ -941,344 +943,23 @@ async function admStock() {
 }
 
 /* لوحة المدير: الورديات */
-let shf = { a: null, b: null };
-async function admShifts() {
-  const A = $("#adm"); shf.a ||= addDays(bizDay(), -6); shf.b ||= bizDay();
-  A.innerHTML = `<div class="toolbar"><div class="f"><label for="sa1">من</label><input id="sa1" type="date" value="${shf.a}"></div><div class="f"><label for="sb1">إلى</label><input id="sb1" type="date" value="${shf.b}"></div></div><div id="sbody"><p class="muted">جارٍ التحميل…</p></div>`;
-  const go = () => { shf.a = $("#sa1").value; shf.b = $("#sb1").value < shf.a ? shf.a : $("#sb1").value; admShifts(); };
-  $("#sa1").onchange = go; $("#sb1").onchange = go;
-  let L; try { L = (await F.getDocs(F.query(C("shifts"), F.where("day", ">=", shf.a), F.where("day", "<=", shf.b)))).docs.map(d => d.data()).sort((a, b) => b.openedAt - a.openedAt); }
-  catch (e) { $("#sbody").innerHTML = `<div class="err">تعذّر التحميل: ${esc(e.code || e.message)}</div>`; return; }
-  const d = sh => sh.summary ? r2(sh.counted - sh.summary.expected) : null;
-  $("#sbody").innerHTML = L.length ? `<table class="t"><thead><tr><th>اليوم</th><th>الوقت</th><th>الكاشيرون</th><th class="n">المبيعات</th><th class="n">كاش</th><th class="n">المتوقع</th><th class="n">المعدود</th><th>الفرق</th><th></th></tr></thead><tbody>
-    ${L.map((sh, i) => `<tr><td class="num">${dmy(sh.day)}${sh.test ? ` <span class="chip test">تجريبي</span>` : ""}</td><td class="small">فتح <span class="num">${hm(sh.openedAt)}</span><br>${sh.closedAt ? `قفل <span class="num">${hm(sh.closedAt)}</span>` : `<span class="chip warn">مفتوحة</span>`}</td>
-      <td>${esc((sh.cashiers || [sh.openedBy?.name]).join("، "))}</td><td class="n">${sh.summary ? money(sh.summary.total) : "—"}</td><td class="n">${sh.summary ? money(sh.summary.m.cash) : "—"}</td>
-      <td class="n">${sh.summary ? money(sh.summary.expected) : "—"}</td><td class="n">${sh.summary ? money(sh.counted) : "—"}</td>
-      <td>${d(sh) == null ? "" : Math.abs(d(sh)) < 0.005 ? `<span class="chip ok">مطابق</span>` : d(sh) < 0 ? `<span class="chip bad">عجز ${m2(-d(sh))}</span>` : `<span class="chip warn">زيادة ${m2(d(sh))}</span>`}${sh.note ? `<br><span class="small muted">${esc(sh.note)}</span>` : ""}</td>
-      <td>${sh.summary ? `<button class="btn ghost sm" data-z="${i}">التقرير</button>` : ""}</td></tr>`).join("")}</tbody></table>` : `<div class="empty" style="padding:30px">لا توجد ورديات في هذه الفترة</div>`;
-  $$("[data-z]").forEach(b => b.onclick = async () => { const cv = await drawShiftReport(L[+b.dataset.z], []);
-    modal(`${mh("تقرير الوردية")}<div class="mdl-b"><img class="rcpt" src="${cv.toDataURL("image/png")}" alt="تقرير الوردية" style="width:300px"></div>
-      <div class="mdl-f"><button class="btn ghost" id="zb">رجوع للورديات</button><button class="btn" id="zp">🖨 طباعة</button></div>`);
-    $("#zb").onclick = () => openAdmin("shifts"); $("#zp").onclick = () => printCanvas(cv, true); });
-}
-
-/* ---------- لوحة المتابعة (مثل ملخص فودكس) ---------- */
-let dsh = { p: "day", d: null, cmp: true };
-const pctTxt = (a, b) => !b ? "" : `<span class="dl ${a >= b ? "up" : "dn"}">${a >= b ? "▲" : "▼"} ${Math.abs((a - b) / b * 100).toFixed(1)}%</span>`;
+/* ---------- لوحة المدير: تُحمَّل من console.js عند فتحها ---------- */
 function dshRange(p, d) {
   if (p === "day") return [d, d];
   if (p === "week") { const x = new Date(d + "T12:00:00"), k = (x.getDay() + 1) % 7; const a = addDays(d, -k); return [a, addDays(a, 6)]; } /* الأسبوع يبدأ السبت */
   return [d.slice(0, 8) + "01", ymd(new Date(+d.slice(0, 4), +d.slice(5, 7), 0))];
 }
-function dshPrev(p, [a, b]) { if (p === "month") { const x = new Date(a + "T12:00:00"); x.setMonth(x.getMonth() - 1); const s = ymd(x); return dshRange("month", s); } const n = (new Date(b) - new Date(a)) / 864e5 + 1; return [addDays(a, -n), addDays(b, -n)]; }
-async function dshLoad([a, b]) { const s = await F.getDocs(F.query(C("orders"), F.where("day", ">=", a), F.where("day", "<=", b))); return s.docs.map(x => x.data()).filter(o => !o.test); }
-function dshCalc(L) {
-  const ok = L.filter(o => o.status !== "void"), vd = L.filter(o => o.status === "void"), sum = a => r2(a.reduce((s, o) => s + o.total, 0));
-  const tot = sum(ok), cg = ok.reduce((s, o) => { const c = o.cogs || orderCogs(o); return s + c.food + c.pack; }, 0);
-  const hours = Array(24).fill(0); ok.forEach(o => hours[new Date(o.ts).getHours()] += o.total);
-  const items = {}; ok.forEach(o => { const f = o.subtotal ? o.total / o.subtotal : 1; o.lines.forEach(l => { const it = items[l.name] ||= { q: 0, v: 0 }; it.q += l.qty; it.v += l.qty * l.price * f; }); });
-  const by = k => { const m = {}; ok.forEach(o => { m[o[k]] = (m[o[k]] || 0) + o.total; }); return m; };
-  const prepT = ok.filter(o => o.deliveredAt).map(o => (o.deliveredAt - o.ts) / 60000);
-  return { n: ok.length, tot, avg: ok.length ? tot / ok.length : 0, cogs: r2(cg), gp: r2(tot - cg), disc: r2(ok.reduce((s, o) => s + (o.discount?.amount || 0), 0)), vN: vd.length, vT: sum(vd),
-    hours, items, pay: by("method"), typ: by("type"), cash: by("cashierName"), prep: prepT.length ? prepT.reduce((a, b) => a + b, 0) / prepT.length : null };
-}
-const bars = (vals, labels) => { const mx = Math.max(1, ...vals); return `<div class="bars">${vals.map((v, i) => `<div class="bar" title="${labels[i]}: ${m2(v)}"><i style="height:${v / mx * 100}%"></i><span>${labels[i]}</span></div>`).join("")}</div>`; };
-const share = (m, names) => { const t = Object.values(m).reduce((a, b) => a + b, 0) || 1; return `<div class="shr">${Object.entries(m).sort((a, b) => b[1] - a[1]).map(([k, v]) => `<div class="sr"><span>${esc(names?.[k] || k)}</span><div class="sb"><i style="width:${v / t * 100}%"></i></div><b class="num">${m2(v)}</b><small class="num">${(v / t * 100).toFixed(0)}%</small></div>`).join("") || `<p class="muted small">—</p>`}</div>`; };
-/* رسم خطي خلال ساعات اليوم التشغيلي */
-function spark(vals, color = "var(--red)", labs) {
-  const W = 300, H = 90, mx = Math.max(1, ...vals), n = vals.length, x = i => 6 + i * (W - 12) / (n - 1), y = v => H - 8 - v / mx * (H - 20);
-  const pts = vals.map((v, i) => `${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(" ");
-  return `<svg class="spark" viewBox="0 0 ${W} ${H + 16}" preserveAspectRatio="none"><line x1="6" x2="${W - 6}" y1="${H - 8}" y2="${H - 8}" stroke="#E6E3E1"/>
-    <polygon points="6,${H - 8} ${pts} ${W - 6},${H - 8}" fill="${color}" opacity=".08"/><polyline points="${pts}" fill="none" stroke="${color}" stroke-width="2.2" stroke-linejoin="round"/>
-    ${vals.map((v, i) => v ? `<circle cx="${x(i).toFixed(1)}" cy="${y(v).toFixed(1)}" r="2.6" fill="${color}"/>` : "").join("")}
-    ${(labs ? [...new Set([0, Math.round((n - 1) / 4), Math.round((n - 1) / 2), Math.round((n - 1) * 3 / 4), n - 1])] : [0, 6, 12, 18, 23]).map(i => `<text x="${x(i)}" y="${H + 12}" font-size="9" fill="#8a8a93" text-anchor="middle">${labs ? labs[i] : pad((i + (S.config?.cutoff ?? 4)) % 24) + ":00"}</text>`).join("")}</svg>`;
-}
-function donut(m, names) {
-  const cols = ["#C1121F", "#1F4E9E", "#F28C28", "#2A9D8F", "#7B2CBF", "#6B6B76", "#E9C46A", "#264653"], e = Object.entries(m).filter(x => x[1] > 0).sort((a, b) => b[1] - a[1]), t = e.reduce((s, x) => s + x[1], 0);
-  if (!t) return `<div class="empty" style="height:160px">لا توجد بيانات</div>`;
-  let a0 = 0; const R = 60, r = 36, arc = (a1, a2) => { const p = (a, rr) => [80 + rr * Math.sin(a), 80 - rr * Math.cos(a)], l = a2 - a1 > Math.PI ? 1 : 0, [x1, y1] = p(a1, R), [x2, y2] = p(a2, R), [x3, y3] = p(a2, r), [x4, y4] = p(a1, r);
-    return `M${x1} ${y1}A${R} ${R} 0 ${l} 1 ${x2} ${y2}L${x3} ${y3}A${r} ${r} 0 ${l} 0 ${x4} ${y4}Z`; };
-  const segs = e.map(([k, v], i) => { const a1 = a0, a2 = a0 + v / t * Math.PI * 2 - (e.length > 1 ? .015 : 0.0001); a0 += v / t * Math.PI * 2; return `<path d="${arc(a1, Math.min(a2, a1 + Math.PI * 2 - .0001))}" fill="${cols[i % cols.length]}"/>`; }).join("");
-  return `<div class="donut"><svg viewBox="0 0 160 160">${segs}</svg><ul>${e.map(([k, v], i) => `<li><i style="background:${cols[i % cols.length]}"></i><span>${esc(names?.[k] || k)}</span><b class="num">${m2(v)}</b><small class="num">${(v / t * 100).toFixed(0)}%</small></li>`).join("")}</ul></div>`;
-}
-async function admDash() {
-  const A = $("#adm"); dsh.d ||= bizDay(); const R = dshRange(dsh.p, dsh.d), P = dshPrev(dsh.p, R);
-  A.innerHTML = `<div class="dtool"><div class="seg">${[["day", "يوم"], ["week", "الأسبوع"], ["month", "شهر"]].map(([k, l]) => `<button data-dp="${k}" class="${dsh.p === k ? "on" : ""}">${l}</button>`).join("")}</div>
-    <button class="dpbtn" id="dd">📅 <span class="num" dir="ltr">${fmtRange(R[0], R[1])}</span></button><label class="dsw"><button class="sw ${dsh.cmp ? "on" : ""}" id="dcp" aria-label="مقارنة"></button> مقارنة</label>
-    </div><div id="dbody"><p class="muted">جارٍ التحميل…</p></div>`;
-  $$("[data-dp]").forEach(b => b.onclick = () => { dsh.p = b.dataset.dp; admDash(); }); $("#dd").onclick = e => openPicker(e.currentTarget, { mode: dsh.p, a: R[0], b: R[1], onPick: a => { dsh.d = a; admDash(); } }); $("#dcp").onclick = () => { dsh.cmp = !dsh.cmp; admDash(); };
-  let L, c, p; try { L = await dshLoad(R); c = dshCalc(L); p = dsh.cmp ? dshCalc(await dshLoad(P)) : null; } catch (e) { $("#dbody").innerHTML = `<div class="err">تعذّر التحميل: ${esc(e.code || e.message)}</div>`; return; }
-  const ok = L.filter(o => o.status !== "void"), hrs = [...Array(24).keys()].map(h => (h + (S.config?.cutoff ?? 4)) % 24);
-  const days = []; for (let d = R[0]; d <= R[1]; d = addDays(d, 1)) days.push(d);
-  const byDay = dsh.p !== "day", series = f => byDay ? days.map(d => ok.filter(o => o.day === d).reduce((s, o) => s + f(o), 0)) : hrs.map(h => ok.filter(o => new Date(o.ts).getHours() === h).reduce((s, o) => s + f(o), 0));
-  const xl = byDay ? days.map(d => `${+d.slice(8)} ${AR_M[+d.slice(5, 7) - 1].slice(0, 3)}`) : null;
-  const card = (title, val, pv, ser, go, isNum) => `<div class="dc"><div class="dch"><h3>${title}</h3>${go ? `<button class="dlink" data-go="${go}">عرض التقرير</button>` : ""}</div>
-    <div class="dcv">${isNum ? `<span class="num">${Math.round(val)}</span>` : `${money(val)} <small>ر.س</small>`}</div>${dsh.cmp && p ? `<div class="dcp">${pctTxt(val, pv)} <span class="muted">السابق ${isNum ? Math.round(pv) : m2(pv)}</span></div>` : `<div class="dcp"></div>`}${ser ? spark(ser, undefined, xl) : ""}</div>`;
-  const top = Object.fromEntries(Object.entries(c.items).sort((a, b) => b[1].v - a[1].v).slice(0, 6).map(([n, v]) => [n, v.v]));
-  $("#dbody").innerHTML = `<div class="dgrid3">
-    ${card("الطلبات", c.n, p?.n, series(() => 1), "orders", true)}
-    ${card("صافي المبيعات", c.tot, p?.tot, series(o => o.total), "sales")}
-    ${card("مجمل الربح", c.gp, p?.gp, series(o => { const g = o.cogs || orderCogs(o); return o.total - g.food - g.pack; }), "sales")}
-    ${card("متوسط الطلب", c.avg, p?.avg, null, "sales")}
-    ${card("مبلغ الخصم", c.disc, p?.disc, series(o => o.discount?.amount || 0), "sales")}
-    ${card("مبلغ الإلغاء", c.vT, p?.vT, null, "sales")}
-    <div class="dc"><div class="dch"><h3>نسبة التكلفة</h3></div><div class="dcv num">${c.tot ? (c.cogs / c.tot * 100).toFixed(1) + "%" : "—"}</div><div class="dcp muted small">تكلفة البضاعة ${m2(c.cogs)} ر.س</div></div>
-    <div class="dc"><div class="dch"><h3>متوسط مدة التحضير</h3></div><div class="dcv">${c.prep == null ? "—" : `<span class="num">${c.prep.toFixed(1)}</span> <small>دقيقة</small>`}</div><div class="dcp muted small">من الطلب حتى التسليم</div></div>
-    <div class="dc"><div class="dch"><h3>عدد الإلغاءات</h3></div><div class="dcv num">${c.vN}</div><div class="dcp muted small">طلب ملغى برمز المدير</div></div>
-    <div class="dc w2"><div class="dch"><h3>${byDay ? "المبيعات لكل يوم" : "المبيعات لكل ساعة"}</h3></div>${byDay ? bars(series(o => o.total), days.map(d => +d.slice(8))) : bars(hrs.map(h => c.hours[h]), hrs.map(h => pad(h)))}</div>
-    <div class="dc"><div class="dch"><h3>أنواع الطلب</h3></div>${donut(c.typ, Object.fromEntries(TYPES))}</div>
-    <div class="dc"><div class="dch"><h3>أعلى المنتجات حسب صافي البيع</h3><button class="dlink" data-go="items">عرض التقرير</button></div>${donut(top)}</div>
-    <div class="dc"><div class="dch"><h3>أعلى المدفوعات</h3><button class="dlink" data-go="pays">عرض التقرير</button></div>${donut(c.pay, METHODS)}</div>
-    <div class="dc"><div class="dch"><h3>الكاشيرون</h3><button class="dlink" data-go="shifts">الورديات</button></div>${donut(c.cash)}</div></div>`;
-  $$("#dbody [data-go]").forEach(b => b.onclick = () => { rf.a = R[0]; rf.b = R[1]; openAdmin(b.dataset.go); });
-}
-/* ترتيب أي جدول بالضغط على عنوان العمود (من الأكبر للأصغر ثم العكس) */
-document.addEventListener("click", e => {
-  const th = e.target.closest("table.t thead th"); if (!th) return; const tb = th.closest("table").tBodies[0]; if (!tb) return;
-  const i = [...th.parentNode.children].indexOf(th), dir = th.dataset.sd === "d" ? "a" : "d";
-  th.parentNode.querySelectorAll("th").forEach(x => { delete x.dataset.sd; x.classList.remove("sa", "sd"); }); th.dataset.sd = dir; th.classList.add(dir === "d" ? "sd" : "sa");
-  const val = r => { const t = (r.children[i]?.innerText || "").replace(/[,٬%]/g, "").trim(), n = parseFloat(t.replace(/[^\d.\-]/g, "")); return isNaN(n) ? t : n; };
-  [...tb.rows].sort((x, y) => { const a = val(x), b = val(y); const c = typeof a === "number" && typeof b === "number" ? a - b : String(a).localeCompare(String(b), "ar"); return dir === "d" ? -c : c; }).forEach(r => tb.append(r));
-});
-
-/* ---------- admin ---------- */
-let admTab = "dash";
-/* ---------- منتقي التاريخ (مثل فودكس) ---------- */
-const AR_M = ["يناير", "فبراير", "مارس", "أبريل", "مايو", "يونيو", "يوليو", "أغسطس", "سبتمبر", "أكتوبر", "نوفمبر", "ديسمبر"];
-const fmtRange = (a, b) => a === b ? a : `${a} - ${b}`;
-function closePicker() { $(".dpk")?.remove(); document.removeEventListener("pointerdown", pkOut, true); }
-function pkOut(e) { if (!e.target.closest(".dpk") && !e.target.closest(".dpbtn")) closePicker(); }
-function openPicker(anchor, o) {
-  closePicker(); const t = bizDay(); let ym = (o.a || t).slice(0, 7), y = +ym.slice(0, 4), m = +ym.slice(5, 7) - 1, a = o.a, b = o.b, half = null;
-  const el = document.createElement("div"); el.className = "dpk"; document.body.append(el);
-  const r = anchor.getBoundingClientRect(); el.style.top = (r.bottom + 6 + scrollY) + "px"; el.style.left = Math.max(8, Math.min(r.left, innerWidth - 560)) + "px";
-  const presets = [["اليوم", t, t], ["الأمس", addDays(t, -1), addDays(t, -1)], ["هذا الأسبوع", ...dshRange("week", t)], ["الأسبوع السابق", ...dshRange("week", addDays(t, -7))], ["هذا الشهر", ...dshRange("month", t)], ["الشهر السابق", ...dshRange("month", addDays(t.slice(0, 8) + "01", -1))]];
-  const done = (x, z) => { closePicker(); o.onPick(x, z); };
-  const draw = () => {
-    const head = (title, prev, next) => `<div class="pkh"><button data-pn="1" aria-label="التالي">‹</button><b>${title}</b><button data-pn="-1" aria-label="السابق">›</button></div>`;
-    let body = "";
-    if (o.mode === "month") {
-      body = head(y) + `<div class="pkm">${AR_M.map((n, i) => { const k = `${y}-${pad(i + 1)}`; return `<button data-mo="${k}" class="${a?.slice(0, 7) === k ? "on" : ""}">${n}</button>`; }).join("")}</div>`;
-    } else if (o.mode === "week") {
-      const first = `${y}-${pad(m + 1)}-01`, last = ymd(new Date(y, m + 1, 0)); let w = dshRange("week", first)[0], L = [];
-      while (w <= last) { L.push([w, addDays(w, 6)]); w = addDays(w, 7); }
-      const lab = d => `${d.slice(8)} ${AR_M[+d.slice(5, 7) - 1]}`;
-      body = head(`${AR_M[m]} ${y}`) + `<div class="pkw">${L.map(([s, e]) => `<button data-wk="${s}|${e}" class="${a === s ? "on" : ""}">${lab(s)} - ${lab(e)}</button>`).join("")}</div>`;
-    } else {
-      const f = new Date(y, m, 1), start = addDays(ymd(f), -f.getDay()), cells = [...Array(42).keys()].map(i => addDays(start, i));
-      const lo = half || a, hi = half ? null : b;
-      body = head(`${AR_M[m]} ${y}`) + `<div class="pkd">${["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"].map(d => `<i>${d}</i>`).join("")}${cells.map(d => { const out = +d.slice(5, 7) !== m + 1, inR = lo && hi && d >= lo && d <= hi, end = d === lo || d === hi;
-        return `<button data-dy="${d}" class="${out ? "out" : ""} ${inR ? "in" : ""} ${end ? "end" : ""} ${d === t ? "today" : ""}">${+d.slice(8)}</button>`; }).join("")}</div>`;
-      if (o.mode === "range") body = `<div class="pkr"><div>${body}${half ? `<p class="small muted" style="margin:6px 4px 0">اختر يوم النهاية</p>` : ""}</div><div class="pkp">${presets.map(([l, x, z]) => `<button data-pr="${x}|${z}" class="${a === x && b === z ? "on" : ""}">${l}</button>`).join("")}</div></div>`;
-    }
-    el.innerHTML = body;
-    el.querySelectorAll("[data-pn]").forEach(x => x.onclick = () => { const s = -(+x.dataset.pn); if (o.mode === "month") y += s; else { m += s; if (m < 0) { m = 11; y--; } if (m > 11) { m = 0; y++; } } draw(); });
-    el.querySelectorAll("[data-mo]").forEach(x => x.onclick = () => { const [s, e] = dshRange("month", x.dataset.mo + "-01"); done(s, e); });
-    el.querySelectorAll("[data-wk]").forEach(x => x.onclick = () => done(...x.dataset.wk.split("|")));
-    el.querySelectorAll("[data-pr]").forEach(x => x.onclick = () => done(...x.dataset.pr.split("|")));
-    el.querySelectorAll("[data-dy]").forEach(x => x.onclick = () => { const d = x.dataset.dy;
-      if (o.mode === "day") return done(d, d);
-      if (!half) { half = d; draw(); } else { const [s, e] = d < half ? [d, half] : [half, d]; done(s, e); } });
-  };
-  draw(); setTimeout(() => document.addEventListener("pointerdown", pkOut, true), 0);
-}
-
-document.addEventListener("pointerdown", e => { if (!e.target.closest(".xmenu")) $$(".xlist").forEach(l => l.hidden = true); });
-/* ---------- التصدير: CSV أو Excel من جداول الصفحة الحالية ---------- */
-function pageRows() {
-  const rows = [], A = $("#adm"); const ttl = ADM_NAV.find(x => x[0] === admTab)?.[2] || "";
-  rows.push([ttl], [`الفترة: ${fmtRange(rf.a || "", rf.b || "")}`], []);
-  const cards = [...A.querySelectorAll(".rc")]; if (cards.length) { cards.forEach(c => rows.push([c.children[0]?.innerText.trim(), c.children[1]?.innerText.replace(/[^\d.\-%]/g, "") || c.children[1]?.innerText.trim(), c.children[2]?.innerText.trim() || ""])); rows.push([]); }
-  A.querySelectorAll("table.t").forEach(tb => { const h = tb.closest(".rpanel")?.querySelector(".rh")?.innerText; if (h) rows.push([h]);
-    tb.querySelectorAll("tr").forEach(tr => rows.push([...tr.children].map(td => { const s = td.innerText.trim(), n = s.replace(/,/g, ""); return /^-?\d+(\.\d+)?%?$/.test(n) && !n.endsWith("%") ? +n : s; }))); rows.push([]); });
-  return rows;
-}
-let xlsxP = null;
-function loadXlsx() { return xlsxP ||= new Promise((res, rej) => { const s = document.createElement("script"); s.src = "https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"; s.onload = () => res(window.XLSX); s.onerror = () => { xlsxP = null; rej(new Error("net")); }; document.head.append(s); }); }
-async function exportPage(kind, extra) {
-  const rows = pageRows(), name = `${ADM_NAV.find(x => x[0] === admTab)?.[2] || "تقرير"}-${rf.a || ""}${rf.b && rf.b !== rf.a ? "_" + rf.b : ""}`;
-  if (kind === "csv") return download(rows, name + ".csv");
-  try { const X = await loadXlsx(); const ws = X.utils.aoa_to_sheet(rows); ws["!cols"] = [{ wch: 26 }, { wch: 16 }, { wch: 16 }, { wch: 16 }, { wch: 16 }, { wch: 16 }, { wch: 16 }, { wch: 16 }];
-    const wb = X.utils.book_new(); wb.Workbook = { Views: [{ RTL: true }] }; X.utils.book_append_sheet(wb, ws, "التقرير"); X.writeFile(wb, name + ".xlsx"); }
-  catch { toast("تصدير Excel يحتاج إنترنت. جرّب CSV", true); }
-}
-function exportBtn(extra = []) {
-  return `<div class="xmenu"><button class="btn sm ghost dpbtn" data-xm>⬇ تصدير ▾</button><div class="xlist" hidden><button data-xp="csv">في ملف CSV</button><button data-xp="xlsx">في ملف إكسل</button>${extra.map(([id, l]) => `<hr><button data-xid="${id}">${l}</button>`).join("")}</div></div>`;
-}
-function bindExport(handlers = {}) {
-  const m = $("[data-xm]"); if (!m) return; const L = m.nextElementSibling;
-  m.onclick = () => { L.hidden = !L.hidden; };
-  L.querySelectorAll("[data-xp]").forEach(b => b.onclick = () => { L.hidden = true; exportPage(b.dataset.xp); });
-  L.querySelectorAll("[data-xid]").forEach(b => b.onclick = () => { L.hidden = true; handlers[b.dataset.xid]?.(); });
-}
-
-/* ---------- التقارير المستقلة (مثل فودكس) ---------- */
-let rf = { a: null, b: null, test: false, q: "", st: "all" };
-function rfBar(extra = "") {
-  rf.a ||= bizDay(); rf.b ||= rf.a; const t = bizDay();
-  const q = [["اليوم", t, t], ["أمس", addDays(t, -1), addDays(t, -1)], ["هذا الأسبوع", ...dshRange("week", t)], ["هذا الشهر", ...dshRange("month", t)]];
-  return `<div class="rbar"><button class="dpbtn" id="rfd">📅 <span class="num" dir="ltr">${fmtRange(rf.a, rf.b)}</span></button>
-    <label class="dsw small"><input type="checkbox" id="rft" ${rf.test ? "checked" : ""}> التجريبي</label>${extra}</div>`;
-}
-function rfBind(redraw) {
-  $("#rfd").onclick = e => openPicker(e.currentTarget, { mode: "range", a: rf.a, b: rf.b, onPick: (a, b) => { rf.a = a; rf.b = b; redraw(); } });
-  $("#rft").onchange = e => { rf.test = e.target.checked; redraw(); };
-}
-async function rfLoad() { const s = await F.getDocs(F.query(C("orders"), F.where("day", ">=", rf.a), F.where("day", "<=", rf.b))); return s.docs.map(d => d.data()).filter(o => rf.test || !o.test).sort((a, b) => b.ts - a.ts); }
-const rCard = (l, v, sub = "") => `<div class="rc"><span>${l}</span><b>${v}</b>${sub ? `<small>${sub}</small>` : ""}</div>`;
-
-/* الطلبات: قائمة بحث وتصفية، والضغط يفتح التفاصيل */
-async function admOrders() {
-  const A = $("#adm"); A.innerHTML = rfBar(`<span class="sp"></span>${exportBtn()}<input id="rfq" class="dinp" placeholder="رقم الطلب" inputmode="numeric" value="${esc(rf.q)}" style="width:130px">
-    <select id="rfs" class="dinp"><option value="all">كل الحالات</option><option value="paid" ${rf.st === "paid" ? "selected" : ""}>مدفوع</option><option value="void" ${rf.st === "void" ? "selected" : ""}>ملغي</option><option value="disc" ${rf.st === "disc" ? "selected" : ""}>عليه خصم</option></select>`) + `<div id="rbody" class="rpanel"><p class="muted">جارٍ التحميل…</p></div>`;
-  rfBind(admOrders); $("#rfq").oninput = e => { rf.q = e.target.value.trim(); draw(); }; $("#rfs").onchange = e => { rf.st = e.target.value; draw(); };
-  let L; try { L = await rfLoad(); } catch (e) { $("#rbody").innerHTML = `<div class="err">${esc(e.code || e.message)}</div>`; return; }
-  function draw() {
-    const F2 = L.filter(o => (!rf.q || String(o.no).includes(rf.q.replace(/^0+/, ""))) && (rf.st === "all" || (rf.st === "disc" ? o.discount : o.status === rf.st)));
-    $("#rbody").innerHTML = `<div class="rtop"><b>${F2.length} طلب</b><span class="muted">اضغط على أي طلب لعرض تفاصيله</span></div><div class="tw2"><table class="t rt"><thead><tr><th>الرقم</th><th>اليوم</th><th>الوقت</th><th>النوع</th><th>الدفع</th><th>الكاشير</th><th>الحالة</th><th class="n">الإجمالي</th></tr></thead><tbody>
-      ${F2.map(o => `<tr data-oid="${esc(o.id)}"><td class="num"><b>${pad(o.no, 4)}</b></td><td class="num">${dmy(o.day)}</td><td class="num">${hm(o.ts)}</td><td>${TYPES.find(t => t[0] === o.type)?.[1] || ""}</td><td>${METHODS[o.method]}</td><td>${esc(o.cashierName)}</td>
-        <td>${o.status === "void" ? `<span class="chip bad">ملغي</span>` : `<span class="chip ok">مدفوع</span>`}${o.discount ? ` <span class="chip warn">خصم</span>` : ""}${o.test ? ` <span class="chip test">تجريبي</span>` : ""}</td><td class="n money"><b>${m2(o.total)}</b></td></tr>`).join("") || `<tr><td colspan="8" class="muted" style="text-align:center;padding:30px">لا توجد طلبات</td></tr>`}</tbody></table></div>`;
-    $$("#rbody [data-oid]").forEach(r => r.onclick = () => showOrderDetail(L.find(o => o.id === r.dataset.oid)));
-  }
-  draw(); bindExport();
-}
-function showOrderDetail(o) {
-  if (!o) return; const pk = o.pack || packOf(o.lines), cg = o.cogs || orderCogs(o);
-  modal(`${mh(`طلب رقم <span class="num">${pad(o.no, 4)}</span> ${o.status === "void" ? `<span class="chip bad">ملغي</span>` : ""}`)}<div class="mdl-b">${orderDetail(o)}
-    <div class="kpis" style="margin-top:14px"><div class="kpi"><span>تكلفة الطعام</span><b>${money(cg.food)}</b></div><div class="kpi"><span>التغليف</span><b>${money(cg.pack)}</b><span>${pk.boxes} علبة · ${pk.bags} كيس</span></div><div class="kpi"><span>الربح</span><b>${money(o.total - cg.food - cg.pack)}</b></div></div>
-    ${o.deliveredAt ? `<p class="small muted">سُلّم <span class="num">${hm(o.deliveredAt)}</span> (${Math.round((o.deliveredAt - o.ts) / 60000)} دقيقة)${o.deliveredBy ? ` · ${esc(o.deliveredBy)}` : ""}</p>` : ""}
-    ${(o.typeChanges || []).map(c => `<p class="small muted">غُيّر النوع من ${TYPES.find(t => t[0] === c.from)?.[1]} إلى ${TYPES.find(t => t[0] === c.to)?.[1]} · <span class="num">${hm(c.at)}</span> · ${esc(c.by)}</p>`).join("")}</div>
-    <div class="mdl-f"><button class="btn ghost" id="rk">🍳 ورقة المطبخ</button><button class="btn" id="rp">🖨 الإيصال</button></div>`);
-  $("#rp").onclick = () => printJob(o, { receipt: true }, true); $("#rk").onclick = () => printJob(o, { kitchen: true }, true);
-}
-
-/* تقرير المبيعات: مؤشرات فقط */
-async function admSales() {
-  const A = $("#adm"); A.innerHTML = rfBar(`<span class="sp"></span>${exportBtn([["xs", "ملف المبيعات للمحاسبة"]])}`) + `<div id="rbody"><p class="muted">جارٍ التحميل…</p></div>`; rfBind(admSales);
-  let L; try { L = await rfLoad(); } catch (e) { $("#rbody").innerHTML = `<div class="err">${esc(e.code || e.message)}</div>`; return; }
-  const ok = L.filter(o => o.status !== "void"), vd = L.filter(o => o.status === "void"), sum = (a, f) => r2(a.reduce((s, o) => s + f(o), 0));
-  const gross = sum(ok, o => o.subtotal), disc = sum(ok, o => o.discount?.amount || 0), net = sum(ok, o => o.total), food = sum(ok, o => (o.cogs || orderCogs(o)).food), pack = sum(ok, o => (o.cogs || orderCogs(o)).pack), qty = ok.reduce((s, o) => s + o.lines.reduce((x, l) => x + l.qty, 0), 0);
-  $("#rbody").innerHTML = `<div class="rgrid">${rCard("إجمالي المبيعات", money(gross))}${rCard("مبلغ الخصم", money(disc), `${ok.filter(o => o.discount).length} طلب`)}${rCard("صافي المبيعات", money(net))}
-    ${rCard("عدد الطلبات", `<span class="num">${ok.length}</span>`)}${rCard("متوسط الطلب", money(ok.length ? net / ok.length : 0))}${rCard("صافي الكمية", `<span class="num">${qty}</span>`, "صنف مباع")}
-    ${rCard("تكلفة الطعام", money(food))}${rCard("التغليف", money(pack))}${rCard("مجمل الربح", money(net - food - pack), net ? `نسبة التكلفة ${((food + pack) / net * 100).toFixed(1)}%` : "")}
-    ${rCard("مبلغ الإلغاء", money(sum(vd, o => o.total)), `${vd.length} طلب`)}</div>
-    <div class="rpanel" style="margin-top:18px"><h3 class="rh">حسب اليوم</h3><div class="tw2"><table class="t"><thead><tr><th>اليوم</th><th class="n">الطلبات</th><th class="n">صافي المبيعات</th><th class="n">متوسط الطلب</th><th class="n">الربح</th></tr></thead><tbody>
-    ${[...new Set(ok.map(o => o.day))].sort().reverse().map(d => { const a = ok.filter(o => o.day === d), n = sum(a, o => o.total), c = sum(a, o => { const g = o.cogs || orderCogs(o); return g.food + g.pack; }); return `<tr><td class="num">${dmy(d)}</td><td class="n num">${a.length}</td><td class="n money">${m2(n)}</td><td class="n money">${m2(n / a.length)}</td><td class="n money">${m2(n - c)}</td></tr>`; }).join("") || `<tr><td colspan="5" class="muted">—</td></tr>`}</tbody></table></div></div>`;
-  const xs = () => { const rows = [["التاريخ", "طريقة الدفع", "المبلغ الصافي", "العدد"]];
-    [...new Set(ok.map(o => o.day))].sort().forEach(d => Object.entries(METHODS).forEach(([k, l]) => { const os = ok.filter(o => o.day === d && o.method === k && !o.test); if (os.length) rows.push([d, l, m2(sum(os, o => o.total)), os.length]); }));
-    if (rows.length < 2) return toast("لا توجد مبيعات"); download(rows, `مبيعات-الكاشير-${rf.a}${rf.b !== rf.a ? "_" + rf.b : ""}.csv`); };
-  bindExport({ xs });
-}
-
-/* تقرير المدفوعات */
-async function admPays() {
-  const A = $("#adm"); A.innerHTML = rfBar(`<span class="sp"></span>${exportBtn()}`) + `<div id="rbody" class="rpanel"><p class="muted">جارٍ التحميل…</p></div>`; rfBind(admPays); bindExport();
-  let L; try { L = await rfLoad(); } catch (e) { $("#rbody").innerHTML = `<div class="err">${esc(e.code || e.message)}</div>`; return; }
-  const ok = L.filter(o => o.status !== "void"), tot = r2(ok.reduce((s, o) => s + o.total, 0)), vd = L.filter(o => o.status === "void");
-  $("#rbody").innerHTML = `<div class="tw2"><table class="t"><thead><tr><th>طريقة الدفع</th><th class="n">العدد</th><th class="n">القيمة</th><th class="n">النسبة</th><th class="n">الملغي</th><th class="n">المبلغ الصافي</th></tr></thead><tbody>
-    ${Object.entries(METHODS).map(([k, l]) => { const a = ok.filter(o => o.method === k), v = r2(a.reduce((s, o) => s + o.total, 0)), x = r2(vd.filter(o => o.method === k).reduce((s, o) => s + o.total, 0));
-      return `<tr><td><b>${l}</b></td><td class="n num">${a.length}</td><td class="n money">${m2(v + x)}</td><td class="n num">${tot ? (v / tot * 100).toFixed(1) : 0}%</td><td class="n money">${m2(x)}</td><td class="n money"><b>${m2(v)}</b></td></tr>`; }).join("")}</tbody>
-    <tfoot><tr><td>المجموع</td><td class="n num">${ok.length}</td><td></td><td></td><td class="n money">${m2(vd.reduce((s, o) => s + o.total, 0))}</td><td class="n money">${m2(tot)}</td></tr></tfoot></table></div>`;
-}
-
-/* تحليل القائمة */
-async function admItems() {
-  const A = $("#adm"); A.innerHTML = rfBar(`<span class="sp"></span>${exportBtn([["xi", "ملف الأصناف للمحاسبة"]])}`) + `<div id="rbody" class="rpanel"><p class="muted">جارٍ التحميل…</p></div>`; rfBind(admItems);
-  let L; try { L = await rfLoad(); } catch (e) { $("#rbody").innerHTML = `<div class="err">${esc(e.code || e.message)}</div>`; return; }
-  const ok = L.filter(o => o.status !== "void"), items = {};
-  ok.forEach(o => { const f = o.subtotal ? o.total / o.subtotal : 1; const add = (n, ref, q, g, c) => { const it = items[ref || n] ||= { name: n, ref, q: 0, v: 0, net: 0, cost: 0, nc: false }; it.q += q; it.v += g; it.net += g * f; if (c == null) it.nc = true; else it.cost += c * q; };
-    o.lines.forEach(l => { add(l.name, l.ref, l.qty, l.qty * l.price, l.cost ?? itemCost(l.id)); l.mods.forEach(m => add(m.name, m.ref, l.qty, l.qty * m.price, m.cost ?? itemCost(m.id))); }); });
-  const V = Object.values(items).sort((a, b) => b.net - a.net), T = V.reduce((s, x) => s + x.net, 0);
-  $("#rbody").innerHTML = `<div class="tw2"><table class="t"><thead><tr><th>المنتج</th><th class="n">الكمية</th><th class="n">صافي المبيعات</th><th class="n">من المبيعات</th><th class="n">التكلفة</th><th class="n">نسبة التكلفة</th><th class="n">الربح</th></tr></thead><tbody>
-    ${V.map(x => { const pc = x.net && !x.nc ? x.cost / x.net * 100 : null; return `<tr><td><b>${esc(x.name)}</b></td><td class="n num">${x.q}</td><td class="n money">${m2(x.net)}</td><td class="n num">${T ? (x.net / T * 100).toFixed(1) : 0}%</td><td class="n money">${x.nc ? "—" : m2(x.cost)}</td>
-      <td class="n">${pc == null ? "—" : `<span class="chip ${pc > 45 ? "bad" : pc > 35 ? "warn" : "ok"} num">${pc.toFixed(1)}%</span>`}</td><td class="n money">${x.nc ? "—" : m2(x.net - x.cost)}</td></tr>`; }).join("") || `<tr><td colspan="7" class="muted">—</td></tr>`}</tbody>
-    <tfoot><tr><td>المجموع</td><td class="n num">${V.reduce((s, x) => s + x.q, 0)}</td><td class="n money">${m2(T)}</td><td></td><td class="n money">${m2(V.reduce((s, x) => s + x.cost, 0))}</td><td></td><td class="n money">${m2(T - V.reduce((s, x) => s + x.cost, 0))}</td></tr></tfoot></table></div>`;
-  const xi = () => { if (!V.length) return toast("لا توجد مبيعات"); const vq = {}; L.filter(o => o.status === "void").forEach(o => o.lines.forEach(l => { vq[l.ref || l.name] = (vq[l.ref || l.name] || 0) + l.qty; }));
-    download([["المنتج", "كود تعريف المنتج", "صافي الكمية", "صافي المبيعات", "إجمالي المبيعات", "كمية الإلغاء"], ...V.map(x => [x.name, x.ref || "", x.q, m2(x.net), m2(x.v), vq[x.ref || x.name] || 0])], `أصناف-الكاشير-${rf.a}${rf.b !== rf.a ? "_" + rf.b : ""}.csv`); };
-  bindExport({ xi });
-}
-
-const ADM_NAV = [["dash", "📊", "الملخص"], ["orders", "🧾", "الطلبات"], ["sec", "", "التقارير"], ["sales", "📈", "تقرير المبيعات"], ["pays", "💳", "تقرير المدفوعات"], ["items", "🍽️", "تحليل القائمة"], ["shifts", "🕘", "الورديات"], ["sec", "", "الإدارة"], ["stock", "📦", "المخزون"], ["menu", "📋", "المنيو والأسعار"], ["staff", "👥", "الكاشيرون والرموز"], ["store", "⚙️", "الإيصال والإعدادات"], ["verify", "🔎", "التحقق من إيصال"]];
-function openAdmin(tab) { if (!isAdmin()) return; if (typeof tab === "string") admTab = tab; closeModal(); render("admin"); }
-function drawAdminPage() {
-  const nm = isAdmin() ? "عاطف" : (S.cashier?.name || "");
-  $("#app").innerHTML = `<div class="ap"><aside class="aside"><div class="abrand"><img src="icons/logo.png" alt=""><b dir="ltr">Cashier AQ</b></div>
-    <nav>${ADM_NAV.map(([k, ic, l]) => k === "sec" ? `<div class="asec">${l}</div>` : `<button data-at="${k}" class="${admTab === k ? "on" : ""}"><span>${ic}</span>${l}</button>`).join("")}</nav>
-    <button class="aback" id="aback">↩ رجوع لشاشة البيع</button></aside>
-    <main class="amain"><header class="ahead"><button class="iconbtn amenu" id="amenu" aria-label="القائمة">☰</button><h1>مرحباً، ${esc(nm)}</h1><span class="sp"></span><span class="pill ${S.online ? "" : "off"}"><i class="d"></i>${S.online ? "متصل" : "بدون إنترنت"}</span></header>
-    <h2 class="atitle">${ADM_NAV.find(x => x[0] === admTab)[2]}</h2><div id="adm" class="abody"></div></main></div>`;
-  $$(".aside [data-at]").forEach(b => b.onclick = () => { admTab = b.dataset.at; $(".ap").classList.remove("navopen"); drawAdminPage(); });
-  $("#aback").onclick = () => render(S.cashier ? (S.shift ? "pos" : "openshift") : "pin");
-  $("#amenu").onclick = () => $(".ap").classList.toggle("navopen");
-  drawAdm();
-}
-function drawAdm() { ({ dash: admDash, orders: admOrders, sales: admSales, pays: admPays, items: admItems, report: admReport, shifts: admShifts, stock: admStock, menu: admMenu, staff: admStaff, store: admStore, verify: admVerify })[admTab](); }
-
-let rep = { a: null, b: null, test: false };
 function download(rows, name) {
-  const csv = "\ufeff" + rows.map(r => r.map(x => `"${String(x).replace(/"/g, '""')}"`).join(",")).join("\r\n");
+  const csv = "\ufeff" + rows.map(r => r.map(x => `"${String(x ?? "").replace(/"/g, '""')}"`).join(",")).join("\r\n");
   const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
   a.download = name; document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 4000);
 }
-async function admReport() {
-  const A = $("#adm"); rep.a ||= bizDay(); rep.b ||= rep.a;
-  A.innerHTML = `<div class="toolbar"><div class="f"><label for="ra">من</label><input id="ra" type="date" value="${rep.a}"></div><div class="f"><label for="rb">إلى</label><input id="rb" type="date" value="${rep.b}"></div>
-    <button class="btn ghost sm" id="rt">اليوم</button><button class="btn ghost sm" id="ry">أمس</button>
-    <label class="small" style="display:flex;gap:6px;align-items:center;min-height:42px"><input type="checkbox" id="rx" ${rep.test ? "checked" : ""}> إظهار التجريبي</label>
-    <span class="sp"></span><button class="btn sm" id="rc">⬇ المبيعات للمحاسبة</button><button class="btn sm ghost" id="ri">⬇ تقرير الأصناف للمحاسبة</button></div><div id="rbody"><p class="muted">جارٍ التحميل…</p></div>`;
-  const go = () => { rep.a = $("#ra").value; rep.b = $("#rb").value < rep.a ? rep.a : $("#rb").value; rep.test = $("#rx").checked; admReport(); };
-  $("#ra").onchange = go; $("#rb").onchange = go; $("#rx").onchange = go;
-  $("#rt").onclick = () => { rep.a = rep.b = bizDay(); admReport(); };
-  $("#ry").onclick = () => { rep.a = rep.b = addDays(bizDay(), -1); admReport(); };
-  let L;
-  try { const s = await F.getDocs(F.query(C("orders"), F.where("day", ">=", rep.a), F.where("day", "<=", rep.b))); L = s.docs.map(d => d.data()); }
-  catch (e) { $("#rbody").innerHTML = `<div class="err">تعذّر تحميل الطلبات: ${esc(e.code || e.message)}</div>`; return; }
-  if (!rep.test) L = L.filter(o => !o.test);
-  const ok = L.filter(o => o.status !== "void"), voids = L.filter(o => o.status === "void"), tot = r2(ok.reduce((s, o) => s + o.total, 0));
-  const by = (arr, f) => arr.reduce((m, o) => { const k = f(o); m[k] = r2((m[k] || 0) + o.total); return m; }, {});
-  const cnt = (arr, f) => arr.reduce((m, o) => { const k = f(o); m[k] = (m[k] || 0) + 1; return m; }, {});
-  const meth = by(ok, o => o.method), methN = cnt(ok, o => o.method), typ = by(ok, o => o.type), typN = cnt(ok, o => o.type), cash = by(ok, o => o.cashierName), cashN = cnt(ok, o => o.cashierName);
-  /* الأصناف: الصافي بعد توزيع خصم الطلب على أصنافه، والتكلفة من تكلفة الصنف وقت البيع */
-  const items = {}, add = (key, name, ref, q, gross, f, c) => { const it = items[key] ||= { name, ref, q: 0, v: 0, net: 0, cost: 0, noCost: false };
-    it.q += q; it.v = r2(it.v + gross); it.net = r2(it.net + gross * f); if (c == null) it.noCost = true; else it.cost = r2(it.cost + c * q); };
-  ok.forEach(o => { const f = o.subtotal ? o.total / o.subtotal : 1;
-    o.lines.forEach(l => { add(l.ref || l.name, l.name, l.ref, l.qty, l.qty * l.price, f, l.cost ?? itemCost(l.id));
-      l.mods.forEach(m => add(m.ref || m.name, m.name, m.ref, l.qty, l.qty * m.price, f, m.cost ?? itemCost(m.id))); }); });
-  const cg = ok.reduce((a, o) => { const c = o.cogs || orderCogs(o), pk = o.pack || packOf(o.lines); a.food += c.food; a.pack += c.pack; a.boxes += pk.boxes; a.bags += pk.bags; a.miss += c.missing; return a; }, { food: 0, pack: 0, boxes: 0, bags: 0, miss: 0 });
-  const cogs = r2(cg.food + cg.pack), gp = r2(tot - cogs);
-  const disc = ok.filter(o => o.discount), discT = r2(disc.reduce((s, o) => s + o.discount.amount, 0));
-  const days = [...new Set(ok.map(o => o.day))].sort();
-  $("#rbody").innerHTML = `<div class="kpis"><div class="kpi"><span>صافي المبيعات</span><b>${money(tot)}</b></div><div class="kpi"><span>عدد الطلبات</span><b class="num">${ok.length}</b></div>
-      <div class="kpi"><span>متوسط الطلب</span><b>${money(ok.length ? tot / ok.length : 0)}</b></div><div class="kpi"><span>الخصومات</span><b>${money(discT)}</b><span>${disc.length} طلب</span></div>
-      <div class="kpi"><span>الملغي</span><b>${money(voids.reduce((s, o) => s + o.total, 0))}</b><span>${voids.length} طلب</span></div></div>
-    <div class="kpis"><div class="kpi"><span>تكلفة الطعام</span><b>${money(cg.food)}</b></div><div class="kpi"><span>التغليف</span><b>${money(cg.pack)}</b><span><span class="num">${cg.boxes}</span> علبة · <span class="num">${cg.bags}</span> كيس</span></div>
-      <div class="kpi"><span>مجمل الربح</span><b>${money(gp)}</b></div><div class="kpi"><span>نسبة التكلفة</span><b class="num">${tot ? (cogs / tot * 100).toFixed(1) + "%" : "—"}</b><span>طعام ${tot ? (cg.food / tot * 100).toFixed(1) + "%" : "—"}</span></div></div>
-    ${cg.miss ? `<div class="note warn" style="margin-bottom:12px">بعض الأصناف المباعة بدون تكلفة، فالتكلفة أقل من الحقيقة. اكتب تكلفتها في «المنيو والأسعار».</div>` : ""}
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px">
-      <div><h4 style="margin:6px 0">طرق الدفع</h4><table class="t"><thead><tr><th>الطريقة</th><th class="n">الطلبات</th><th class="n">المبلغ</th></tr></thead><tbody>${Object.entries(METHODS).map(([k, l]) => `<tr><td>${l}</td><td class="n num">${methN[k] || 0}</td><td class="n">${money(meth[k] || 0)}</td></tr>`).join("")}</tbody><tfoot><tr><td>الإجمالي</td><td class="n num">${ok.length}</td><td class="n">${money(tot)}</td></tr></tfoot></table></div>
-      <div><h4 style="margin:6px 0">نوع الطلب</h4><table class="t"><thead><tr><th>النوع</th><th class="n">الطلبات</th><th class="n">المبلغ</th></tr></thead><tbody>${TYPES.map(([k, l]) => `<tr><td>${l}</td><td class="n num">${typN[k] || 0}</td><td class="n">${money(typ[k] || 0)}</td></tr>`).join("")}</tbody></table>
-        <h4 style="margin:14px 0 6px">حسب الكاشير</h4><table class="t"><tbody>${Object.keys(cash).map(k => `<tr><td>${esc(k)}</td><td class="n num">${cashN[k]}</td><td class="n">${money(cash[k])}</td></tr>`).join("") || `<tr><td class="muted">—</td></tr>`}</tbody></table></div>
-      </div>
-    <h4 style="margin:16px 0 6px">الأصناف المباعة وربحيتها</h4><table class="t"><thead><tr><th>الصنف</th><th class="n">الكمية</th><th class="n">صافي المبيعات</th><th class="n">تكلفة الطعام</th><th class="n">نسبة التكلفة</th><th class="n">الربح</th></tr></thead><tbody>${Object.values(items).sort((a, b) => b.q - a.q).map(v => { const pc = v.net && !v.noCost ? v.cost / v.net * 100 : null;
-        return `<tr><td>${esc(v.name)}</td><td class="n num">${v.q}</td><td class="n">${money(v.net)}</td><td class="n">${v.noCost ? `<span class="chip warn">بدون تكلفة</span>` : money(v.cost)}</td><td class="n">${pc == null ? "—" : `<span class="chip ${pc > 45 ? "bad" : pc > 35 ? "warn" : "ok"} num">${pc.toFixed(1)}%</span>`}</td><td class="n">${v.noCost ? "—" : money(v.net - v.cost)}</td></tr>`; }).join("") || `<tr><td class="muted">—</td></tr>`}</tbody></table>
-    <p class="small muted">صافي المبيعات بعد توزيع الخصومات على الأصناف. تكلفة الطعام بدون التغليف، والتغليف محسوب أعلاه بالعدد.</p>
-    ${disc.length || voids.length ? `<h4 style="margin:16px 0 6px">الخصومات والإلغاءات</h4><table class="t"><thead><tr><th>الطلب</th><th>اليوم</th><th>النوع</th><th>السبب</th><th>الكاشير</th><th class="n">المبلغ</th></tr></thead><tbody>
-      ${disc.map(o => `<tr><td class="num">${pad(o.no, 4)}</td><td class="num">${dmy(o.day)} ${hm(o.ts)}</td><td><span class="chip warn">خصم</span></td><td>${esc(o.discount.reason)}</td><td>${esc(o.cashierName)}</td><td class="n">${money(o.discount.amount)}</td></tr>`).join("")}
-      ${voids.map(o => `<tr><td class="num">${pad(o.no, 4)}</td><td class="num">${dmy(o.day)} ${hm(o.ts)}</td><td><span class="chip bad">إلغاء</span></td><td>${esc(o.void?.reason)}</td><td>${esc(o.cashierName)}</td><td class="n">${money(o.total)}</td></tr>`).join("")}</tbody></table>` : ""}
-    <p class="small muted" style="margin-top:14px;line-height:1.7">ملف المحاسبة يُستورد في برنامج «محاسبة شاورما العقيلة» من شاشة المبيعات ← استيراد من فودكس، ويحتوي على كل يوم مقسّماً حسب طريقة الدفع (لوكيت يذهب إلى تطبيقات التوصيل). الطلبات التجريبية والملغاة لا تدخل فيه. «تقرير الأصناف» يُستورد في شاشة «تكلفة الوجبات» ← استيراد تقرير الأصناف بنفس الفترة، فتظهر التكلفة النظرية مقارنة بالفواتير الفعلية (كشف الهدر).</p>`;
-  $("#ri").onclick = () => {
-    const L2 = Object.values(items); if (!L2.length) return toast("لا توجد مبيعات في هذه الفترة");
-    const rows = [["المنتج", "كود تعريف المنتج", "صافي الكمية", "صافي المبيعات", "إجمالي المبيعات", "كمية الإلغاء"]];
-    const vq = {}; voids.forEach(o => o.lines.forEach(l => { const k = l.ref || l.name; vq[k] = (vq[k] || 0) + l.qty; }));
-    L2.forEach(v => rows.push([v.name, v.ref || "", v.q, m2(v.net), m2(v.v), vq[v.ref || v.name] || 0]));
-    download(rows, `أصناف-الكاشير-${rep.a}${rep.b !== rep.a ? "_" + rep.b : ""}.csv`);
-  };
-  $("#rc").onclick = () => {
-    if (!days.length) return toast("لا توجد مبيعات في هذه الفترة");
-    const rows = [["التاريخ", "طريقة الدفع", "المبلغ الصافي", "العدد"]];
-    days.forEach(d => Object.entries(METHODS).forEach(([k, l]) => { const os = ok.filter(o => o.day === d && o.method === k && !o.test); if (os.length) rows.push([d, l, m2(os.reduce((s, o) => s + o.total, 0)), os.length]); }));
-    download(rows, `مبيعات-الكاشير-${rep.a}${rep.b !== rep.a ? "_" + rep.b : ""}.csv`);
-  };
+const API = { S, F, D, C, VERSION, METHODS, TYPES, CATS, bizDay, addDays, ymd, dshRange, toast, download, render, orderCogs, packOf, itemCost, printJob, printCanvas, drawShiftReport,
+  signOut: () => F.signOut(auth), admStock: () => admStock(), admMenu: () => admMenu(), admStaff: () => admStaff(), admStore: () => admStore(), admVerify: () => admVerify() };
+function openAdmin(tab) {
+  if (!isAdmin()) return; closeModal(); S.view = "admin";
+  import(`./console.js?v=${VERSION}`).then(m => m.mount(API, typeof tab === "string" ? tab : null))
+    .catch(e => { console.error(e); toast("تعذّر فتح لوحة المدير. تأكد من الاتصال ثم حاول", true); S.view = ""; render(S.cashier ? (S.shift ? "pos" : "openshift") : "pin"); });
 }
 
 function admMenu() {
