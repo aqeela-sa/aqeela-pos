@@ -38,7 +38,9 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
     match /acc_users/{uid} {
-      allow read, write: if isAdmin() || (isStaff() && request.auth.uid == uid);
+      allow read: if isAdmin() || isStaff();
+      allow create, update: if isAdmin() || (isStaff() && request.auth.uid == uid);
+      allow delete: if isAdmin();
     }
     match /acc_sales/{id}        { allow read, create, update: if isAdmin() || isStaff(); allow delete: if isAdmin(); }
     match /acc_invoices/{id}     { allow read, create, update: if isAdmin() || isStaff(); allow delete: if isAdmin(); }
