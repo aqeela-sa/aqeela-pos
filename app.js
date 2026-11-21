@@ -4,7 +4,7 @@
 import * as F from "./fb.js";
 import { firebaseConfig } from "./firebase-config.js";
 
-const VERSION = "2.6.2";
+const VERSION = "2.6.3";
 const ADMIN_EMAIL = "abuabraj@gmail.com";
 const DEVICE_EMAIL = "cashier@aqeela-pos.app";
 const APP_NAME = `<span dir="ltr">Cashier AQ</span>`;
@@ -43,6 +43,8 @@ const DEFAULT_COSTS = { "sk-0001": 2.53, "sk-0002": 3.75, "sk-0003": 4, "sk-0004
 /* أسعار هنقرستيشن من منيو المالك (21/11/2026) — تُعبَّأ مرة واحدة في الأصناف التي ليس لها سعر هنقرستيشن */
 const HUNGER_PRICES = { "sk-0007": 11, "sk-0009": 33.5, "sk-0001": 17, "sk-0005": 13, "sk-0003": 21, "sk-0011": 28, "sk-0012": 41,
   "sk-0008": 13, "sk-0010": 38, "sk-0002": 20, "sk-0006": 17, "sk-0004": 22, "sk-0013": 36 };
+/* الإضافات والمشروبات (أُرسلت بعد المنيو) — بعلامة مستقلة لتُعبَّأ حتى لو عُبّئت الوجبات من قبل */
+const HUNGER_EXTRAS = { "sk-0014": 10, "sk-0015": 2, "sk-0016": 4, "sk-0017": 4, "sk-0018": 2 };
 const BOX_REFS = ["sk-0009", "sk-0010", "sk-0011", "sk-0012", "sk-0013"];
 const DEFAULT_PACK = { boxPrice: 1.4, bagKgPrice: 9, bagsPerKg: 60, perBag: 3 };
 /* ملاحظات الأصناف السريعة (مجانية) — يعدّلها المدير من «الإيصال والإعدادات» */
@@ -140,9 +142,10 @@ function migrate() {
     if (!("cost" in m)) u.cost = m.ref && DEFAULT_COSTS[m.ref] != null ? DEFAULT_COSTS[m.ref] : null;
     if (!("box" in m)) u.box = BOX_REFS.includes(m.ref);
     if (!S.config.hungerSeeded && (m.hunger == null || m.hunger === "") && m.ref && HUNGER_PRICES[m.ref] != null) u.hunger = HUNGER_PRICES[m.ref];
+    if (!S.config.hungerExtras && (m.hunger == null || m.hunger === "") && m.ref && HUNGER_EXTRAS[m.ref] != null) u.hunger = HUNGER_EXTRAS[m.ref];
     if (Object.keys(u).length) { b.set(D("menu", m.id), u, { merge: true }); n++; } });
   if (!S.config.pack) { b.set(D("config", "main"), { pack: DEFAULT_PACK }, { merge: true }); n++; }
-  if (!S.config.hungerSeeded) { b.set(D("config", "main"), { hungerSeeded: new Date().toISOString() }, { merge: true }); n++; }
+  if (!S.config.hungerSeeded || !S.config.hungerExtras) { const t = new Date().toISOString(); b.set(D("config", "main"), { hungerSeeded: S.config.hungerSeeded || t, hungerExtras: t }, { merge: true }); n++; }
   if (n) b.commit().catch(e => console.error("migrate", e));
 }
 
