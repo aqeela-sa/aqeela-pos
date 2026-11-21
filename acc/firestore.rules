@@ -1,0 +1,70 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function email() { return request.auth != null ? request.auth.token.email : ''; }
+    function isAdmin() { return email() == 'abuabraj@gmail.com'; }
+    function isCashier() { return email() == 'cashier@aqeela-pos.app'; }
+    function isStaff() { return email() == 'aqeelah.shawqi@gmail.com'; }
+    // pages the owner granted the employee (الإعدادات ← صلاحيات الموظفين)
+    function granted(page) {
+      return isStaff()
+        && get(/databases/$(database)/documents/acc_settings/main).data.get('staffPerms', {}).get('views', []).hasAny([page]);
+    }
+
+    // ---------- Cashier AQ ----------
+    match /config/{id} {
+      allow read: if isAdmin() || isCashier();
+      allow write: if isAdmin();
+    }
+    match /menu/{id} {
+      allow read: if isAdmin() || isCashier() || granted('pos') || granted('platforms');
+      allow write: if isAdmin();
+    }
+    match /orders/{id} {
+      allow read: if isAdmin() || isCashier() || granted('pos') || granted('platforms');
+      allow create, update: if isAdmin() || isCashier();
+      allow delete: if isAdmin();
+    }
+    match /shifts/{id} {
+      allow read: if isAdmin() || isCashier() || granted('pos') || granted('platforms');
+      allow create, update: if isAdmin() || isCashier();
+      allow delete: if isAdmin();
+    }
+
+    // ---------- Accounting: the employee's everyday entry ----------
+    match /acc_settings/{id} {
+      allow read: if isAdmin() || isStaff();
+      allow write: if isAdmin();
+    }
+    match /acc_users/{uid} {
+      allow read, write: if isAdmin() || (isStaff() && request.auth.uid == uid);
+    }
+    match /acc_sales/{id}        { allow read, create, update: if isAdmin() || isStaff(); allow delete: if isAdmin(); }
+    match /acc_invoices/{id}     { allow read, create, update: if isAdmin() || isStaff(); allow delete: if isAdmin(); }
+    match /acc_custody/{id}      { allow read, create, update: if isAdmin() || isStaff(); allow delete: if isAdmin(); }
+    match /acc_appTransfers/{id} { allow read, create, update: if isAdmin() || isStaff(); allow delete: if isAdmin(); }
+    match /acc_recon/{id}        { allow read, create, update: if isAdmin() || isStaff(); allow delete: if isAdmin(); }
+    match /acc_suppliers/{id}    { allow read, create, update: if isAdmin() || isStaff(); allow delete: if isAdmin(); }
+    match /acc_payments/{id}     { allow read, create, update: if isAdmin() || isStaff(); allow delete: if isAdmin(); }
+    match /acc_attachments/{id}  { allow read, create, update: if isAdmin() || isStaff(); allow delete: if isAdmin(); }
+    match /acc_bankTx/{id}       { allow read: if isAdmin() || isStaff(); allow write: if isAdmin(); }
+
+    // ---------- Accounting: pages the owner grants ----------
+    match /acc_stockItems/{id}  { allow read: if isAdmin() || isStaff(); allow create, update: if isAdmin() || granted('stock'); allow delete: if isAdmin(); }
+    match /acc_stockCounts/{id} { allow read: if isAdmin() || isStaff(); allow create, update: if isAdmin() || granted('stock'); allow delete: if isAdmin(); }
+    match /acc_staff/{id}       { allow read, create, update: if isAdmin() || granted('payroll'); allow delete: if isAdmin(); }
+    match /acc_advances/{id}    { allow read, create, update: if isAdmin() || granted('payroll'); allow delete: if isAdmin(); }
+    match /acc_payroll/{id}     { allow read, create, update: if isAdmin() || granted('payroll'); allow delete: if isAdmin(); }
+    match /acc_journal/{id}     { allow read: if isAdmin() || granted('accounting'); allow write: if isAdmin(); }
+    match /acc_cfo/{id}         { allow read, create, update: if isAdmin() || granted('cfo'); allow delete: if isAdmin(); }
+    match /acc_menuItems/{id}   { allow read, create, update: if isAdmin() || granted('menu'); allow delete: if isAdmin(); }
+    match /acc_itemSales/{id}   { allow read, create, update: if isAdmin() || granted('menu'); allow delete: if isAdmin(); }
+    match /acc_platforms/{id}   { allow read, create, update: if isAdmin() || granted('platforms'); allow delete: if isAdmin(); }
+
+    // anything else: the owner only
+    match /{document=**} {
+      allow read, write: if isAdmin();
+    }
+  }
+}

@@ -107,7 +107,7 @@ function pfDayComm(d){
 /* ---------- data ---------- */
 let pfUnsub = null;
 function startPlatforms(){
-  if (pfUnsub || !S.isOwner) return;
+  if (pfUnsub || !(S.isOwner || (typeof staffSees === "function" && staffSees("platforms")))) return;
   pfUnsub = S.db.collection("platforms").onSnapshot(async q => {
     const raw = q.docs.map(d => ({id:d.id, ...d.data()}));
     /* the two platforms the business already uses are created once; one that failed or is missing is added again */

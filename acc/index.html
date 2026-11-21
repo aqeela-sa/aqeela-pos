@@ -1171,9 +1171,16 @@ const strip = x => { if (!x) return {}; const {id, history, ...r} = x; return r;
 const findRaw = (coll, id) => id ? S.raw[KEY[coll]].find(x => x.id === id) : null;
 /* ---------- roles: the owner/editors see everything; a Contributor is a data-entry employee ---------- */
 /* what the data-entry employee may open is the owner's choice (الإعدادات ← صلاحيات الموظفين), kept in settings.staffPerms.
-   Only pages whose data her account can read are offered; the daily guide is always open as her home page. */
-const STAFF_PAGES = [["guide","دليل العمل اليومي"],["dashboard","لوحة التحكم"],["sales","المبيعات"],["invoices","الفواتير"],["custody","العهد"],["suppliers","الموردون"],
-  ["recon","المطابقة اليومية"],["daily","الملخص اليومي"],["apps","تحويلات التطبيقات"],["prodcost","تكاليف الإنتاج"],["reports","التقارير"]];
+   Every page can be granted; the daily guide is always open as her home page. The database rules read the same list, so a granted
+   page's data opens to her account and a removed one closes. Owner-only controls inside pages (settings, journal edits, bank
+   statement import, month locks, these permissions) stay with the owner. */
+const STAFF_PAGES = [["guide","دليل العمل اليومي"],["dashboard","لوحة التحكم"],["sales","المبيعات"],["invoices","الفواتير"],["prodcost","تكاليف الإنتاج"],["suppliers","الموردون"],
+  ["custody","العهد"],["pos","مبيعات الكاشير"],["platforms","التطبيقات"],["payroll","الموظفين والرواتب"],["daily","الملخص اليومي"],["menu","تكلفة الوجبات"],
+  ["budget","الميزانية الشهرية"],["stock","المخزون"],["apps","تحويلات التطبيقات"],["recon","المطابقة اليومية"],["accounting","المحاسبة"],["reports","التقارير"],
+  ["cfo","المدير المالي"],["history","السجل والأرشيف"],["setup","الإعدادات"]];
+/* collections closed to the employee unless the page that uses them is granted */
+const STAFF_COLL_PAGE = {journal:"accounting", staff:"payroll", advances:"payroll", payroll:"payroll", cfo:"cfo", menuItems:"menu", itemSales:"menu"};
+const staffSees = k => !isStaff() || staffPerms().views.has(k);
 const STAFF_DEFAULT = ["guide","daily","sales","invoices","suppliers","custody","recon"], STAFF_HOME = "guide";
 const staffPerms = () => { const P = (S.settings && S.settings.staffPerms) || {}; const v = Array.isArray(P.views) ? P.views : STAFF_DEFAULT;
   return {views: new Set(["guide", ...v.filter(k => STAFF_PAGES.some(p => p[0] === k))]), month: !!P.month}; };
@@ -1181,7 +1188,7 @@ const STAFF_VIEWS = {has: k => staffPerms().views.has(k)};
 const staffMonth = () => !isStaff() || staffPerms().month;   // month totals and production cost in the daily summary
 const homeView = () => isStaff() ? STAFF_HOME : "dashboard";
 const STAFF_REPORTS = new Set(["summary","sales","expenses","production","recon","custody","apps","supplier","payables","buyer","prices","daily"]);
-const STAFF_HIDDEN = ["journal","staff","advances","payroll","cfo","menuItems","itemSales"];   // also closed to Contributors by the database rules
+const STAFF_HIDDEN = Object.keys(STAFF_COLL_PAGE);   // opened per granted page, by the app and by the database rules
 const isStaff = () => S.role === "staff";
 const creatorOf = x => { const h = (x && x.history) || []; const c = h.find(e => e.action === "create"); return (c && c.by) || (h.length ? h[h.length - 1].by : "") || (x && x.by) || ""; };
 function applyRole(){
@@ -2250,10 +2257,9 @@ function rpExtraOpts(t, v){
 }
 function viewReports(){
   if (!S.rp){ const [a,b] = monthRange(S.y, S.m); S.rp = {type:"summary", a, b, emp:""}; }
-  if (isStaff() && !STAFF_REPORTS.has(S.rp.type)) S.rp.type = "summary";
   const r = S.rp;
   return `<div class="bar"><h2>التقارير</h2><div class="actions"><button class="btn ghost" type="button" id="rp_html">نسخة للطباعة</button><button class="btn" type="button" id="rp_pdf">تنزيل PDF</button></div></div>
-  <div class="card"><div class="rp-types">${RTYPES.filter(([k]) => !isStaff() || STAFF_REPORTS.has(k)).map(([k,t,d]) => `<button type="button" class="rp-type ${k===r.type?"on":""}" data-k="${k}"><b>${t}</b><span>${d}</span></button>`).join("")}</div></div>
+  <div class="card"><div class="rp-types">${RTYPES.map(([k,t,d]) => `<button type="button" class="rp-type ${k===r.type?"on":""}" data-k="${k}"><b>${t}</b><span>${d}</span></button>`).join("")}</div></div>
   <div class="card"><div class="fields" style="align-items:end">
     <div class="f"><label for="rp_a">من تاريخ</label><input id="rp_a" type="date" value="${r.a}"></div>
     <div class="f"><label for="rp_b">إلى تاريخ</label><input id="rp_b" type="date" value="${r.b}"></div>
@@ -5688,7 +5694,7 @@ function gdDashChip(){
 function staffPermCard(){
   if (!S.canEdit) return ""; const P = staffPerms();
   return `<div class="card" id="sp_card"><h3 style="margin:0 0 4px">صلاحيات الموظفين</h3>
-    <p class="small muted" style="margin:0 0 12px">الصفحات التي تظهر لموظفة الإدخال (عقيلة). يسري التغيير عندها فوراً بعد الحفظ. «دليل العمل اليومي» مفتوح دائماً لأنه صفحتها الرئيسية. صفحات الرواتب والمحاسبة والمدير المالي ومبيعات الكاشير والتطبيقات والإعدادات للمالك فقط.</p>
+    <p class="small muted" style="margin:0 0 12px">الصفحات التي تظهر لموظفة الإدخال (عقيلة). يسري التغيير عندها فوراً بعد الحفظ. «دليل العمل اليومي» مفتوح دائماً لأنه صفحتها الرئيسية. داخل أي صفحة تبقى أزرار المالك للمالك وحده: تعديل الإعدادات، تعديل القيود، استيراد كشف البنك، إقفال الأشهر، وهذه الصلاحيات.</p>
     <div class="actions" style="flex-wrap:wrap">${STAFF_PAGES.map(([k, l]) => `<label class="tag" for="sp_${k}"><input type="checkbox" id="sp_${k}" data-sp="${k}" ${P.views.has(k) ? "checked" : ""} ${k === "guide" ? "disabled" : ""}> ${l}</label>`).join("")}</div>
     <h3 style="margin:14px 0 6px;font-size:15px">داخل الصفحات</h3>
     <div class="actions"><label class="tag" for="sp_month"><input type="checkbox" id="sp_month" ${P.month ? "checked" : ""}> أرقام الشهر في الملخص اليومي (مبيعات الشهر، الهدف، تكلفة الإنتاج، المصروفات)</label></div>
@@ -6237,9 +6243,15 @@ async function connect(){
   applyBrand();
   db.doc("settings/main").onSnapshot(s => { S.settings = s.exists ? {...DEF, ...s.data()} : {...DEF};
     S.settings.employees = Array.isArray(S.settings.employees) ? S.settings.employees : []; S.settings.categories = Array.isArray(S.settings.categories) ? S.settings.categories : DEF.categories; pgSync(); applyBrand(); S.settings.productionCategories = Array.isArray(S.settings.productionCategories) ? S.settings.productionCategories : [];
-    if (isStaff()){ const was = S.view; applyRole(); if (S.view !== was) render(); }
+    if (isStaff()){ const was = S.view; applyRole(); staffFeeds(); if (S.view !== was) render(); }
     loadedOne("settings", s.metadata.fromCache); changed("settings"); }, fail("settings"));
-  const sub = (coll, key, apply) => (isStaff() && STAFF_HIDDEN.includes(coll)) ? (S.loaded.add(key), null) : db.collection(coll).onSnapshot(q => { const all = q.docs.map(d => ({id:d.id, ...d.data()})); S.raw[key] = all; apply(all.filter(x => !x.deleted)); loadedOne(key, q.metadata.fromCache); changed(); }, fail(key));
+  const live = S.liveSubs = new Map(), plan = S.subPlan = new Map();
+  const open = (coll, key, apply) => db.collection(coll).onSnapshot(q => { const all = q.docs.map(d => ({id:d.id, ...d.data()})); S.raw[key] = all; apply(all.filter(x => !x.deleted)); loadedOne(key, q.metadata.fromCache); changed(); }, fail(key));
+  /* the employee's page-bound collections open when the page is granted and close when it is removed (see staffFeeds) */
+  const sub = (coll, key, apply) => { plan.set(coll, [key, apply]);
+    if (isStaff() && STAFF_HIDDEN.includes(coll) && !staffSees(STAFF_COLL_PAGE[coll])){ S.loaded.add(key); return null; }
+    const u = open(coll, key, apply); live.set(coll, u); return u; };
+  S.openSub = open;
   sub("sales","sales", a => S.sales = new Map(a.map(x => [x.id, x])));
   sub("invoices","invoices", a => S.invoices = a);
   sub("custody","custody", a => S.custody = a);
@@ -6259,12 +6271,26 @@ async function connect(){
   sub("itemSales","itemSales", a => S.itemSales = a);
   render();
   if (S.isOwner) setTimeout(fixAttFlags, 8000);
-  if (S.isOwner && typeof startPlatforms === "function") startPlatforms();
-  if (S.isOwner && window.__accFb && window.__accFb.pos){
-    const from = addDays(S.settings.startDate || "2026-11-14", -1);
-    window.__accFb.pos.watch(from, d => { S.pos = {...d, ready:true, at:Date.now()}; if (["pos","sales","platforms","dashboard","reports","accounting"].includes(S.view)) renderLists(); },
-      e => { S.pos = {orders:[], shifts:[], ready:true, err: e && (e.code || e.message)}; if (S.view === "pos") renderLists(); });
+  staffFeeds();
+}
+/* the cashier feed and the delivery apps: always for the owner; for the employee only while «مبيعات الكاشير» or «التطبيقات» is granted.
+   Also opens or closes her page-bound collections when the owner changes her permissions. */
+function staffFeeds(){
+  if (!S.db) return;
+  if (isStaff() && S.liveSubs && S.subPlan){
+    for (const [coll, [key, apply]] of S.subPlan){ if (!STAFF_HIDDEN.includes(coll)) continue;
+      const want = staffSees(STAFF_COLL_PAGE[coll]), u = S.liveSubs.get(coll);
+      if (want && !u) S.liveSubs.set(coll, S.openSub(coll, key, apply));
+      else if (!want && u){ try { u(); } catch(e){} S.liveSubs.delete(coll); } }
   }
+  const wantPf = S.isOwner || staffSees("platforms"), wantPos = S.isOwner || staffSees("pos") || staffSees("platforms");
+  if (wantPf && typeof startPlatforms === "function") startPlatforms();
+  if (!wantPf && typeof pfUnsub !== "undefined" && pfUnsub){ try { pfUnsub(); } catch(e){} pfUnsub = null; }
+  if (wantPos && !S.posUnsub && window.__accFb && window.__accFb.pos){
+    const from = addDays(S.settings.startDate || "2026-11-14", -1);
+    S.posUnsub = window.__accFb.pos.watch(from, d => { S.pos = {...d, ready:true, at:Date.now()}; if (["pos","sales","platforms","dashboard","reports","accounting"].includes(S.view)) renderLists(); },
+      e => { S.pos = {orders:[], shifts:[], ready:true, err: e && (e.code || e.message)}; if (S.view === "pos") renderLists(); });
+  } else if (!wantPos && S.posUnsub){ try { S.posUnsub(); } catch(e){} S.posUnsub = null; S.pos = null; }
 }
 /* once: records marked as having pictures that were never attached lose the mark, so «مرفق» means a picture really exists */
 async function fixAttFlags(){
@@ -6282,7 +6308,7 @@ async function fixAttFlags(){
 }
 if (window.__accHost) window.__accStart = connect; else connect();
 </script>
-<script src="apps.js?v=6"></script>
+<script src="apps.js?v=7"></script>
 <script type="module" src="acc-fb.js?v=3"></script>
 </body>
 </html>
