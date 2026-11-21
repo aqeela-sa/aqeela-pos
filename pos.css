@@ -371,3 +371,14 @@ body{background:var(--page)}
 .item.has-img:disabled .pimg{filter:grayscale(1)}
 .item .pimg.ph{display:grid;place-items:center;background:color-mix(in srgb,var(--c) 14%,#fff);color:color-mix(in srgb,var(--c) 80%,#000);font-size:26px;font-weight:700}
 .mrow input,.mrow select{padding:0 8px}
+/* نوع الطلب الإجباري */
+.c-type.need{box-shadow:0 0 0 2px #F59E0B;background:#FFF8EB}
+.tpick{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+.tpick button{display:grid;justify-items:center;gap:10px;padding:26px 10px;border-radius:16px;border:1.5px solid #D4D4DA;background:#fff;font-size:20px}
+.tpick button .ic{width:40px;height:40px;color:var(--ink2)}
+.tpick button:active{background:var(--redbg);border-color:var(--red)}
+/* واتساب */
+.btn.wa{background:#1DA851;color:#fff;border:0}.btn.wa:active{background:#168F44}
+.btn.wa .ic{width:20px;height:20px}
+.wa-t{display:inline-flex;align-items:center;gap:3px;color:#168F44;font-weight:600}.wa-t .ic{width:14px;height:14px}
+.chip.hg{background:#FEF3C7;color:#92400E}
