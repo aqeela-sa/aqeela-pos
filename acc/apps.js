@@ -61,6 +61,11 @@ function pfLedger(pf){
   return {days, tr, net, got, bal: r2(net - got), late: r2(days.filter(x => x.st === "late" || (x.st === "part" && t > addDays(x.due, 2))).reduce((a, x) => a + x.left, 0)), extra: r2(Math.max(0, pool))};
 }
 
+/* Firestore keeps no arrays inside arrays: delivery tiers are stored as {min, fee} and used as [min, fee] */
+const tiersIn = T => (T || []).map(x => Array.isArray(x) ? [n(x[0]), n(x[1])] : [n(x.min), n(x.fee)]);
+const tiersOut = T => (T || []).map(x => Array.isArray(x) ? {min:n(x[0]), fee:n(x[1])} : {min:n(x.min), fee:n(x.fee)});
+const contractsOut = cs => (cs || []).map(c => ({...c, tiers: tiersOut(c.tiers)}));
+
 /* the platforms' cut for one shift day, from the cashier and the contracts (null until both are loaded); cached per data change */
 let pfDC = {key:null, by:null};
 function pfDayComm(d){
@@ -75,10 +80,13 @@ let pfUnsub = null;
 function startPlatforms(){
   if (pfUnsub || !S.isOwner) return;
   pfUnsub = S.db.collection("platforms").onSnapshot(async q => {
-    const all = q.docs.map(d => ({id:d.id, ...d.data()})).filter(p => !p.deleted);
-    if (!all.length && !S.pfSeeded){ S.pfSeeded = true;
-      for (const p of PF_SEED){ const {id, ...r} = p; try { await S.db.doc("platforms/" + id).set({...r, createdAt:new Date().toISOString(), by:S.uid || "", history:[]}); } catch(e){} }
-      return; }
+    const raw = q.docs.map(d => ({id:d.id, ...d.data()}));
+    /* the two platforms the business already uses are created once; one that failed or is missing is added again */
+    const missing = PF_SEED.filter(p => !raw.some(x => x.id === p.id));
+    if (missing.length && !S.pfSeeded){ S.pfSeeded = true;
+      for (const p of missing){ const {id, ...r} = p; try { await S.db.doc("platforms/" + id).set({...r, contracts: contractsOut(r.contracts), createdAt:new Date().toISOString(), by:S.uid || "", history:[]}); } catch(e){ toast("تعذّر إنشاء " + p.name + ": " + (e && (e.code || e.message) || e)); } }
+      if (missing.length === PF_SEED.length && !raw.length) return; }
+    const all = raw.filter(p => !p.deleted).map(p => ({...p, contracts:(p.contracts || []).map(c => ({...c, tiers: tiersIn(c.tiers)}))}));
     S.pfVer = (S.pfVer || 0) + 1;
     S.platforms = all.sort((a, b) => (a.order ?? 9) - (b.order ?? 9) || (a.name < b.name ? -1 : 1));
     if (!S.pfSel || !S.platforms.find(p => p.id === S.pfSel)) S.pfSel = (S.platforms[0] || {}).id;
@@ -88,7 +96,8 @@ function startPlatforms(){
 async function pfSave(pf, patch, msg){
   const old = (S.platforms || []).find(p => p.id === pf.id) || {};
   const {id, history, ...prev} = old;
-  const body = {...prev, ...patch, updatedAt:new Date().toISOString(), by:S.uid || "", history:[{action: old.id ? "edit" : "create", at:new Date().toISOString(), by:S.uid || "", before: old.id ? {contracts: prev.contracts || [], name: prev.name} : null}, ...(history || [])].slice(0, 15)};
+  const body = {...prev, ...patch, updatedAt:new Date().toISOString(), by:S.uid || "", history:[{action: old.id ? "edit" : "create", at:new Date().toISOString(), by:S.uid || "", before: old.id ? {contracts: contractsOut(prev.contracts), name: prev.name} : null}, ...(history || [])].slice(0, 15)};
+  body.contracts = contractsOut(body.contracts);
   try { await S.db.doc("platforms/" + pf.id).set(body); if (msg) toast(msg); return true; } catch(e){ toast("تعذّر الحفظ: " + (e && (e.code || e.message) || e)); return false; }
 }
 
