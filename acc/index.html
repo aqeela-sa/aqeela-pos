@@ -903,6 +903,7 @@ nav.tabs a[hidden],.nav-more[hidden]{display:none!important}
 .inv-flt{padding:12px 14px;margin-bottom:12px}.inv-flt-row{display:flex;flex-wrap:wrap;gap:10px 14px;align-items:flex-end}
 .inv-flt-f{display:flex;flex-direction:column;gap:4px;min-width:170px;flex:0 1 220px}.inv-flt-f>span{font-size:12px;font-weight:700;color:var(--muted,#777)}
 @media (max-width:640px){.inv-flt-row>.seg{width:100%}.inv-flt-f{flex:1 1 100%}}
+.sheet.pd-wide{max-width:min(1100px,96vw)!important;width:min(1100px,96vw)}
 </style>
 <style>
 #acc_login{position:fixed;inset:0;z-index:200;display:grid;place-items:center;padding:20px;background:linear-gradient(160deg,#C1121F,#8E0D17)}
@@ -1847,7 +1848,7 @@ function openRecon(d){
     if (ok) closeModal();
   };
 }
-function closeModal(){ $("#modal").classList.remove("open"); $("#sheet").innerHTML = ""; }
+function closeModal(){ $("#sheet").classList.remove("pd-wide"); $("#modal").classList.remove("open"); $("#sheet").innerHTML = ""; }
 $("#modal").addEventListener("click", e => { if (e.target.id === "modal") closeModal(); });
 document.addEventListener("keydown", e => { if (e.key === "Escape") closeModal(); });
 
@@ -5973,6 +5974,28 @@ function posDays(){
   by.forEach(x => { POS_M.forEach(k => x[k] = r2(x[k])); x.total = r2(POS_M.reduce((a, k) => a + x[k], 0)); x.hsFee = r2(x.hsFee); });
   return by;
 }
+const POS_TYPE = {dine:"محلي", take:"سفري", delivery:"توصيل", lokit:"لوكيت", hunger:"هنقرستيشن"};
+const POS_METH = {cash:"كاش", mada:"مدى", visa:"فيزا", lokit:"لوكيت", hunger:"هنقرستيشن"};
+const hm = t => { const d = new Date(n(t)); return isNaN(d) ? "" : `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`; };
+/* every order of one shift day, in the order they were rung up, with their items: to trace a difference with Foodics down to the order */
+function openPosDay(day){
+  const P = S.pos || {}, sday = new Map((P.shifts || []).map(x => [x.id, x.day]));
+  const L = (P.orders || []).filter(o => !o.test && ((o.shiftId && sday.get(o.shiftId)) || o.day) === day).sort((a, b) => n(a.ts) - n(b.ts));
+  const st = o => o.status === "void" ? '<span class="chip bad">ملغي</span>' : o.status === "open" ? '<span class="chip warn">غير مدفوع</span>' : '<span class="chip ok">مدفوع</span>';
+  const items = o => (o.lines || []).map(l => `<div><b class="num">${n(l.qty)}</b> × ${esc(l.name)}${(l.mods || []).length ? ` <span class="small muted">+ ${l.mods.map(m => esc(m.name)).join("، ")}</span>` : ""}${(l.notes || []).length || l.note ? ` <span class="small muted">(${esc([...(l.notes || []), l.note].filter(Boolean).join("، "))})</span>` : ""}</div>`).join("");
+  const paid = L.filter(o => o.status !== "void" && o.status !== "open");
+  const tot = k => r2(paid.filter(o => o.method === k).reduce((a, o) => a + n(o.total), 0));
+  const qty = new Map(); paid.forEach(o => (o.lines || []).forEach(l => qty.set(l.name, (qty.get(l.name) || 0) + n(l.qty))));
+  $("#sheet").innerHTML = `<div class="entry"><div class="bar" style="margin:0;border:0;padding:0;flex-wrap:nowrap"><h3 style="margin:0">طلبات وردية ${dayName(day)} <span class="num">${dmy(day)}</span></h3><button class="btn ghost sm" type="button" id="pd_x">إغلاق</button></div>
+    <div class="small" style="margin:6px 0 10px">${paid.length} طلب مدفوع${L.length > paid.length ? ` · ${L.length - paid.length} ملغي أو غير مدفوع` : ""} · ${POS_M.filter(k => tot(k)).map(k => `${POS_METH[k]} <b class="num">${fmt(tot(k))}</b>`).join(" · ")} · الإجمالي <b class="num">${fmt(r2(paid.reduce((a, o) => a + n(o.total), 0)))}</b></div>
+    ${L.length ? `<div class="tw" style="max-height:60vh"><table><thead><tr><th class="n">رقم</th><th>الوقت</th><th>النوع</th><th>الدفع</th><th>الأصناف</th><th class="n">الخصم</th><th class="n">الإجمالي</th><th>الحالة</th><th>الكاشير</th></tr></thead><tbody>
+      ${L.map(o => `<tr class="${o.status === "void" ? "unpaid" : ""}"><td class="n num">${o.no ?? ""}</td><td class="num">${hm(o.ts)}${o.paidAt && o.paidAt - n(o.ts) > 60000 ? `<div class="by">دُفع ${hm(o.paidAt)}</div>` : ""}</td><td>${esc(POS_TYPE[o.type] || o.type || "")}${o.name || o.phone ? `<div class="by">${esc(o.name || "")} ${o.phone ? `<span class="num">${esc(o.phone)}</span>` : ""}</div>` : ""}</td><td>${esc(POS_METH[o.method] || (o.status === "open" ? "—" : o.method || ""))}</td><td>${items(o)}</td><td class="n">${o.discount && n(o.discount.amount) ? money(-n(o.discount.amount)) : ""}</td><td class="n"><b>${money(n(o.total))}</b></td><td>${st(o)}${o.status === "void" && o.void && o.void.reason ? `<div class="by">${esc(o.void.reason)}</div>` : ""}</td><td>${esc(o.cashierName || "")}</td></tr>`).join("")}
+    </tbody></table></div>
+    <details style="margin-top:10px"><summary class="small" style="cursor:pointer;font-weight:700">الأصناف المباعة في الوردية (${qty.size})</summary>
+      <div class="tw"><table><thead><tr><th>الصنف</th><th class="n">الكمية</th></tr></thead><tbody>${[...qty].sort((a, b) => b[1] - a[1]).map(([k, v]) => `<tr><td>${esc(k)}</td><td class="n num">${v}</td></tr>`).join("")}</tbody></table></div></details>`
+    : '<div class="empty">لا توجد طلبات.</div>'}</div>`;
+  $("#sheet").classList.add("pd-wide"); $("#modal").classList.add("open"); $("#pd_x").onclick = closeModal;
+}
 const posAsSale = x => ({cash: x.cash || null, mada: x.mada || null, visa: x.visa || null, delivery: r2(x.lokit + x.hunger) || null});
 function viewPos(){
   return `<div class="bar"><h2>مبيعات الكاشير</h2>${periodPicker()}</div>
@@ -5995,7 +6018,7 @@ function renderPos(){
   const rows = days.map(x => {
     const s = rec(x.date), st = s ? saleTotal(s) : null, diff = s ? r2(x.total - st) : null, isPos = s && s.source === "pos";
     const det = s ? [["كاش", x.cash - n(s.cash)], ["بطاقات", x.mada + x.visa - card(s)], ["تطبيقات", x.lokit + x.hunger - n(s.delivery)]].filter(([, v]) => Math.abs(v) >= 0.005).map(([l, v]) => `${l} <span class="num">${v > 0 ? "+" : ""}${fmt(v)}</span>`).join(" · ") : "";
-    return `<tr><td class="num key">${dmy(x.date)}${live.has(x.date) ? ' <span class="chip info">الوردية مفتوحة</span>' : ""}</td><td>${dayName(x.date)}</td>
+    return `<tr class="click" data-posday="${x.date}" title="اضغط لعرض طلبات اليوم"><td class="num key">${dmy(x.date)}${live.has(x.date) ? ' <span class="chip info">الوردية مفتوحة</span>' : ""}</td><td>${dayName(x.date)}</td>
       <td class="n num">${x.count}</td><td class="n">${money(x.cash)}</td><td class="n">${money(x.mada + x.visa)}</td><td class="n">${money(x.lokit)}</td><td class="n">${money(x.hunger)}</td>
       <td class="n"><b>${money(x.total)}</b>${x.voids ? `<div class="by">ملغاة ${x.voids} · <span class="num">${fmt(x.voidAmt)}</span></div>` : ""}${x.open ? `<div class="by neg">غير مدفوعة ${x.open} · <span class="num">${fmt(x.openAmt)}</span></div>` : ""}</td>
       <td class="n">${s ? `${money(st)}<div class="by">${isPos ? "من الكاشير" : "من فودكس"}${s.count ? ` · ${s.count} طلب` : ""}</div>` : '<span class="dash">لم يُسجَّل</span>'}</td>
@@ -6013,6 +6036,7 @@ function renderPos(){
       <tbody>${rows}<tr class="tot"><td colspan="2">الإجمالي</td><td class="n num">${days.reduce((a, x) => a + x.count, 0)}</td><td class="n">${money(sum("cash"))}</td><td class="n">${money(r2(sum("mada") + sum("visa")))}</td><td class="n">${money(sum("lokit"))}</td><td class="n">${money(sum("hunger"))}</td><td class="n">${money(sum("total"))}</td><td class="n">${money(r2(days.reduce((a, x) => a + (rec(x.date) ? saleTotal(rec(x.date)) : 0), 0)))}</td><td colspan="2"></td></tr></tbody></table></div>`
       : `<div class="empty card">لا توجد مبيعات في الكاشير في ${MONTHS[S.m-1]} ${S.y}.</div>`}
     <p class="foot" style="margin-top:10px">«الفرق» = الكاشير − المسجّل. فودكس هو المعتمد حتى يستقر الكاشير؛ زر «اعتماد أرقام الكاشير» يكتب أرقام الكاشير مكان المسجّل لذلك اليوم (ويُحفظ ما كان قبله في سجل التعديلات).</p>`;
+  el.querySelectorAll("tr[data-posday]").forEach(tr => tr.onclick = e => { if (e.target.closest("button")) return; openPosDay(tr.dataset.posday); });
   el.querySelectorAll("[data-posimp]").forEach(b => armDelete(b, async () => {
     const d = b.dataset.posimp, x = all.get(d), ex = S.sales.get(d);
     const data = {...(ex ? strip(ex) : {}), date:d, ...posAsSale(x), transfer: ex ? (ex.transfer ?? null) : null, credit: ex ? (ex.credit ?? null) : null, count: x.count || null, source:"pos", notes: "من الكاشير" + (ex && ex.source === "foodics" ? " (بدل فودكس)" : "")};
