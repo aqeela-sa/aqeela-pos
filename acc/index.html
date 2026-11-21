@@ -1170,8 +1170,15 @@ const ACT = {create:["إضافة","ok"],edit:["تعديل","info"],delete:["حذ
 const strip = x => { if (!x) return {}; const {id, history, ...r} = x; return r; };
 const findRaw = (coll, id) => id ? S.raw[KEY[coll]].find(x => x.id === id) : null;
 /* ---------- roles: the owner/editors see everything; a Contributor is a data-entry employee ---------- */
-/* the data-entry employee sees the entry pages and her daily tasks; profits, production cost, reports and the dashboard are the owner's */
-const STAFF_VIEWS = new Set(["guide","daily","sales","invoices","suppliers","custody","recon"]), STAFF_HOME = "guide";
+/* what the data-entry employee may open is the owner's choice (الإعدادات ← صلاحيات الموظفين), kept in settings.staffPerms.
+   Only pages whose data her account can read are offered; the daily guide is always open as her home page. */
+const STAFF_PAGES = [["guide","دليل العمل اليومي"],["dashboard","لوحة التحكم"],["sales","المبيعات"],["invoices","الفواتير"],["custody","العهد"],["suppliers","الموردون"],
+  ["recon","المطابقة اليومية"],["daily","الملخص اليومي"],["apps","تحويلات التطبيقات"],["prodcost","تكاليف الإنتاج"],["reports","التقارير"]];
+const STAFF_DEFAULT = ["guide","daily","sales","invoices","suppliers","custody","recon"], STAFF_HOME = "guide";
+const staffPerms = () => { const P = (S.settings && S.settings.staffPerms) || {}; const v = Array.isArray(P.views) ? P.views : STAFF_DEFAULT;
+  return {views: new Set(["guide", ...v.filter(k => STAFF_PAGES.some(p => p[0] === k))]), month: !!P.month}; };
+const STAFF_VIEWS = {has: k => staffPerms().views.has(k)};
+const staffMonth = () => !isStaff() || staffPerms().month;   // month totals and production cost in the daily summary
 const homeView = () => isStaff() ? STAFF_HOME : "dashboard";
 const STAFF_REPORTS = new Set(["summary","sales","expenses","production","recon","custody","apps","supplier","payables","buyer","prices","daily"]);
 const STAFF_HIDDEN = ["journal","staff","advances","payroll","cfo","menuItems","itemSales"];   // also closed to Contributors by the database rules
@@ -1890,6 +1897,7 @@ function viewSetup(){
       <button type="button" role="radio" aria-checked="${sk === "classic"}" class="skin-opt ${sk === "classic" ? "on" : ""}" data-sk="classic"><i style="background:#B71C1C"></i>الكلاسيكي (أحمر)</button></div></div>
   ${brandIsAqeela() ? `<div class="card" style="display:flex;align-items:center;gap:14px;flex-wrap:wrap"><div style="flex:1;min-width:220px"><h3 style="margin:0 0 4px">📘 دليل المستخدم</h3><p class="small muted" style="margin:0">كتاب PDF من 51 صفحة يشرح فكرة البرنامج وطريقة استخدام كل صفحاته، مناسب لتدريب أي موظف جديد.</p></div><button class="btn" type="button" id="set_book">تنزيل الدليل</button></div>` : ""}
   ${brandCard()}
+  ${staffPermCard()}
   ${lockCard()}
   ${lock ? `<div class="note warn">الإعدادات يعدّلها مالك البرنامج أو المحرر فقط.</div>` : ""}
   <form class="card entry" id="fset"><h3>أرصدة البداية</h3>
@@ -1964,7 +1972,7 @@ async function importMigration(file, st){
   };
 }
 function bindSetup(){
-  bindLockCard(); bindBrandCard(); if ($("#set_book")) $("#set_book").onclick = () => downloadBook($("#set_book"));
+  bindLockCard(); bindBrandCard(); bindStaffPermCard(); if ($("#set_book")) $("#set_book").onclick = () => downloadBook($("#set_book"));
   document.querySelectorAll(".skin-opt").forEach(b => b.onclick = () => { const v = ["teal", "rose"].includes(b.dataset.sk) ? b.dataset.sk : "classic";
     document.documentElement.dataset.skin = v; try { localStorage.setItem("skin", v); } catch(e){}
     document.querySelectorAll(".skin-opt").forEach(x => { x.classList.toggle("on", x === b); x.setAttribute("aria-checked", x === b); }); });
@@ -5512,7 +5520,7 @@ function renderDaily(){
     <div class="card dy-c"><h3>الخزنة والبنك</h3>${r ? `
       <div class="dy-kv"><span>الخزنة: الدفتري <span class="num">${fmt(r.cAtCount)}</span>${r.ac != null ? ` · الفعلي <span class="num">${fmt(r.ac)}</span>` : ""}</span>${diff(r.cDiff)}</div>
       <div class="dy-kv"><span>البنك: الدفتري <span class="num">${fmt(r.bankExp)}</span>${r.ab != null ? ` · الفعلي <span class="num">${fmt(r.ab)}</span>` : ""}</span>${diff(r.bDiff)}</div>` : `<p class="muted" style="margin:0">لا توجد حركة خزنة لهذا اليوم.</p>`}</div>
-    ${isStaff() ? "" : `<div class="card dy-c"><h3>الشهر حتى هذا اليوم · ${MONTHS[+D.d.slice(5, 7) - 1]}</h3>
+    ${!staffMonth() ? "" : `<div class="card dy-c"><h3>الشهر حتى هذا اليوم · ${MONTHS[+D.d.slice(5, 7) - 1]}</h3>
       <div class="dy-kv"><span>المبيعات الفعلية (${M.days} يوم)</span><b class="num">${fmt(M.netSales)}</b></div>
       ${D.P && D.P.sales > 0 ? `<div class="dy-kv"><span>من هدف <span class="num">${fmt(D.P.sales)}</span></span>${bgMeter(M.netSales, D.P.sales, false)}</div>
         <div class="dy-kv"><span>المتوقع بنهاية الشهر</span><b class="num ${D.fc >= D.P.sales ? "pos" : "neg"}">${fmt(D.fc)}</b></div>` : ""}
@@ -5537,7 +5545,7 @@ function dyText(D, A){
   L.push("", `المشتريات: ${fmt(sumBy(D.invs, invTotal))} (${D.invs.length} فاتورة) · إنتاج ${fmt(sumBy(D.prod, invTotal))}`);
   if (D.cus.length) L.push(`صرف العهد: ${fmt(sumBy(D.cus, x => n(x.amount)))}`);
   if (D.row){ const f = v => v == null ? "لم يُسجّل" : Math.abs(v) < 0.5 ? "مطابق" : (v > 0 ? "+" : "") + fmt(v); L.push(`الخزنة: ${f(D.row.cDiff)} · البنك: ${f(D.row.bDiff)}`); }
-  if (!isStaff()){ L.push("", `*الشهر حتى الآن*`, `المبيعات: ${fmt(M.netSales)} (${M.days} يوم، متوسط ${fmt(M.avg)})`);
+  if (staffMonth()){ L.push("", `*الشهر حتى الآن*`, `المبيعات: ${fmt(M.netSales)} (${M.days} يوم، متوسط ${fmt(M.avg)})`);
     if (D.P && D.P.sales > 0) L.push(`من الهدف ${fmt(D.P.sales)}: ${(M.netSales / D.P.sales * 100).toFixed(0)}% · المتوقع ${fmt(D.fc)}`);
     L.push(`تكلفة الإنتاج: ${pct(M.prodPct)} · المصروفات: ${fmt(M.exp)}`); }
   if (A.length){ L.push("", "*تنبيهات*"); A.forEach(([, t]) => L.push("• " + t)); }
@@ -5558,7 +5566,7 @@ Object.assign(REPORTS, {
       (D.invs.length || D.cus.length ? rpSec("المشتريات والمصروفات", rpTable(["المورد","التصنيف","طريقة الدفع","المبلغ"], [...D.invs.slice().sort((p, q) => invTotal(q) - invTotal(p)).map(x => [esc(supKey(x.supplier) || "—"), esc(x.category || ""), esc(x.pay || ""), M_(invTotal(x))]),
         ...D.cus.map(x => [esc(x.employee || x.emp || "عهدة"), esc(x.category || ""), "من العهدة", M_(n(x.amount))])], ["الإجمالي", "", "", M_(sumBy(D.invs, invTotal) + sumBy(D.cus, x => n(x.amount)))], ["30%","30%","18%","22%"])) : "") +
       (r ? rpSec("الخزنة والبنك", rpTable(["","الدفتري","الفعلي","الفرق"], [["الخزنة", M_(r.cAtCount), r.ac != null ? M_(r.ac) : "—", f(r.cDiff)], ["البنك", M_(r.bankExp), r.ab != null ? M_(r.ab) : "—", f(r.bDiff)]], null, ["28%","24%","24%","24%"])) : "") +
-      (isStaff() ? "" : rpSec(`الشهر حتى هذا اليوم · ${MONTHS[+d.slice(5, 7) - 1]}`, rpTable(["البند","القيمة"], [[`المبيعات الفعلية (${M.days} يوم)`, M_(M.netSales)], ["متوسط اليوم", M_(M.avg)],
+      (!staffMonth() ? "" : rpSec(`الشهر حتى هذا اليوم · ${MONTHS[+d.slice(5, 7) - 1]}`, rpTable(["البند","القيمة"], [[`المبيعات الفعلية (${M.days} يوم)`, M_(M.netSales)], ["متوسط اليوم", M_(M.avg)],
         ...(D.P && D.P.sales > 0 ? [[`من الهدف ${fmt(D.P.sales)}`, `${(M.netSales / D.P.sales * 100).toFixed(0)}%`], ["المتوقع بنهاية الشهر", M_(D.fc)]] : []),
         ["تكلفة الإنتاج", `${M_(M.prod)} · ${pct(M.prodPct)}`], ["المصروفات", M_(M.exp)]], null, ["65%","35%"]))) +
       rpSec("يحتاج انتباهك", A.length ? `<ul class="rp-al">${A.map(([lv, t]) => `<li class="${lv}">${esc(t)}</li>`).join("")}</ul>` : `<div class="rp-note">كل شيء تمام ✓</div>`) + rpFoot()};
@@ -5674,6 +5682,24 @@ function renderGuide(){
 function gdDashChip(){
   const G = gdSteps(), left = G.daily.filter(s => s.st[0] === "todo" || s.st[0] === "warn").length;
   return `<a class="btn ghost sm gd-chip ${left ? "has" : ""}" href="#guide">${left ? `مهام اليوم <b class="num">${left}</b>` : "مهام اليوم ✓"}</a>`;
+}
+
+/* ---------- STAFF PERMISSIONS (صلاحيات الموظفين) ---------- */
+function staffPermCard(){
+  if (!S.canEdit) return ""; const P = staffPerms();
+  return `<div class="card" id="sp_card"><h3 style="margin:0 0 4px">صلاحيات الموظفين</h3>
+    <p class="small muted" style="margin:0 0 12px">الصفحات التي تظهر لموظفة الإدخال (عقيلة). يسري التغيير عندها فوراً بعد الحفظ. «دليل العمل اليومي» مفتوح دائماً لأنه صفحتها الرئيسية. صفحات الرواتب والمحاسبة والمدير المالي ومبيعات الكاشير والتطبيقات والإعدادات للمالك فقط.</p>
+    <div class="actions" style="flex-wrap:wrap">${STAFF_PAGES.map(([k, l]) => `<label class="tag" for="sp_${k}"><input type="checkbox" id="sp_${k}" data-sp="${k}" ${P.views.has(k) ? "checked" : ""} ${k === "guide" ? "disabled" : ""}> ${l}</label>`).join("")}</div>
+    <h3 style="margin:14px 0 6px;font-size:15px">داخل الصفحات</h3>
+    <div class="actions"><label class="tag" for="sp_month"><input type="checkbox" id="sp_month" ${P.month ? "checked" : ""}> أرقام الشهر في الملخص اليومي (مبيعات الشهر، الهدف، تكلفة الإنتاج، المصروفات)</label></div>
+    <div class="actions"><button class="btn" type="button" id="sp_save">حفظ الصلاحيات</button></div></div>`;
+}
+function bindStaffPermCard(){
+  const b = $("#sp_save"); if (!b) return;
+  b.onclick = async () => {
+    const views = [...document.querySelectorAll("[data-sp]")].filter(x => x.checked).map(x => x.dataset.sp), staffPermsNew = {views, month: $("#sp_month").checked};
+    const base = {...S.settings}; delete base.id;
+    if (await write(() => S.db.doc("settings/main").set({...base, staffPerms:staffPermsNew, ...stamp()}), "تم حفظ الصلاحيات")) S.settings.staffPerms = staffPermsNew; };
 }
 
 /* ---------- PROJECT IDENTITY (هوية المشروع) ---------- */
@@ -6211,6 +6237,7 @@ async function connect(){
   applyBrand();
   db.doc("settings/main").onSnapshot(s => { S.settings = s.exists ? {...DEF, ...s.data()} : {...DEF};
     S.settings.employees = Array.isArray(S.settings.employees) ? S.settings.employees : []; S.settings.categories = Array.isArray(S.settings.categories) ? S.settings.categories : DEF.categories; pgSync(); applyBrand(); S.settings.productionCategories = Array.isArray(S.settings.productionCategories) ? S.settings.productionCategories : [];
+    if (isStaff()){ const was = S.view; applyRole(); if (S.view !== was) render(); }
     loadedOne("settings", s.metadata.fromCache); changed("settings"); }, fail("settings"));
   const sub = (coll, key, apply) => (isStaff() && STAFF_HIDDEN.includes(coll)) ? (S.loaded.add(key), null) : db.collection(coll).onSnapshot(q => { const all = q.docs.map(d => ({id:d.id, ...d.data()})); S.raw[key] = all; apply(all.filter(x => !x.deleted)); loadedOne(key, q.metadata.fromCache); changed(); }, fail(key));
   sub("sales","sales", a => S.sales = new Map(a.map(x => [x.id, x])));
