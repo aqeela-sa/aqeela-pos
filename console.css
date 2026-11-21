@@ -46,7 +46,7 @@
 @keyframes cxspin{to{transform:rotate(360deg)}}
 .cx-user{position:relative}
 .cx-av{display:inline-flex;align-items:center;gap:10px;height:44px;padding:0 6px 0 14px;border:1px solid #D4D4DA;border-radius:999px;background:#fff;font-weight:600}
-.cx-av i{width:32px;height:32px;border-radius:50%;background:var(--acc);color:#fff;display:grid;place-items:center;font-style:normal;font-size:15px}
+.cx-av img{width:32px;height:32px;border-radius:9px;display:block;object-fit:cover}
 
 /* ===== الصفحة ===== */
 .cx-page{flex:1;overflow-y:auto;padding:28px 32px 56px;scroll-behavior:smooth}

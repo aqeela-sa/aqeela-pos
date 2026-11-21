@@ -4,7 +4,7 @@
 import * as F from "./fb.js";
 import { firebaseConfig } from "./firebase-config.js";
 
-const VERSION = "2.0.0";
+const VERSION = "2.1.0";
 const ADMIN_EMAIL = "abuabraj@gmail.com";
 const DEVICE_EMAIL = "cashier@aqeela-pos.app";
 const APP_NAME = `<span dir="ltr">Cashier AQ</span>`;
@@ -232,95 +232,179 @@ function drawPin() {
   if ($("#toadm")) $("#toadm").onclick = openAdmin;
 }
 
-/* ----- POS ----- */
+/* ----- POS (شاشة البيع) ----- */
+const IC = {
+  search: "M15.5 14h-.79l-.28-.27A6.47 6.47 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z",
+  menu: "M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z",
+  close: "M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z",
+  add: "M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z",
+  remove: "M19 13H5v-2h14v2z",
+  trash: "M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z",
+  print: "M19 8H5c-1.66 0-3 1.34-3 3v6h4v4h12v-4h4v-6c0-1.66-1.34-3-3-3zm-3 11H8v-5h8v5zm3-7c-.55 0-1-.45-1-1s.45-1 1-1 1 .45 1 1-.45 1-1 1zm-1-9H6v4h12V3z",
+  person: "M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z",
+  receipt: "M18 17H6v-2h12v2zm0-4H6v-2h12v2zm0-4H6V7h12v2zM3 22l1.5-1.5L6 22l1.5-1.5L9 22l1.5-1.5L12 22l1.5-1.5L15 22l1.5-1.5L18 22l1.5-1.5L21 22V2l-1.5 1.5L18 2l-1.5 1.5L15 2l-1.5 1.5L12 2l-1.5 1.5L9 2 7.5 3.5 6 2 4.5 3.5 3 2v20z",
+  check: "M9 16.17 4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z",
+  back: "M22 3H7c-.69 0-1.23.35-1.59.88L0 12l5.41 8.11c.36.53.9.89 1.59.89h15c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-3 12.59L17.59 17 14 13.41 10.41 17 9 15.59 12.59 12 9 8.41 10.41 7 14 10.59 17.59 7 19 8.41 15.41 12 19 15.59z",
+  take: "M18 6h-2c0-2.21-1.79-4-4-4S8 3.79 8 6H6c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zm-8 4c0 .55-.45 1-1 1s-1-.45-1-1V8h2v2zm2-6c1.1 0 2 .9 2 2h-4c0-1.1.9-2 2-2zm4 6c0 .55-.45 1-1 1s-1-.45-1-1V8h2v2z",
+  dine: "M11 9H9V2H7v7H5V2H3v7c0 2.12 1.66 3.84 3.75 3.97V22h2.5v-9.03C11.34 12.84 13 11.12 13 9V2h-2v7zm5-3v8h2.5v8H21V2c-2.76 0-5 2.24-5 4z",
+  lokit: "M19 7c0-1.1-.9-2-2-2h-3v2h3v2.65L13.52 14H10V9H6c-2.21 0-4 1.79-4 4v3h2c0 1.66 1.34 3 3 3s3-1.34 3-3h4.48L19 10.35V7zM7 17c-.55 0-1-.45-1-1h2c0 .55-.45 1-1 1zM5 6h5v2H5zm14 7c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3zm0 4c-.55 0-1-.45-1-1s.45-1 1-1 1 .45 1 1-.45 1-1 1z",
+  fire: "M19.48 12.35c-1.57-4.08-7.16-4.3-5.81-10.23.1-.44-.37-.78-.75-.55C9.29 3.71 6.68 8 8.87 13.62c.18.46-.36.89-.75.59-1.81-1.37-2-3.34-1.84-4.75.06-.52-.62-.77-.91-.34C4.69 10.16 4 11.84 4 14.37c.38 5.6 5.11 7.32 6.81 7.54 2.43.31 5.06-.14 6.95-1.87 2.08-1.93 2.84-5.01 1.72-7.69zm-9.28 5.03c1.44-.35 2.18-1.39 2.38-2.31.33-1.43-.96-2.83-.09-5.09.33 1.87 3.27 3.04 3.27 5.08.08 2.53-2.66 4.7-5.56 2.32z",
+  note: "M3 10h11v2H3v-2zm0-2h11V6H3v2zm0 8h7v-2H3v2zm15.01-3.13.71-.71c.39-.39 1.02-.39 1.41 0l.71.71c.39.39.39 1.02 0 1.41l-.71.71-2.12-2.12zm-.71.71-5.3 5.3V21h2.12l5.3-5.3-2.12-2.12z",
+  tag: "M21.41 11.58l-9-9C12.05 2.22 11.55 2 11 2H4c-1.1 0-2 .9-2 2v7c0 .55.22 1.05.59 1.42l9 9c.36.36.86.58 1.41.58.55 0 1.05-.22 1.41-.59l7-7c.37-.36.59-.86.59-1.41 0-.55-.23-1.06-.59-1.42zM5.5 7C4.67 7 4 6.33 4 5.5S4.67 4 5.5 4 7 4.67 7 5.5 6.33 7 5.5 7z",
+  pause: "M9 16h2V8H9v8zm3-14C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm1-4h2V8h-2v8z",
+  clock: "M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67z",
+  swap: "M6.99 11 3 15l3.99 4v-3H14v-2H6.99v-3zM21 9l-3.99-4v3H10v2h7.01v3L21 9z",
+  gear: "M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58a.49.49 0 0 0 .12-.61l-1.92-3.32a.488.488 0 0 0-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54a.484.484 0 0 0-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58a.49.49 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z",
+  dash: "M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z",
+  refresh: "M17.65 6.35A7.958 7.958 0 0 0 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08A5.99 5.99 0 0 1 12 18c-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z",
+  cash: "M19 14V6c0-1.1-.9-2-2-2H3c-1.1 0-2 .9-2 2v8c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zm-9-1c-1.66 0-3-1.34-3-3s1.34-3 3-3 3 1.34 3 3-1.34 3-3 3zm13-6v11c0 1.1-.9 2-2 2H4v-2h17V7h2z",
+  card: "M20 4H4c-1.11 0-1.99.89-1.99 2L2 18c0 1.11.89 2 2 2h16c1.11 0 2-.89 2-2V6c0-1.11-.89-2-2-2zm0 14H4v-6h16v6zm0-10H4V6h16v2z",
+  lock: "M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2z",
+  cart: "M7 18c-1.1 0-1.99.9-1.99 2S5.9 22 7 22s2-.9 2-2-.9-2-2-2zM1 2v2h2l3.6 7.59-1.35 2.45c-.16.28-.25.61-.25.96 0 1.1.9 2 2 2h12v-2H7.42c-.14 0-.25-.11-.25-.25l.03-.12.9-1.63h7.45c.75 0 1.41-.41 1.75-1.03l3.58-6.49A1.003 1.003 0 0 0 20 4H5.21l-.94-2H1zm16 16c-1.1 0-1.99.9-1.99 2s.89 2 1.99 2 2-.9 2-2-.9-2-2-2z",
+  chev: "M16.59 8.59 12 13.17 7.41 8.59 6 10l6 6 6-6z",
+  undo: "M12.5 8c-2.65 0-5.05.99-6.9 2.6L2 7v9h9l-3.62-3.62c1.39-1.16 3.16-1.88 5.12-1.88 3.54 0 6.55 2.31 7.6 5.5l2.37-.78C21.08 11.03 17.15 8 12.5 8z",
+};
+const ic = (k, cls = "") => `<svg class="ic ${cls}" viewBox="0 0 24 24" aria-hidden="true"><path d="${IC[k]}"/></svg>`;
+const CAT_C = { chicken: "#D9822B", meat: "#A23B2A", extras: "#2E8B57", drinks: "#2F6FB5" };
+const TYPE_IC = { dine: "dine", take: "take", lokit: "lokit" };
+const norm = s => String(s || "").replace(/[ً-ْـ]/g, "").replace(/[أإآ]/g, "ا").replace(/ى/g, "ي").replace(/ة/g, "ه").toLowerCase().trim();
+const peekNo = () => { const d = bizDay(); return Math.max(ls.get("seq_" + d, 0), S.today.filter(o => o.day === d).reduce((m, o) => Math.max(m, o.no || 0), 0)) + 1; };
+const parked = () => ls.get("parked", []);
+S.q = ""; S.cartOpen = false;
+
 function drawPos() {
   watchToday();
   $("#app").innerHTML = `${S.device.test ? `<div class="testbar">وضع تجريبي — الطلبات لا تُحسب في المبيعات</div>` : ""}
   <header class="top" id="top"></header>
-  <main class="pos"><section class="menu"><nav class="cats" id="cats"></nav><div class="grid" id="grid"></div></section>
+  <main class="pos ${S.cartOpen ? "cart-open" : ""}" id="pos"><section class="menu"><nav class="cats" id="cats"></nav><div class="grid" id="grid"></div>
+    <button class="cbar" id="cbar"></button></section>
   <aside class="cart" id="cart"></aside></main>`;
   drawTop(); drawMenu(); drawCart();
 }
 function drawTop() {
-  const T = $("#top"); if (!T) return; const ty = S.cart.type;
-  T.innerHTML = `<div class="t-brand"><b><img src="icons/logo.png" alt=""></b><span>${APP_NAME}</span></div>
-    <div class="seg">${TYPES.map(([k, l]) => `<button data-t="${k}" class="${ty === k ? "on" : ""} ${k}">${l}</button>`).join("")}</div>
-    <div class="sp"></div>
-    ${S.device.test ? `<span class="pill test">تجريبي</span>` : ""}
-    ${!S.online ? `<span class="pill off"><i class="d"></i>بدون إنترنت</span>` : S.pending ? `<span class="pill pend"><i class="d" style="background:var(--warn)"></i>يُرسل ${S.pending}</span>` : `<span class="pill"><i class="d"></i>متصل</span>`}
-    <button class="pill" id="sh" title="الوردية">🕘 الوردية <span class="num">${S.shift ? hm(S.shift.openedAt) : ""}</span></button>
-    <button class="pill" id="me" title="تبديل الكاشير">👤 ${esc(S.cashier?.name || "")}</button>
-    <button class="pill prep-pill ${prepOpen().length ? "has" : ""}" id="prp" title="طلبات قيد التحضير">🔥 <span class="pt">قيد التحضير</span> <b class="num">${prepOpen().length}</b></button>
-    <button class="iconbtn" id="ord" title="طلبات اليوم">🧾</button>
-    <button class="iconbtn" id="more" title="القائمة">☰</button>`;
-  $$("[data-t]").forEach(b => b.onclick = () => setType(b.dataset.t));
-  $("#me").onclick = switchCashier;
-  $("#sh").onclick = openShift;
+  const T = $("#top"); if (!T) return; const np = prepOpen().length;
+  const net = !S.online ? `<span class="net off" title="بدون إنترنت — الطلبات تُحفظ في الجهاز وتُرسل لاحقاً"><i></i><span>بدون إنترنت</span></span>`
+    : S.pending ? `<span class="net pend" title="طلبات تنتظر الإرسال"><i></i><span>يُرسل <b class="num">${S.pending}</b></span></span>` : `<span class="net" title="متصل"><i></i><span>متصل</span></span>`;
+  const keep = $("#q") && document.activeElement === $("#q");
+  if (keep) { /* لا نعيد رسم حقل البحث أثناء الكتابة */
+    T.querySelector(".t-st").innerHTML = net + topBtns(np); bindTop(true); return; }
+  T.innerHTML = `<div class="t-brand"><img src="icons/logo.png" alt=""><span>${APP_NAME}</span></div>
+    <label class="srch">${ic("search")}<input id="q" type="search" placeholder="ابحث عن صنف" autocomplete="off" enterkeyhint="search" value="${esc(S.q)}"><button id="qx" aria-label="مسح البحث" ${S.q ? "" : "hidden"}>${ic("close")}</button></label>
+    <div class="sp"></div><div class="t-st">${net}${topBtns(np)}</div>`;
+  bindTop();
+}
+const topBtns = np => `${S.device.test ? `<span class="tchip test">تجريبي</span>` : ""}
+    <button class="tbtn ${np ? "hot" : ""}" id="prp" title="طلبات قيد التحضير">${ic("fire")}<span class="tl">قيد التحضير</span>${np ? `<b class="bd num">${np}</b>` : ""}</button>
+    <button class="tbtn" id="ord" title="طلبات اليوم">${ic("receipt")}<span class="tl">الطلبات</span></button>
+    <button class="tbtn who" id="me" title="الكاشير والوردية">${ic("person")}<span class="tw"><b>${esc(S.cashier?.name || "")}</b><small>وردية <span class="num">${S.shift ? hm(S.shift.openedAt) : ""}</span></small></span>${ic("chev", "cv")}</button>
+    <button class="tbtn sq" id="more" title="القائمة" aria-label="القائمة">${ic("menu")}</button>`;
+function bindTop(partial) {
+  if (!partial) {
+    const q = $("#q");
+    q.oninput = () => { S.q = q.value; $("#qx").hidden = !S.q; drawMenu(); };
+    q.onkeydown = e => { if (e.key === "Escape") { S.q = ""; q.value = ""; $("#qx").hidden = true; drawMenu(); q.blur(); }
+      if (e.key === "Enter") { const first = $("#grid .item:not(:disabled)"); if (first) { first.click(); q.select(); } } };
+    $("#qx").onclick = () => { S.q = ""; q.value = ""; $("#qx").hidden = true; drawMenu(); };
+  }
+  $("#me").onclick = e => cashierMenu(e.currentTarget);
   $("#ord").onclick = openOrders; $("#prp").onclick = openPrep;
   $("#more").onclick = openMore;
 }
+function cashierMenu(btn) {
+  popMenu(btn, `<div class="pm-h"><b>${esc(S.cashier?.name || "")}</b><small>الوردية مفتوحة منذ <span class="num">${S.shift ? hm(S.shift.openedAt) : ""}</span> · فتحها ${esc(S.shift?.openedBy?.name || "")}</small></div>
+    <button id="sh">${ic("clock")}<span>الوردية<small>الملخص، إيداع، صرف، تقفيل</small></span></button>
+    <button id="sw">${ic("swap")}<span>تبديل الكاشير<small>دخول كاشير آخر برمزه</small></span></button>`,
+    { sh: openShift, sw: switchCashier });
+}
+function popMenu(anchor, html, acts) {
+  closePop(); const p = document.createElement("div"); p.className = "pmenu"; p.id = "pmenu"; p.innerHTML = html; document.body.append(p);
+  const r = anchor.getBoundingClientRect(), w = p.offsetWidth;
+  p.style.top = (r.bottom + 8) + "px"; p.style.left = Math.max(8, Math.min(innerWidth - w - 8, r.left + r.width / 2 - w / 2)) + "px";
+  Object.entries(acts).forEach(([id, f]) => { const b = p.querySelector("#" + id); if (b) b.onclick = () => { closePop(); f(); }; });
+  setTimeout(() => addEventListener("pointerdown", S.popOff = e => { if (!p.contains(e.target)) closePop(); }, true));
+}
+function closePop() { $("#pmenu")?.remove(); if (S.popOff) { removeEventListener("pointerdown", S.popOff, true); S.popOff = null; } }
+
 const priceOf = (it, type = S.cart.type) => type === "lokit" ? it.lokit : it.price;
 const avail = (it, type = S.cart.type) => it.active && priceOf(it, type) != null;
 function drawMenu() {
   const G = $("#grid"); if (!G) return;
-  const cats = CATS.filter(([k]) => S.menu.some(m => m.active && m.cat === k));
+  const act = S.menu.filter(m => m.active), cats = CATS.filter(([k]) => act.some(m => m.cat === k)), q = norm(S.q);
   if (!cats.some(([k]) => k === S.cat)) S.cat = cats[0]?.[0] || "chicken";
-  $("#cats").innerHTML = cats.map(([k, l]) => `<button data-cat="${k}" class="${S.cat === k ? "on" : ""}">${l}</button>`).join("");
-  $$("[data-cat]").forEach(b => b.onclick = () => { S.cat = b.dataset.cat; drawMenu(); });
+  const list = q ? act.filter(m => norm(m.name).includes(q)) : act.filter(m => m.cat === S.cat);
+  $("#cats").innerHTML = q ? `<div class="sres">${ic("search")}نتائج البحث عن «${esc(S.q)}» <b class="num">${list.length}</b><button id="qx2">${ic("close")}مسح</button></div>`
+    : cats.map(([k, l]) => `<button data-cat="${k}" class="${S.cat === k ? "on" : ""}" style="--c:${CAT_C[k] || "#71717A"}"><i></i>${l}<small class="num">${act.filter(m => m.cat === k).length}</small></button>`).join("");
+  $$("[data-cat]").forEach(b => b.onclick = () => { S.cat = b.dataset.cat; drawMenu(); $("#grid").scrollTop = 0; });
+  $("#qx2") && ($("#qx2").onclick = () => { S.q = ""; if ($("#q")) { $("#q").value = ""; $("#qx").hidden = true; } drawMenu(); });
   const qty = id => S.cart.lines.reduce((s, l) => s + (l.id === id ? l.qty : 0) + l.mods.filter(m => m.id === id).length * l.qty, 0);
-  G.innerHTML = S.menu.filter(m => m.active && m.cat === S.cat).map(m => { const p = priceOf(m), q = qty(m.id);
-    return `<button class="item ${m.addon ? "addon" : ""}" data-i="${m.id}" ${p == null ? "disabled" : ""}>
-      ${q ? `<span class="q">${q}</span>` : ""}<span class="nm">${esc(m.name)}</span>
-      <span class="pr">${p == null ? `<small>غير متوفر في لوكيت</small>` : `${money(p)} <small>ر.س</small>`}</span></button>`; }).join("")
-    || `<div class="empty">لا أصناف في هذا القسم</div>`;
-  $$("[data-i]").forEach(b => b.onclick = () => addItem(b.dataset.i));
+  G.innerHTML = list.map(m => { const p = priceOf(m), n = qty(m.id);
+    return `<button class="item ${m.addon ? "addon" : ""} ${n ? "in" : ""}" data-i="${m.id}" style="--c:${CAT_C[m.cat] || "#71717A"}" ${p == null ? "disabled" : ""}>
+      ${n ? `<span class="q num">${n}</span>` : ""}<span class="nm">${esc(m.name)}</span>
+      <span class="ft">${p == null ? `<small class="na">غير متوفر في لوكيت</small>` : `<span class="pr"><span class="num">${m2(p)}</span> <small>ر.س</small></span>`}${m.addon ? `<span class="ad">إضافة</span>` : ""}</span></button>`; }).join("")
+    || `<div class="empty">${q ? "لا يوجد صنف بهذا الاسم" : "لا أصناف في هذا القسم"}</div>`;
+  $$("[data-i]").forEach(b => b.onclick = () => { addItem(b.dataset.i); b.classList.remove("tap"); void b.offsetWidth; b.classList.add("tap"); });
 }
 function addItem(id) {
   const it = S.menu.find(m => m.id === id); if (!it || !avail(it)) return;
   const L = S.cart.lines;
   if (it.addon) {
     const tgt = L.find(l => l.key === S.cart.sel) || L.filter(l => !l.addon).at(-1);
-    if (!tgt) return toast("اختر الصنف أولاً ثم أضف الجبن");
+    if (!tgt) return toast("أضف الصنف أولاً ثم الإضافة عليه");
     tgt.mods.push({ id: it.id, name: it.name, price: priceOf(it), ref: it.ref || null }); S.cart.sel = tgt.key;
+    toast(`أُضيف «${it.name}» إلى ${tgt.name}`);
   } else {
     const ex = L.find(l => l.id === id && !l.mods.length && !hasNotes(l));
     if (ex) { ex.qty++; S.cart.sel = ex.key; }
     else { const key = rid(5); L.push({ key, id, name: it.name, price: priceOf(it), qty: 1, mods: [], notes: [], note: "", ref: it.ref || null }); S.cart.sel = key; }
   }
   drawCart(); drawMenu();
+  const s = $(`[data-l="${S.cart.sel}"]`); s?.scrollIntoView({ block: "nearest", behavior: "smooth" });
 }
 const lineTotal = l => r2(l.qty * (l.price + l.mods.reduce((s, m) => s + m.price, 0)));
 const subtotal = () => r2(S.cart.lines.reduce((s, l) => s + lineTotal(l), 0));
 const discAmt = () => { const d = S.cart.discount, st = subtotal(); if (!d) return 0; return Math.min(st, r2(d.kind === "pct" ? st * d.value / 100 : d.value)); };
 const total = () => r2(subtotal() - discAmt());
 function drawCart() {
-  const K = $("#cart"); if (!K) return; const L = S.cart.lines, n = L.reduce((s, l) => s + l.qty, 0), lk = S.cart.type === "lokit";
-  K.innerHTML = `<div class="cart-h"><h2>الطلب ${n ? `<span class="chip">${n} صنف</span>` : ""}</h2>${L.length ? `<button class="link" id="clr" style="color:var(--bad)">تفريغ</button>` : ""}</div>
-    <div class="lines">${L.length ? L.map(l => `<div class="ln ${S.cart.sel === l.key ? "sel" : ""}" data-l="${l.key}">
-        <div><div class="n1">${esc(l.name)}</div><div class="unit">${money(l.price)} × ${l.qty}</div></div><div class="p1">${money(lineTotal(l))}</div>
-        ${l.mods.length ? `<div class="mods">${l.mods.map((m, i) => `<span>+ ${esc(m.name)} ${money(m.price)} <button data-rm="${l.key}:${i}" aria-label="حذف الإضافة">✕</button></span>`).join("")}</div>` : ""}
-        ${hasNotes(l) ? `<div class="notes">${(l.notes || []).map(n => `<span>${esc(n)}</span>`).join("")}${l.note ? `<span class="free">${esc(l.note)}</span>` : ""}</div>` : ""}
-        <div class="ctl"><button data-dec="${l.key}" aria-label="إنقاص">−</button><span class="qn num">${l.qty}</span><button data-inc="${l.key}" aria-label="زيادة">+</button><button class="nt ${hasNotes(l) ? "on" : ""}" data-nt="${l.key}">📝 ملاحظة</button><button class="del" data-del="${l.key}">حذف</button></div></div>`).join("")
-      : `<div class="empty"><span>اضغط على الأصناف لإضافتها${lk ? "<br><b style=\"color:#5B2A86\">بأسعار لوكيت</b>" : ""}</span></div>`}</div>
-    <div class="tot">${S.cart.discount ? `<div class="r"><span>المجموع</span>${money(subtotal())}</div><div class="r disc"><span>خصم ${S.cart.discount.kind === "pct" ? `${S.cart.discount.value}%` : ""}</span><span>−${money(discAmt())}</span></div>` : ""}
-      <div class="r big"><span>الإجمالي</span><span>${money(total())} <small style="font-size:14px;color:var(--mut)">ر.س</small></span></div></div>
-    <div class="acts"><button class="btn ghost sm" id="disc" ${!L.length ? "disabled" : ""}>${S.cart.discount ? "تعديل الخصم" : "خصم"}</button><button class="btn ghost sm" id="last">🖨 آخر إيصال</button></div>
-    <div class="pays ${lk ? "one" : ""}">${lk ? `<button class="btn pay-lokit" data-pay="lokit" ${!L.length ? "disabled" : ""}>تأكيد طلب لوكيت<small>${m2(total())} ر.س</small></button>`
-      : `<button class="btn pay-cash" data-pay="cash" ${!L.length ? "disabled" : ""}>كاش</button><button class="btn pay-mada" data-pay="mada" ${!L.length ? "disabled" : ""}>مدى</button><button class="btn pay-visa" data-pay="visa" ${!L.length ? "disabled" : ""}>فيزا<small>ماستركارد</small></button>`}</div>`;
+  const K = $("#cart"); if (!K) return; const L = S.cart.lines, n = L.reduce((s, l) => s + l.qty, 0), lk = S.cart.type === "lokit", pk = parked().length, dis = !L.length ? "disabled" : "";
+  K.innerHTML = `<div class="c-h"><button class="c-back" id="cback" aria-label="رجوع للأصناف">${ic("close")}</button><div class="c-t"><b>طلب جديد</b><span class="num">#${pad(peekNo(), 4)}</span></div>
+      <button class="c-ib ${pk ? "has" : ""}" id="pkl" title="الطلبات المعلّقة" ${pk ? "" : "disabled"}>${ic("pause")}${pk ? `<b class="num">${pk}</b>` : ""}</button>
+      <button class="c-ib danger" id="clr" title="تفريغ الطلب" ${dis}>${ic("trash")}</button></div>
+    <div class="c-type">${TYPES.map(([k, l]) => `<button data-t="${k}" class="${S.cart.type === k ? "on" : ""} ${k}">${ic(TYPE_IC[k])}${l}</button>`).join("")}</div>
+    <div class="lines" id="lines">${L.length ? L.map(l => { const on = S.cart.sel === l.key, nt = [...(l.notes || []), ...(l.note ? [l.note] : [])];
+      return `<div class="ln ${on ? "sel" : ""}" data-l="${l.key}">
+        <div class="ln-m"><span class="ln-q num">${l.qty}</span><div class="ln-n"><b>${esc(l.name)}</b>${l.qty > 1 || l.mods.length ? `<small><span class="num">${m2(l.price)}</span> للحبة</small>` : ""}</div><b class="ln-p num">${m2(lineTotal(l))}</b></div>
+        ${l.mods.length ? `<div class="ln-x">${l.mods.map((m, i) => `<span>+ ${esc(m.name)} <span class="num">${m2(m.price)}</span>${on ? `<button data-rm="${l.key}:${i}" aria-label="حذف الإضافة">${ic("close")}</button>` : ""}</span>`).join("")}</div>` : ""}
+        ${nt.length ? `<div class="ln-nt">${ic("note")}<span>${nt.map(esc).join(" · ")}</span></div>` : ""}
+        ${on ? `<div class="ln-a"><div class="stp"><button data-dec="${l.key}" aria-label="إنقاص">${ic("remove")}</button><span class="num">${l.qty}</span><button data-inc="${l.key}" aria-label="زيادة">${ic("add")}</button></div>
+          <button class="nt ${nt.length ? "on" : ""}" data-nt="${l.key}">${ic("note")}ملاحظة</button><button class="del" data-del="${l.key}" aria-label="حذف الصنف">${ic("trash")}</button></div>` : ""}</div>`; }).join("")
+      : `<div class="empty c-empty">${ic("cart")}<b>السلة فارغة</b><span>اضغط على الأصناف لإضافتها${lk ? `<br><b class="lkt">بأسعار لوكيت</b>` : ""}</span></div>`}</div>
+    <div class="c-f">
+      <div class="tot"><div class="r"><span>المجموع <small>(<span class="num">${n}</span> صنف)</small></span><span class="num">${m2(subtotal())}</span></div>
+        ${S.cart.discount ? `<div class="r disc"><span>خصم ${S.cart.discount.kind === "pct" ? `<span class="num">${S.cart.discount.value}%</span>` : ""} <small>${esc(S.cart.discount.reason || "")}</small></span><span class="num">−${m2(discAmt())}</span></div>` : ""}
+        <div class="r big"><span>الإجمالي</span><span><span class="num">${m2(total())}</span> <small>ر.س</small></span></div></div>
+      <div class="acts"><button id="disc" class="${S.cart.discount ? "on" : ""}" ${dis}>${ic("tag")}${S.cart.discount ? "الخصم ✓" : "خصم"}</button><button id="park" ${dis}>${ic("pause")}تعليق</button><button id="last">${ic("print")}آخر إيصال</button></div>
+      <div class="pays ${lk ? "one" : ""}">${lk ? `<button class="pay pay-lokit" data-pay="lokit" ${dis}>${ic("lokit")}<span>تأكيد طلب لوكيت</span><b class="num">${m2(total())}</b></button>`
+        : `<button class="pay pay-cash" data-pay="cash" ${dis}>${ic("cash")}<span>كاش</span></button><button class="pay pay-mada" data-pay="mada" ${dis}>${ic("card")}<span>مدى</span></button><button class="pay pay-visa" data-pay="visa" ${dis}>${ic("card")}<span>فيزا<small>ماستركارد</small></span></button>`}</div></div>`;
   const find = k => L.find(l => l.key === k);
-  $$("[data-l]").forEach(e => e.onclick = ev => { if (ev.target.closest("button")) return; S.cart.sel = e.dataset.l; drawCart(); });
+  $$("[data-l]").forEach(e => e.onclick = ev => { if (ev.target.closest("button")) return; S.cart.sel = S.cart.sel === e.dataset.l ? null : e.dataset.l; drawCart(); });
   $$("[data-inc]").forEach(b => b.onclick = () => { find(b.dataset.inc).qty++; drawCart(); drawMenu(); });
-  $$("[data-dec]").forEach(b => b.onclick = () => { const l = find(b.dataset.dec); if (l.qty > 1) l.qty--; else S.cart.lines = L.filter(x => x !== l); drawCart(); drawMenu(); });
-  $$("[data-del]").forEach(b => b.onclick = () => { S.cart.lines = L.filter(x => x.key !== b.dataset.del); if (!S.cart.lines.length) S.cart.discount = null; drawCart(); drawMenu(); });
+  $$("[data-dec]").forEach(b => b.onclick = () => { const l = find(b.dataset.dec); if (l.qty > 1) l.qty--; else removeLine(l.key); drawCart(); drawMenu(); });
+  $$("[data-del]").forEach(b => b.onclick = () => { removeLine(b.dataset.del); drawCart(); drawMenu(); });
   $$("[data-nt]").forEach(b => b.onclick = () => openNotes(b.dataset.nt));
   $$("[data-rm]").forEach(b => b.onclick = () => { const [k, i] = b.dataset.rm.split(":"); find(k).mods.splice(+i, 1); drawCart(); drawMenu(); });
-  $("#clr") && ($("#clr").onclick = () => { if (confirm("تفريغ الطلب؟")) { resetCart(); } });
+  $$("[data-t]").forEach(b => b.onclick = () => setType(b.dataset.t));
+  $("#clr").onclick = () => { if (confirm("تفريغ الطلب الحالي؟")) resetCart(); };
+  $("#pkl").onclick = openParked; $("#park").onclick = parkCart;
+  $("#cback").onclick = () => toggleCart(false);
   $("#disc").onclick = () => askManager("الخصم يحتاج رمز المدير", openDiscount);
   $("#last").onclick = () => { const o = S.today.find(x => x.device === S.dev) || S.today[0]; if (!o) return toast("لا توجد طلبات اليوم"); printJob(o, { receipt: true }, true); };
   $$("[data-pay]").forEach(b => b.onclick = () => openPay(b.dataset.pay));
+  const cb = $("#cbar"); if (cb) { cb.innerHTML = `${ic("cart")}<span>عرض الطلب <b class="num">${n}</b></span><b class="num">${m2(total())} ر.س</b>`; cb.disabled = !L.length && !S.cartOpen; cb.onclick = () => toggleCart(true); }
 }
+function toggleCart(v) { S.cartOpen = v; $("#pos")?.classList.toggle("cart-open", v); }
+function removeLine(key) { S.cart.lines = S.cart.lines.filter(x => x.key !== key); if (S.cart.sel === key) S.cart.sel = null; if (!S.cart.lines.length) S.cart.discount = null; }
 /* بعد كل طلب يرجع النوع إلى «سفري» (الأكثر شيوعاً)، فلا ينتقل نوع الطلب السابق إلى التالي بالخطأ */
-function resetCart() { S.cart = { type: "take", lines: [], discount: null, sel: null }; drawTop(); drawCart(); drawMenu(); }
+function resetCart() { S.cart = { type: "take", lines: [], discount: null, sel: null }; S.cartOpen = false; $("#pos")?.classList.remove("cart-open"); drawTop(); drawCart(); drawMenu(); }
 function setType(t) {
   if (t === S.cart.type) return;
   const bad = S.cart.lines.filter(l => { const it = S.menu.find(m => m.id === l.id); return !it || !avail(it, t) || l.mods.some(md => { const mi = S.menu.find(m => m.id === md.id); return !mi || !avail(mi, t); }); });
@@ -331,15 +415,37 @@ function setType(t) {
   if (!S.cart.lines.length) S.cart.discount = null;
   drawTop(); drawMenu(); drawCart();
 }
+/* تعليق الطلب: يُحفظ في هذا الجهاز ويُستكمل لاحقاً (مثل فودكس) */
+function parkCart() {
+  if (!S.cart.lines.length) return;
+  const p = parked(); p.push({ id: rid(6), at: Date.now(), by: S.cashier?.name || "", cart: { ...S.cart, sel: null }, total: total() }); ls.set("parked", p.slice(-20));
+  resetCart(); toast("تم تعليق الطلب ✓ تجده من زر التعليق أعلى السلة");
+}
+function openParked() {
+  const P = parked(); if (!P.length) return toast("لا توجد طلبات معلّقة");
+  modal(`${mh("الطلبات المعلّقة")}<div class="mdl-b"><div class="list">${P.slice().reverse().map(p => `<div class="row pk">
+      <span class="no">${ic(TYPE_IC[p.cart.type] || "take")}</span><span><b>${p.cart.lines.map(l => `${l.qty}× ${esc(l.name)}`).join("، ")}</b><br><span class="meta">علّقه ${esc(p.by)} الساعة <span class="num">${hm(p.at)}</span> · ${TYPES.find(t => t[0] === p.cart.type)?.[1] || ""}</span></span>
+      <span class="pk-a"><b class="num">${m2(p.total)}</b><button class="btn sm" data-rs="${p.id}">استكمال</button><button class="btn ghost sm icon" data-pd="${p.id}" aria-label="حذف">${ic("trash")}</button></span></div>`).join("")}</div></div>`);
+  $$("#ov [data-rs]").forEach(b => b.onclick = () => {
+    const all = parked(), p = all.find(x => x.id === b.dataset.rs); if (!p) return; let rest = all.filter(x => x.id !== p.id);
+    if (S.cart.lines.length) { rest.push({ id: rid(6), at: Date.now(), by: S.cashier?.name || "", cart: { ...S.cart, sel: null }, total: total() }); toast("الطلب الحالي عُلّق مكانه"); }
+    ls.set("parked", rest);
+    const c = p.cart, gone = [];
+    c.lines = c.lines.filter(l => { const it = S.menu.find(m => m.id === l.id); if (!it || !avail(it, c.type)) { gone.push(l.name); return false; } return true; });
+    S.cart = { ...c, sel: null }; closeModal(); drawTop(); drawCart(); drawMenu();
+    if (gone.length) toast(`حُذفت أصناف لم تعد متوفرة: ${gone.join("، ")}`, true);
+  });
+  $$("#ov [data-pd]").forEach(b => b.onclick = () => { if (!confirm("حذف الطلب المعلّق؟")) return; ls.set("parked", parked().filter(x => x.id !== b.dataset.pd)); drawCart(); parked().length ? openParked() : closeModal(); });
+}
 
 /* ----- modal ----- */
-function modal(html, { wide } = {}) {
+function modal(html, { wide, mid } = {}) {
   closeModal(); const o = document.createElement("div"); o.className = "ov"; o.id = "ov";
-  o.innerHTML = `<div class="mdl ${wide ? "wide" : ""}" role="dialog" aria-modal="true">${html}</div>`;
+  o.innerHTML = `<div class="mdl ${wide ? "wide" : ""} ${mid ? "mid" : ""}" role="dialog" aria-modal="true">${html}</div>`;
   document.body.append(o); o.querySelectorAll("[data-close]").forEach(b => b.onclick = closeModal); return o;
 }
-function closeModal() { $("#ov")?.remove(); clearTimeout(S.doneTimer); }
-const mh = (t, extra = "") => `<div class="mdl-h"><h3>${t}</h3><div style="display:flex;gap:8px;align-items:center">${extra}<button class="x" data-close aria-label="إغلاق">✕</button></div></div>`;
+function closeModal() { $("#ov")?.remove(); clearTimeout(S.doneTimer); closePop(); if (S.kh) { removeEventListener("keydown", S.kh); S.kh = null; } }
+const mh = (t, extra = "") => `<div class="mdl-h"><h3>${t}</h3><div style="display:flex;gap:8px;align-items:center">${extra}<button class="x" data-close aria-label="إغلاق">${ic("close")}</button></div></div>`;
 
 /* manager PIN prompt → onOk() */
 function askManager(title, onOk) {
@@ -376,33 +482,48 @@ function openDiscount() {
 
 /* ----- payment ----- */
 /* نوع الطلب ظاهر في شاشة الدفع: تبديل محلي/سفري (نفس السعر) قبل التأكيد */
-const typeBar = () => S.cart.type === "lokit" ? `<div class="paytype"><span class="chip lk" style="font-size:15px;padding:6px 14px">لوكيت</span></div>`
-  : `<div class="paytype"><span class="muted small">نوع الطلب:</span><div class="seg">${TYPES.filter(t => t[0] !== "lokit").map(([k, l]) => `<button data-pt="${k}" class="${S.cart.type === k ? "on" : ""}">${l}</button>`).join("")}</div></div>`;
-const bindTypeBar = () => $$("#ov [data-pt]").forEach(b => b.onclick = () => { S.cart.type = b.dataset.pt; $$("#ov [data-pt]").forEach(x => x.classList.toggle("on", x === b)); drawTop(); });
+const typeBar = () => S.cart.type === "lokit" ? `<div class="paytype"><span class="tchip lk">${ic("lokit")}لوكيت</span></div>`
+  : `<div class="paytype"><span>نوع الطلب</span><div class="seg2">${TYPES.filter(t => t[0] !== "lokit").map(([k, l]) => `<button data-pt="${k}" class="${S.cart.type === k ? "on" : ""}">${ic(TYPE_IC[k])}${l}</button>`).join("")}</div></div>`;
+const bindTypeBar = () => $$("#ov [data-pt]").forEach(b => b.onclick = () => { S.cart.type = b.dataset.pt; $$("#ov [data-pt]").forEach(x => x.classList.toggle("on", x === b)); drawTop(); drawCart(); });
+function payKeys(h) { if (S.kh) removeEventListener("keydown", S.kh); S.kh = h; addEventListener("keydown", h); }
 function openPay(method) {
-  if (!S.cart.lines.length) return; const T = total();
+  if (!S.cart.lines.length) return; const T = total(), n = S.cart.lines.reduce((s, l) => s + l.qty, 0);
   if (method !== "cash") {
-    modal(`${mh(method === "lokit" ? "تأكيد طلب لوكيت" : `الدفع بـ${METHODS[method]}`)}<div class="mdl-b" style="text-align:center">
-      ${typeBar()}<div class="big-amt">${money(T)} <small style="font-size:18px">ر.س</small></div>
-      <p class="muted" style="margin:0">${method === "lokit" ? "تأكد أن الطلب مطابق لطلب لوكيت في التطبيق." : "أدخل المبلغ في جهاز الدفع، وبعد نجاح العملية اضغط تأكيد."}</p></div>
-      <div class="mdl-f"><button class="btn ghost" data-close>رجوع</button><button class="btn ${method === "lokit" ? "pay-lokit" : "ok"}" id="pok" style="min-width:180px">${method === "lokit" ? "تأكيد الطلب" : "تمت العملية ✓"}</button></div>`);
+    const lk = method === "lokit";
+    modal(`${mh(lk ? "تأكيد طلب لوكيت" : `الدفع بـ${METHODS[method]}`)}<div class="mdl-b paycard">
+      ${typeBar()}<div class="pc-ic ${method}">${ic(lk ? "lokit" : "card")}</div>
+      <div class="due-l">المبلغ المطلوب</div><div class="big-amt"><span class="num">${m2(T)}</span> <small>ر.س</small></div>
+      <p class="muted">${lk ? "تأكد أن الطلب مطابق لطلب لوكيت في التطبيق." : "أدخل المبلغ في جهاز الدفع، وبعد نجاح العملية اضغط «تمت العملية»."}</p>
+      <div class="pc-sum"><span><span class="num">${n}</span> صنف</span>${S.cart.discount ? `<span>بعد خصم <span class="num">${m2(discAmt())}</span></span>` : ""}</div></div>
+      <div class="mdl-f"><button class="btn ghost" data-close>رجوع</button><button class="btn ${lk ? "pay-lokit" : "ok"} wide" id="pok">${ic("check")}${lk ? "تأكيد الطلب" : "تمت العملية"}</button></div>`);
     bindTypeBar(); $("#pok").onclick = () => { $("#pok").disabled = true; complete(method, T, 0); };
+    payKeys(e => { if (e.key === "Enter" && $("#pok") && !$("#pok").disabled) { e.preventDefault(); $("#pok").click(); } });
     return;
   }
   let given = "";
-  const notes = [...new Set([T, Math.ceil(T / 5) * 5, Math.ceil(T / 10) * 10, Math.ceil(T / 50) * 50, Math.ceil(T / 100) * 100, 200, 500].filter(x => x >= T))].slice(0, 8);
-  modal(`${mh("الدفع كاش")}<div class="mdl-b">
-    ${typeBar()}<div class="big-amt">${money(T)} <small style="font-size:18px">ر.س</small></div>
-    <div class="quick">${notes.map(x => `<button data-q="${x}">${x === T ? "المبلغ تماماً" : m2(x).replace(".00", "")}</button>`).join("")}</div>
-    <div class="f"><label for="gv">المبلغ المستلم من العميل</label><input id="gv" type="number" inputmode="decimal" dir="ltr" min="0" step="0.5" placeholder="${m2(T)}"></div>
-    <div id="chg"></div></div>
-    <div class="mdl-f"><button class="btn ghost" data-close>رجوع</button><button class="btn ok" id="pok" style="min-width:180px">تأكيد الدفع</button></div>`);
-  const upd = () => { const g = given === "" ? T : r2(given), c = r2(g - T);
-    $("#chg").innerHTML = `<div class="chg ${c < 0 ? "neg" : ""}"><span>${c < 0 ? "المبلغ ناقص" : "الباقي للعميل"}</span><span class="money">${m2(Math.abs(c))}</span></div>`;
+  const quick = [...new Set([Math.ceil(T / 5) * 5, Math.ceil(T / 10) * 10, Math.ceil(T / 50) * 50, Math.ceil(T / 100) * 100, 200, 500].filter(x => x > T))].slice(0, 5);
+  modal(`${mh("الدفع كاش")}<div class="mdl-b cashpay">
+    <div class="cp-sum">${typeBar()}
+      <div class="cp-r due"><span>المطلوب</span><b class="num">${m2(T)}</b></div>
+      <div class="cp-r"><span>المستلم من العميل</span><b class="num" id="pg">${m2(T)}</b></div>
+      <div id="chg"></div></div>
+    <div class="cp-pad"><div class="quick"><button data-q="${T}" class="ex">المبلغ تماماً</button>${quick.map(x => `<button data-q="${x}" class="num">${x}</button>`).join("")}</div>
+      <div class="kp">${["7", "8", "9", "4", "5", "6", "1", "2", "3", ".", "0", "b"].map(k => `<button data-kp="${k}" class="${k === "b" ? "fn" : ""}" aria-label="${k === "b" ? "حذف رقم" : k}">${k === "b" ? ic("back") : k}</button>`).join("")}</div></div></div>
+    <div class="mdl-f"><button class="btn ghost" data-close>رجوع</button><button class="btn ok wide" id="pok">${ic("check")}تأكيد الدفع</button></div>`, { mid: true });
+  const val = () => given === "" ? T : r2(given);
+  const upd = () => { const g = val(), c = r2(g - T);
+    $("#pg").textContent = given === "" ? m2(T) : given; $("#pg").classList.toggle("typed", given !== "");
+    $("#chg").innerHTML = `<div class="chg ${c < 0 ? "neg" : ""}"><span>${c < 0 ? "المبلغ ناقص" : "الباقي للعميل"}</span><span class="num">${m2(Math.abs(c))}</span></div>`;
     $("#pok").disabled = c < 0; $$("#ov [data-q]").forEach(b => b.classList.toggle("on", given !== "" && +b.dataset.q === r2(given))); };
-  $$("#ov [data-q]").forEach(b => b.onclick = () => { given = b.dataset.q; $("#gv").value = given; upd(); });
-  $("#gv").oninput = () => { given = $("#gv").value; upd(); }; upd(); bindTypeBar();
-  $("#pok").onclick = () => { const g = given === "" ? T : r2(given); if (g < T) return; $("#pok").disabled = true; complete("cash", g, r2(g - T)); };
+  const key = k => { if (k === "b") given = given.slice(0, -1);
+    else if (k === ".") { if (!given.includes(".")) given = (given || "0") + "."; }
+    else if (/^\d$/.test(k)) { if (given.includes(".") && given.split(".")[1].length >= 2) return; if (given.replace(".", "").length >= 6) return; given = given === "0" ? k : given + k; }
+    upd(); };
+  $$("#ov [data-q]").forEach(b => b.onclick = () => { given = String(+b.dataset.q); upd(); });
+  $$("#ov [data-kp]").forEach(b => b.onclick = () => key(b.dataset.kp));
+  upd(); bindTypeBar();
+  $("#pok").onclick = () => { const g = val(); if (g < T) return; $("#pok").disabled = true; complete("cash", g, r2(g - T)); };
+  payKeys(e => { if (!$("#ov .cashpay")) return; if (/^\d$/.test(e.key) || e.key === ".") { e.preventDefault(); key(e.key); } else if (e.key === "Backspace") { e.preventDefault(); key("b"); } else if (e.key === "Enter" && !$("#pok").disabled) { e.preventDefault(); $("#pok").click(); } });
 }
 
 function nextNo(day) {
@@ -455,29 +576,38 @@ async function complete(method, given, change) {
   if (S.device.autoPrint) printJob(o, { receipt: true, kitchen: true });
 }
 function showDone(o) {
-  modal(`<div class="mdl-b"><div class="done"><div class="ck">✓</div><div class="muted">طلب رقم</div><div class="no num">${pad(o.no, 4)}</div>
-    <div class="muted" style="margin:6px 0 4px">${TYPES.find(t => t[0] === o.type)[1]} · ${METHODS[o.method]} · ${money(o.total)} ر.س</div>
-    ${o.method === "cash" && o.change > 0 ? `<div class="chg" style="margin:12px 0 0"><span>الباقي للعميل</span><span class="money">${m2(o.change)}</span></div>` : ""}
+  const chg = o.method === "cash" && o.change > 0;
+  modal(`<div class="mdl-b"><div class="done"><div class="ck">${ic("check")}</div><div class="muted">تم تسجيل الطلب</div><div class="no num">${pad(o.no, 4)}</div>
+    <div class="dmeta"><span>${ic(TYPE_IC[o.type])}${TYPES.find(t => t[0] === o.type)[1]}</span><span>${ic(o.method === "cash" ? "cash" : o.method === "lokit" ? "lokit" : "card")}${METHODS[o.method]}</span><span><b class="num">${m2(o.total)}</b> ر.س</span></div>
+    ${chg ? `<div class="chg big"><span>الباقي للعميل</span><span class="num">${m2(o.change)}</span></div><p class="small muted" style="margin:6px 0 0">المستلم <span class="num">${m2(o.given)}</span> ر.س</p>` : ""}
     <p id="prs" class="small muted" style="margin:10px 0 0;min-height:18px"></p></div></div>
-    <div class="mdl-f" style="justify-content:stretch"><button class="btn ghost" id="rp" style="flex:1">🖨 الإيصال</button><button class="btn ghost" id="rk" style="flex:1">🍳 ورقة المطبخ</button><button class="btn" data-close style="flex:1.3">طلب جديد</button></div>`);
+    <div class="mdl-f split"><button class="btn ghost" id="rp">${ic("print")}الإيصال</button><button class="btn ghost" id="rk">${ic("fire")}المطبخ</button><button class="btn wide" data-close id="nw">طلب جديد</button></div>
+    ${chg ? "" : `<div class="autobar"><i></i></div>`}`);
   $("#rp").onclick = () => printJob(o, { receipt: true }, true);
   $("#rk").onclick = () => printJob(o, { kitchen: true }, true);
-  if (!(o.method === "cash" && o.change > 0)) S.doneTimer = setTimeout(closeModal, 6000);
+  payKeys(e => { if (e.key === "Enter" || e.key === "Escape") { e.preventDefault(); closeModal(); } });
+  if (!chg) S.doneTimer = setTimeout(closeModal, 6000);
 }
 
 /* ----- ملاحظات الصنف (مجانية) ----- */
 function openNotes(key) {
   const l = S.cart.lines.find(x => x.key === key); if (!l) return;
-  const sel = new Set(l.notes || []);
-  modal(`${mh(`ملاحظات: ${esc(l.name)}${l.qty > 1 ? ` <span class="muted small">(× ${l.qty})</span>` : ""}`)}<div class="mdl-b">
-    <p class="small muted" style="margin:0 0 10px">اختر ما يطلبه العميل. الملاحظات مجانية وتُطبع في ورقة المطبخ. الإضافات المدفوعة مثل الجبن من قسم «الإضافات».</p>
-    <div class="nchips">${noteList().map(n => `<button data-n="${esc(n)}" class="${sel.has(n) ? "on" : ""}">${esc(n)}</button>`).join("")}</div>
-    <div class="f" style="margin-top:14px"><label for="nfree">ملاحظة أخرى (اختياري)</label><input id="nfree" maxlength="60" value="${esc(l.note || "")}" placeholder="مثال: الخبز محمّص زيادة"></div>
-    ${l.qty > 1 ? `<p class="small muted" style="margin:0">الملاحظة تشمل الـ ${l.qty} حبات. إن كانت لحبة واحدة فقط، أنقص الكمية وأضف الصنف مرة ثانية بملاحظته.</p>` : ""}</div>
-    <div class="mdl-f">${hasNotes(l) ? `<button class="btn ghost" id="nclr" style="margin-inline-end:auto;color:var(--bad)">مسح الملاحظات</button>` : ""}<button class="btn ghost" data-close>إلغاء</button><button class="btn" id="nok">حفظ</button></div>`);
-  $$("#ov [data-n]").forEach(b => b.onclick = () => { const n = b.dataset.n; sel.has(n) ? sel.delete(n) : sel.add(n); b.classList.toggle("on", sel.has(n)); });
+  const sel = new Set(l.notes || []), all = noteList();
+  /* تُرتّب الملاحظات في جدول: لكل مكوّن زر «بدون» وزر «زيادة»… وما لا يطابق هذا النمط يظهر في «أخرى» */
+  const rx = /^(بدون|زيادة|قليل|كثير|بزيادة)\s+(.+)$/, rows = new Map(), cols = [], other = [];
+  all.forEach(n => { const m = n.match(rx); if (!m) return other.push(n); if (!cols.includes(m[1])) cols.push(m[1]); if (!rows.has(m[2])) rows.set(m[2], {}); rows.get(m[2])[m[1]] = n; });
+  const btn = n => `<button data-n="${esc(n)}" class="${sel.has(n) ? "on" : ""}">${esc(n)}</button>`;
+  modal(`${mh(`ملاحظات: ${esc(l.name)}${l.qty > 1 ? ` <span class="muted small">(<span class="num">${l.qty}</span> حبات)</span>` : ""}`)}<div class="mdl-b">
+    ${rows.size ? `<div class="ntab" style="--n:${cols.length}">${[...rows].map(([ing, v]) => `<div class="nr"><b>${esc(ing)}</b>${cols.map(c => v[c] ? `<button data-n="${esc(v[c])}" class="${sel.has(v[c]) ? "on" : ""} ${c === "بدون" ? "no" : "more"}">${esc(c)}</button>` : "<span></span>").join("")}</div>`).join("")}</div>` : ""}
+    ${other.length ? `<h4 class="nh">أخرى</h4><div class="nchips">${other.map(btn).join("")}</div>` : ""}
+    <div class="f" style="margin-top:14px"><label for="nfree">ملاحظة مكتوبة (اختياري)</label><input id="nfree" maxlength="60" value="${esc(l.note || "")}" placeholder="مثال: الخبز محمّص زيادة"></div>
+    <p class="small muted" style="margin:0">الملاحظات مجانية وتُطبع في ورقة المطبخ.${l.qty > 1 ? ` تشمل الـ <span class="num">${l.qty}</span> حبات؛ لحبة واحدة فقط أنقص الكمية وأضف الصنف مرة أخرى بملاحظته.` : ""} الإضافات المدفوعة مثل الجبن من قسم «الإضافات».</p></div>
+    <div class="mdl-f">${hasNotes(l) ? `<button class="btn ghost" id="nclr" style="margin-inline-end:auto;color:var(--bad)">مسح الملاحظات</button>` : ""}<button class="btn ghost" data-close>إلغاء</button><button class="btn wide" id="nok">حفظ</button></div>`, { mid: true });
+  $$("#ov [data-n]").forEach(b => b.onclick = () => { const n = b.dataset.n; if (sel.has(n)) sel.delete(n); else { sel.add(n);
+      /* «بدون ثوم» و«زيادة ثوم» لا يجتمعان */ const m = n.match(rx); if (m) all.forEach(x => { const k = x.match(rx); if (k && k[2] === m[2] && x !== n) sel.delete(x); }); }
+    $$("#ov [data-n]").forEach(x => x.classList.toggle("on", sel.has(x.dataset.n))); });
   $("#nclr") && ($("#nclr").onclick = () => { l.notes = []; l.note = ""; closeModal(); drawCart(); });
-  $("#nok").onclick = () => { l.notes = noteList().filter(n => sel.has(n)); l.note = $("#nfree").value.trim(); S.cart.sel = l.key; closeModal(); drawCart(); };
+  $("#nok").onclick = () => { l.notes = all.filter(n => sel.has(n)); l.note = $("#nfree").value.trim(); S.cart.sel = l.key; closeModal(); drawCart(); };
 }
 
 /* ----- طلبات قيد التحضير ----- */
@@ -492,8 +622,8 @@ function drawPrep() {
   B.innerHTML = (L.length ? `<div class="prepgrid">${L.map(o => { const mn = Math.floor((now - o.ts) / 60000), lv = mn >= 12 ? "bad" : mn >= 7 ? "warn" : "ok";
       return `<div class="prep ${lv}"><div class="ph"><span class="no num">${pad(o.no, 4)}</span><span class="chip ${o.type === "lokit" ? "lk" : ""}">${TYPES.find(t => t[0] === o.type)[1]}</span><span class="sp"></span><span class="tm"><span class="num">${mn}</span> د</span></div>
         <ul>${o.lines.map(l => `<li><b>${l.qty} × ${esc(l.name)}</b>${l.mods.map(m => `<div class="pm">+ ${esc(m.name)}</div>`).join("")}${[...(l.notes || []), ...(l.note ? [l.note] : [])].map(t => `<div class="pn">● ${esc(t)}</div>`).join("")}</li>`).join("")}</ul>
-        <div class="pf"><button class="btn ghost sm" data-pk="${esc(o.id)}">🍳</button><button class="btn ok" data-dv="${esc(o.id)}" style="flex:1">✓ تم التسليم</button></div></div>`; }).join("")}</div>`
-    : `<div class="empty" style="padding:40px">لا توجد طلبات قيد التحضير 👌</div>`) +
+        <div class="pf"><button class="btn ghost sm icon" data-pk="${esc(o.id)}" aria-label="طباعة ورقة المطبخ">${ic("print")}</button><button class="btn ok" data-dv="${esc(o.id)}" style="flex:1">${ic("check")}تم التسليم</button></div></div>`; }).join("")}</div>`
+    : `<div class="empty" style="padding:40px">لا توجد طلبات قيد التحضير</div>`) +
     (done.length ? `<h4 style="margin:18px 0 8px" class="muted">آخر الطلبات المسلّمة</h4><div class="list">${done.map(o => `<div class="row" style="cursor:default"><span class="no num">${pad(o.no, 4)}</span><span class="meta">سُلّم <span class="num">${o.deliveredAt ? hm(o.deliveredAt) : ""}</span>${o.deliveredBy ? ` · ${esc(o.deliveredBy)}` : ""}</span><button class="btn ghost sm" data-un="${esc(o.id)}">إرجاع للتحضير</button></div>`).join("")}</div>` : "");
   const setPrep = (id, v) => { const o = S.today.find(x => x.id === id); if (!o) return;
     const u = v === "done" ? { prep: "done", deliveredAt: Date.now(), deliveredBy: S.cashier?.name || "" } : { prep: "open", deliveredAt: null, deliveredBy: null };
@@ -531,7 +661,7 @@ function orderDetail(o) {
 function openOrder(o) {
   if (!o) return;
   modal(`${mh(`طلب رقم <span class="num">${pad(o.no, 4)}</span>`)}<div class="mdl-b">${orderDetail(o)}</div>
-    <div class="mdl-f">${o.status !== "void" && (!o.shiftId || o.shiftId === S.shift?.id) ? `<button class="btn ghost" id="vd" style="margin-inline-end:auto;color:var(--bad)">إلغاء الطلب</button>` : o.status !== "void" ? `<span class="small muted" style="margin-inline-end:auto;align-self:center">لا يُلغى: الطلب من وردية أخرى${o.device !== S.dev ? " أو جهاز آخر" : " مقفلة"}</span>` : ""}${o.status !== "void" && o.type !== "lokit" ? `<button class="btn ghost" id="ct">↔ تغيير إلى ${o.type === "dine" ? "سفري" : "محلي"}</button>` : ""}<button class="btn ghost" id="bk">رجوع</button><button class="btn ghost" id="rk">🍳 المطبخ</button><button class="btn" id="rp">🖨 الإيصال</button></div>`);
+    <div class="mdl-f">${o.status !== "void" && (!o.shiftId || o.shiftId === S.shift?.id) ? `<button class="btn ghost" id="vd" style="margin-inline-end:auto;color:var(--bad)">إلغاء الطلب</button>` : o.status !== "void" ? `<span class="small muted" style="margin-inline-end:auto;align-self:center">لا يُلغى: الطلب من وردية أخرى${o.device !== S.dev ? " أو جهاز آخر" : " مقفلة"}</span>` : ""}${o.status !== "void" && o.type !== "lokit" ? `<button class="btn ghost" id="ct">${ic("swap")}تغيير إلى ${o.type === "dine" ? "سفري" : "محلي"}</button>` : ""}<button class="btn ghost" id="bk">رجوع</button><button class="btn ghost" id="rk">${ic("fire")}المطبخ</button><button class="btn" id="rp">${ic("print")}الإيصال</button></div>`);
   $("#bk").onclick = openOrders; $("#rp").onclick = () => printJob(o, { receipt: true }, true); $("#rk").onclick = () => printJob(o, { kitchen: true }, true);
   $("#ct") && ($("#ct").onclick = () => { const to = o.type === "dine" ? "take" : "dine", ch = { from: o.type, to, at: Date.now(), by: S.cashier?.name || "" };
     const u = { type: to, typeChanges: [...(o.typeChanges || []), ch] }; Object.assign(o, u); fire(F.updateDoc(D("orders", o.id), u), "نوع الطلب");
@@ -551,12 +681,12 @@ function openOrder(o) {
 /* ----- more menu & device settings ----- */
 function openMore() {
   modal(`${mh("القائمة")}<div class="mdl-b"><div class="list">
-    <button class="row" id="m-ord"><span style="font-size:24px">🧾</span><span><b>طلبات اليوم</b><br><span class="meta">عرض، إعادة طباعة، إلغاء</span></span><span></span></button>
-    <button class="row" id="m-sh"><span style="font-size:24px">🕘</span><span><b>الوردية</b><br><span class="meta">مفتوحة منذ <span class="num">${S.shift ? hm(S.shift.openedAt) : ""}</span> · إيداع، صرف، تقفيل</span></span><span></span></button>
-    <button class="row" id="m-sw"><span style="font-size:24px">👤</span><span><b>تبديل الكاشير</b><br><span class="meta">الكاشير الحالي: ${esc(S.cashier.name)}</span></span><span></span></button>
-    <button class="row" id="m-dev"><span style="font-size:24px">⚙️</span><span><b>إعدادات الجهاز والطابعة</b><br><span class="meta">تحتاج رمز المدير</span></span><span></span></button>
-    ${isAdmin() ? `<button class="row" id="m-adm"><span style="font-size:24px">📊</span><span><b>لوحة المدير</b><br><span class="meta">التقرير، المنيو، الكاشيرون، الإعدادات</span></span><span></span></button>` : ""}
-    <button class="row" id="m-up"><span style="font-size:24px">🔄</span><span><b>تحديث الكاشير</b><br><span class="meta">الإصدار <span class="num">${VERSION}</span></span></span><span></span></button>
+    <button class="row" id="m-ord"><span class="ri">${ic("receipt")}</span><span><b>طلبات اليوم</b><br><span class="meta">عرض، إعادة طباعة، إلغاء</span></span><span></span></button>
+    <button class="row" id="m-sh"><span class="ri">${ic("clock")}</span><span><b>الوردية</b><br><span class="meta">مفتوحة منذ <span class="num">${S.shift ? hm(S.shift.openedAt) : ""}</span> · إيداع، صرف، تقفيل</span></span><span></span></button>
+    <button class="row" id="m-sw"><span class="ri">${ic("swap")}</span><span><b>تبديل الكاشير</b><br><span class="meta">الكاشير الحالي: ${esc(S.cashier.name)}</span></span><span></span></button>
+    <button class="row" id="m-dev"><span class="ri">${ic("gear")}</span><span><b>إعدادات الجهاز والطابعة</b><br><span class="meta">تحتاج رمز المدير</span></span><span></span></button>
+    ${isAdmin() ? `<button class="row" id="m-adm"><span class="ri">${ic("dash")}</span><span><b>لوحة المدير</b><br><span class="meta">التقرير، المنيو، الكاشيرون، الإعدادات</span></span><span></span></button>` : ""}
+    <button class="row" id="m-up"><span class="ri">${ic("refresh")}</span><span><b>تحديث الكاشير</b><br><span class="meta">الإصدار <span class="num">${VERSION}</span></span></span><span></span></button>
   </div><p class="small muted" style="margin:14px 2px 0;text-align:center">الحساب: <span class="num">${esc(S.user?.email || "")}</span> · <b>${isAdmin() ? "حساب المدير" : "حساب جهاز الكاشير"}</b></p></div>`);
   $("#m-ord").onclick = openOrders; $("#m-sh").onclick = openShift;
   $("#m-sw").onclick = switchCashier;
@@ -583,7 +713,7 @@ function openDevice() {
     <div class="setrow"><div><b>وضع تجريبي</b><span>الطلبات تُعلَّم «تجريبي» ولا تدخل في التقارير ولا المحاسبة</span></div><button class="sw ${d.test ? "on" : ""}" id="tm" aria-label="وضع تجريبي"></button></div>
     <div class="setrow"><div><b>رمز هذا الجهاز</b><span>يظهر في أرقام الطلبات الداخلية</span></div><span class="num chip">${esc(S.dev)}</span></div>
     <p id="pt" class="small muted"></p></div>
-    <div class="mdl-f"><button class="btn ghost" id="tp" style="margin-inline-end:auto">🖨 طباعة تجربة</button><button class="btn ghost" data-close>إغلاق</button><button class="btn" id="sv">حفظ</button></div>`);
+    <div class="mdl-f"><button class="btn ghost" id="tp" style="margin-inline-end:auto">${ic("print")}طباعة تجربة</button><button class="btn ghost" data-close>إغلاق</button><button class="btn" id="sv">حفظ</button></div>`);
   const t = { ap: d.autoPrint, tm: d.test };
   const ipv = () => { $("#ipf").style.display = $("#pm").value === "epos" ? "" : "none"; $("#kipf").style.display = $("#km").value === "ip" ? "" : "none"; }; ipv(); $("#pm").onchange = ipv; $("#km").onchange = ipv;
   $("#ap").onclick = () => { t.ap = !t.ap; $("#ap").classList.toggle("on", t.ap); };
@@ -740,7 +870,7 @@ function saveShift() { const sh = { ...S.shift, updatedAt: Date.now() }; S.shift
 function drawOpenShift() {
   const last = ls.get("lastFloat", 0); let fl = String(last || "");
   $("#app").innerHTML = `${S.device.test ? `<div class="testbar">وضع تجريبي — الطلبات لا تُحسب في المبيعات</div>` : ""}<div class="center"><div class="panel" style="width:min(480px,100%)">
-    <div class="brand"><div class="logo">🕘</div><h1>فتح الوردية</h1><p>${esc(S.cashier.name)} · <span class="num">${dmy(bizDay())}</span></p></div>
+    <div class="brand"><div class="logo">${ic("clock")}</div><h1>فتح الوردية</h1><p>${esc(S.cashier.name)} · <span class="num">${dmy(bizDay())}</span></p></div>
     <div class="f"><label for="fl">المبلغ الموجود في الدرج الآن (فكّة بداية الوردية)</label><input id="fl" type="number" inputmode="decimal" min="0" step="0.5" dir="ltr" value="${fl}" placeholder="0"></div>
     <div class="quick" style="grid-template-columns:repeat(5,1fr)">${[0, 50, 100, 200, 300].map(x => `<button data-fl="${x}">${x}</button>`).join("")}</div>
     <p class="small muted" style="margin:0 0 14px;line-height:1.7">عُدّ الدرج قبل البدء. هذا المبلغ يُطرح عند التقفيل، فالمتوقع في الدرج = الفكّة + مبيعات الكاش + الإيداعات − المصروفات.</p>
@@ -759,8 +889,8 @@ function drawOpenShift() {
 function switchCashier() {
   if (S.cart.lines.length && !confirm("في السلة أصناف. تبديل الكاشير يفرّغها، هل تريد المتابعة؟")) return;
   modal(`${mh("تبديل الكاشير")}<div class="mdl-b"><p style="margin:0 0 14px;line-height:1.7">الكاشير الحالي: <b>${esc(S.cashier.name)}</b>. إذا كان الكاشير التالي سيستلم الدرج ويُحاسَب عليه، قفّل الوردية أولاً ليُعدّ الدرج ويُسجّل الفرق على صاحبه.</p>
-    <div class="list"><button class="row" id="sw1"><span style="font-size:24px">👤</span><span><b>تبديل فقط</b><br><span class="meta">نفس الوردية والدرج، والطلبات تُسجّل باسم الكاشير الجديد</span></span><span></span></button>
-    <button class="row" id="sw2"><span style="font-size:24px">🔒</span><span><b>تقفيل الوردية ثم التبديل</b><br><span class="meta">عدّ الدرج وتسليمه</span></span><span></span></button></div></div>`);
+    <div class="list"><button class="row" id="sw1"><span class="ri">${ic("swap")}</span><span><b>تبديل فقط</b><br><span class="meta">نفس الوردية والدرج، والطلبات تُسجّل باسم الكاشير الجديد</span></span><span></span></button>
+    <button class="row" id="sw2"><span class="ri">${ic("lock")}</span><span><b>تقفيل الوردية ثم التبديل</b><br><span class="meta">عدّ الدرج وتسليمه</span></span><span></span></button></div></div>`);
   $("#sw1").onclick = () => { resetCart(); S.cashier = null; ls.set("cashier", null); render("pin"); };
   $("#sw2").onclick = () => { resetCart(); closeShiftFlow(); };
 }
@@ -781,7 +911,7 @@ function shiftCalc(sh, orders) {
 function openShift() {
   if (!S.shift) return;
   modal(`${mh(`الوردية <span class="muted small">منذ <span class="num">${hm(S.shift.openedAt)}</span> · فتحها ${esc(S.shift.openedBy.name)}</span>`)}<div class="mdl-b" id="shift-sum"></div>
-    <div class="mdl-f"><button class="btn ghost" id="cin">＋ إيداع في الدرج</button><button class="btn ghost" id="cout">− صرف من الدرج</button><span class="sp"></span><button class="btn dark" id="cls">🔒 تقفيل الوردية</button></div>`, { wide: true });
+    <div class="mdl-f"><button class="btn ghost" id="cin">${ic("add")}إيداع في الدرج</button><button class="btn ghost" id="cout">${ic("remove")}صرف من الدرج</button><span class="sp"></span><button class="btn dark" id="cls">${ic("lock")}تقفيل الوردية</button></div>`, { wide: true });
   drawShiftSum();
   $("#cin").onclick = () => cashMove("in"); $("#cout").onclick = () => askManager("الصرف من الدرج يحتاج رمز المدير", () => cashMove("out"));
   $("#cls").onclick = closeShiftFlow;
@@ -840,7 +970,7 @@ function closeShiftResult(counted, den, term) {
       ${term != null ? `<tr><td>جهاز الشبكة ${lab(tdiff)}</td><td class="n">${money(term)}</td></tr>` : ""}<tr><td>لوكيت</td><td class="n">${money(c.m.lokit)}</td></tr>
       <tr><td><b>إجمالي المبيعات (${c.count} طلب)</b></td><td class="n"><b>${money(c.total)}</b></td></tr></tbody></table>
     <div class="f" style="margin-top:14px"><label for="nt">ملاحظة ${Math.abs(diff) >= 1 || (tdiff != null && Math.abs(tdiff) >= 1) ? "(مطلوبة لوجود فرق)" : "(اختياري)"}</label><textarea id="nt" placeholder="سبب الفرق إن وُجد"></textarea></div></div>
-    <div class="mdl-f"><button class="btn ghost" id="rb">رجوع للعدّ</button><button class="btn dark" id="ok">🔒 تأكيد التقفيل</button></div>`);
+    <div class="mdl-f"><button class="btn ghost" id="rb">رجوع للعدّ</button><button class="btn dark" id="ok">${ic("lock")}تأكيد التقفيل</button></div>`);
   $("#rb").onclick = closeShiftFlow;
   $("#ok").onclick = async () => {
     const note = $("#nt").value.trim(); if ((Math.abs(diff) >= 1 || (tdiff != null && Math.abs(tdiff) >= 1)) && !note) return toast("اكتب سبب الفرق", true);
@@ -852,7 +982,7 @@ function closeShiftResult(counted, den, term) {
     setShift(null); S.cashier = null; ls.set("cashier", null);
     const cv = await drawShiftReport(sh, orders); render("pin");
     modal(`${mh("تم تقفيل الوردية ✓")}<div class="mdl-b"><img class="rcpt" src="${cv.toDataURL("image/png")}" alt="تقرير الوردية" style="width:300px"></div>
-      <div class="mdl-f"><button class="btn ghost" id="zp">🖨 طباعة التقرير</button><button class="btn" data-close>تم</button></div>`);
+      <div class="mdl-f"><button class="btn ghost" id="zp">${ic("print")}طباعة التقرير</button><button class="btn" data-close>تم</button></div>`);
     $("#zp").onclick = () => printCanvas(cv, true);
     if (S.device.printMode === "epos") printCanvas(cv, false, true);
   };
@@ -1033,7 +1163,7 @@ function admStore() {
     <div class="f"><label for="sa">العنوان</label><input id="sa" value="${esc(st.address)}"></div>
     <div class="f"><label for="sp">رقم الطلبات</label><input id="sp" dir="ltr" inputmode="tel" value="${esc(st.phone)}"></div>
     <div class="f"><label for="st">عبارة الشكر</label><input id="st" value="${esc(st.thanks)}"></div>
-    <div class="f"><label for="snt">ملاحظات الأصناف السريعة (سطر لكل ملاحظة)</label><textarea id="snt" rows="6" style="min-height:140px">${esc(noteList().join("\n"))}</textarea><span class="hint">تظهر أزراراً عند الضغط على «📝 ملاحظة» في السلة، وتُطبع في ورقة المطبخ. مجانية دائماً.</span></div>
+    <div class="f"><label for="snt">ملاحظات الأصناف السريعة (سطر لكل ملاحظة)</label><textarea id="snt" rows="6" style="min-height:140px">${esc(noteList().join("\n"))}</textarea><span class="hint">تظهر أزراراً عند الضغط على «ملاحظة» في السلة، وتُطبع في ورقة المطبخ. مجانية دائماً.</span></div>
     <div class="f"><label for="sc">بداية اليوم التشغيلي (الساعة)</label><select id="sc">${[0, 1, 2, 3, 4, 5, 6].map(h => `<option value="${h}" ${(S.config.cutoff ?? 4) === h ? "selected" : ""}>${h === 0 ? "12 منتصف الليل" : `${h} فجراً`}</option>`).join("")}</select>
       <span class="hint">الطلبات قبل هذه الساعة تُحسب على اليوم السابق، مثل فودكس.</span></div>
     <div class="f"><label>الشعار في الإيصال (أسود على أبيض)</label><div style="display:flex;gap:8px;flex-wrap:wrap"><label class="btn ghost sm" for="lg">اختيار صورة الشعار</label><input id="lg" type="file" accept="image/*" hidden>${S.config.logo ? `<button class="btn ghost sm" id="lgx" style="color:var(--bad)">إزالة الشعار</button>` : ""}</div>

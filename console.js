@@ -79,7 +79,7 @@ export function mount(api, tab) {
       <div class="cx-crumb" id="cxcrumb"></div><span class="cx-sp"></span>
       <span class="cx-net" id="cxnet"><i></i><span></span></span>
       <button class="cx-ib" data-act="reload" title="تحديث البيانات" aria-label="تحديث البيانات">${ic("refresh")}</button>
-      <div class="cx-user"><button class="cx-av" data-act="user"><span>${esc(userName())}</span><i>${esc(userName().slice(0, 1))}</i></button></div></header>
+      <div class="cx-user"><button class="cx-av" data-act="user"><span>${esc(userName())}</span><img src="icons/logo.png" alt="AQ"></button></div></header>
       <main class="cx-page" id="cxp"></main></div></div>`;
   root.addEventListener("click", onClick);
   addEventListener("hashchange", onHash); addEventListener("online", net); addEventListener("offline", net);
