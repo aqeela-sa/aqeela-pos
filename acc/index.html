@@ -3572,9 +3572,12 @@ function renderPayroll(){
           <td class="n">${inp(i,"extra",l.extra)}</td><td>${inp(i,"extraNote",l.extraNote,110)}</td><td class="n">${inp(i,"deduct",l.deduct)}</td><td>${inp(i,"deductNote",l.deductNote,110)}</td>
           <td class="n">${inp(i,"advance",l.advance)}</td><td class="n"><b data-out="net${i}">${money(c.net)}</b></td><td class="n">${MD(c.paid)}</td>
           <td class="n">${!appr ? '<span class="dash">—</span>' : c.remain > 0.004 ? `<b class="neg">${money(c.remain)}</b>` : '<span class="chip ok">مصروف</span>'}</td>
-          <td><div class="actions" style="flex-wrap:nowrap">${appr && c.remain > 0.004 && S.canWrite ? `<button class="btn sm" type="button" data-spay="${i}">صرف</button>` : ""}<button class="btn ghost sm" type="button" data-slip="${esc(staffKey(l))}">قسيمة</button></div></td></tr>`; }).join("") || `<tr><td colspan="13" class="empty">لا يوجد موظفون في المسير</td></tr>`}
+          <td><div class="actions" style="flex-wrap:nowrap">${appr && c.remain > 0.004 && S.canWrite ? `<button class="btn sm" type="button" data-spay="${i}">صرف</button>` : ""}<button class="btn ghost sm" type="button" data-slip="${esc(staffKey(l))}">قسيمة</button>${edit && !(l.pays || []).length ? `<button class="btn ghost sm" type="button" data-prx="${i}" title="إخراج الموظف من مسير هذا الشهر">استبعاد</button>` : ""}</div></td></tr>`; }).join("") || `<tr><td colspan="13" class="empty">لا يوجد موظفون في المسير</td></tr>`}
       <tr class="tot"><td>الإجمالي</td><td class="n">${money(t.base)}</td><td></td><td class="n">${MD(t.absentAmt)}</td><td class="n">${MD(t.extra)}</td><td></td><td class="n">${MD(t.deduct)}</td><td></td><td class="n">${MD(t.advance)}</td><td class="n"><b id="prNetTot">${money(t.net)}</b></td><td class="n">${MD(t.paid)}</td><td class="n">${appr ? MD(t.remain) : "—"}</td><td></td></tr>
       </tbody></table></div>
+      ${(() => { /* staff left out of this month's run: shown with a way back in */
+        const out = newPayrollLines(ym).filter(f => !L.some(l => staffKey(l) === staffKey(f)));
+        return out.length ? `<div class="note" style="margin-top:10px">${appr ? "غير مشمولين في هذا المسير" : "مستبعدون من هذا المسير"}: ${out.map(f => `<b>${esc(f.name)}</b>${S.canWrite ? ` <button class="btn ghost sm" type="button" data-prin="${esc(staffKey(f))}">${edit ? "إرجاع" : "إضافة للمسير"}</button>` : ""}`).join(" · ")}<div class="small muted" style="margin-top:4px">لا يُحسب راتبهم في مصروف هذا الشهر ولا تُخصم سلفهم، ويبقون في ملفات الموظفين كما هم.${appr && S.canWrite ? " «إضافة للمسير» تضيف الموظف براتبه الأساسي وخصم سلفته، وتدخل في استحقاق الشهر مباشرة، ثم يُصرف له كالباقين." : ""}</div></div>` : ""; })()}
       ${L.some(l => (l.pays || []).length) ? `<details style="margin-top:10px"><summary class="small" style="cursor:pointer;font-weight:700">سجل الصرف</summary><div class="tw" style="margin-top:6px"><table><thead><tr><th>التاريخ</th><th>الموظف</th><th class="n">المبلغ</th><th>الطريقة</th><th></th></tr></thead><tbody>
         ${L.flatMap((l,i) => (l.pays || []).map((x,j) => `<tr><td class="num">${dmy(x.date)}${who(x.by)}</td><td>${esc(l.name)}</td><td class="n">${money(n(x.amount))}</td><td>${esc(x.pay)}</td><td>${S.canWrite ? `<button class="btn danger sm" type="button" data-unpay="${i}|${j}">إلغاء</button>` : ""}</td></tr>`)).join("")}</tbody></table></div></details>` : ""}
     </div>`;
@@ -3612,7 +3615,12 @@ function renderPayroll(){
   if ($("#pr_save")) $("#pr_save").onclick = () => { S.prDirty = false; save({}, "تم حفظ المسودة"); };
   if ($("#pr_appr")) $("#pr_appr").onclick = () => { const L = readLines(); if (L.some(l => prCalc(l).net < -0.004)){ toast("يوجد صافي راتب بالسالب، راجع الخصومات"); return; } S.prDirty = false; save({status:"معتمد", approvedAt:new Date().toISOString(), approvedBy:S.uid || ""}, "تم اعتماد المسير"); };
   if ($("#pr_unappr")) $("#pr_unappr").onclick = () => recWrite("payroll", ym, {...strip(p), status:"مسودة", approvedAt:"", approvedBy:""}, "edit", "أصبح المسير مسودة قابلة للتعديل");
-  if ($("#pr_sync")) $("#pr_sync").onclick = () => { const cur = readLines(), fresh = newPayrollLines(ym);
+  /* leave an employee out of this month's run, or bring one back (unsaved edits in the table are kept) */
+  el.querySelectorAll("[data-prx]").forEach(b => b.onclick = () => { const L = readLines(), o = L[+b.dataset.prx]; if (!o || (o.pays || []).length) return;
+    S.prDirty = false; recWrite("payroll", ym, {...strip(prDoc(ym)), lines:L.filter((l, i) => i !== +b.dataset.prx), excluded:[...new Set([...(prDoc(ym).excluded || []), staffKey(o)])]}, "edit", `استُبعد ${o.name} من مسير هذا الشهر`); });
+  el.querySelectorAll("[data-prin]").forEach(b => b.onclick = () => { const k = b.dataset.prin, f = newPayrollLines(ym).find(x => staffKey(x) === k); if (!f) return;
+    S.prDirty = false; recWrite("payroll", ym, {...strip(prDoc(ym)), lines:[...readLines(), f], excluded:(prDoc(ym).excluded || []).filter(x => x !== k)}, "edit", `أُرجع ${f.name} إلى المسير`); });
+  if ($("#pr_sync")) $("#pr_sync").onclick = () => { const cur = readLines(), ex = new Set(prDoc(ym).excluded || []), fresh = newPayrollLines(ym).filter(f => !ex.has(staffKey(f)));
     const merged = fresh.map(f => { const o = cur.find(l => staffKey(l) === staffKey(f)); return o ? {...o, name:f.name, kind:f.kind, base:f.base} : f; });
     cur.forEach(o => { if (!merged.some(m => staffKey(m) === staffKey(o)) && (o.pays || []).length) merged.push(o); });
     S.prDirty = false; recWrite("payroll", ym, {...strip(p), lines:merged}, "edit", "تم تحديث المسير من بيانات الموظفين"); };
@@ -3628,9 +3636,10 @@ Object.assign(REPORTS, {
     const ps = S.payroll.filter(p => ymEnd(p.id) >= a && p.id + "-01" <= b).sort((x,y) => x.id < y.id ? -1 : 1);
     const all = {expense:0, net:0, paid:0, remain:0, advance:0};
     const secs = ps.map(p => { const t = prTotals(p); Object.keys(all).forEach(k => all[k] += t[k]);
-      return rpSec(`مسير ${ymLabel(p.id)} · ${prApproved(p) ? "معتمد" : "مسودة"}`, rpTable(["الموظف","الأساسي","الغياب","خصم الغياب","إضافي","خصومات","خصم سلفة","الصافي","المصروف","المتبقي"],
-        (p.lines || []).map(l => { const c = prCalc(l); return [esc(l.name), M(c.base), n(l.absent) ? `<span class="num">${n(l.absent)}</span>` : "—", MD(c.absentAmt), MD(n(l.extra)), MD(n(l.deduct)), MD(n(l.advance)), `<b>${M(c.net)}</b>`, MD(c.paid), c.remain > 0.004 ? `<b class="rp-neg">${M(c.remain)}</b>` : "—"]; }),
-        ["الإجمالي", M(t.base), "", MD(t.absentAmt), MD(t.extra), MD(t.deduct), MD(t.advance), `<b>${M(t.net)}</b>`, MD(t.paid), MD(t.remain)], ["19%","9%","6%","8%","8%","8%","8%","11%","11%","12%"])); });
+      /* the last column is left blank for each employee to sign on receiving the salary */
+      return rpSec(`مسير ${ymLabel(p.id)} · ${prApproved(p) ? "معتمد" : "مسودة"}`, rpTable(["الموظف","الأساسي","الغياب","خصم الغياب","إضافي","خصومات","خصم سلفة","الصافي","المصروف","المتبقي","توقيع الاستلام"],
+        (p.lines || []).map(l => { const c = prCalc(l); return [esc(l.name), M(c.base), n(l.absent) ? `<span class="num">${n(l.absent)}</span>` : "—", MD(c.absentAmt), MD(n(l.extra)), MD(n(l.deduct)), MD(n(l.advance)), `<b>${M(c.net)}</b>`, MD(c.paid), c.remain > 0.004 ? `<b class="rp-neg">${M(c.remain)}</b>` : "—", `<div style="height:34px"></div>`]; }),
+        ["الإجمالي", M(t.base), "", MD(t.absentAmt), MD(t.extra), MD(t.deduct), MD(t.advance), `<b>${M(t.net)}</b>`, MD(t.paid), MD(t.remain), ""], ["14%","8%","5%","7%","7%","7%","7%","9%","8%","8%","20%"])); });
     const advs = S.advances.filter(x => inR(x.date, [a,b])).sort((x,y) => x.date < y.date ? -1 : 1);
     return {title:"مسير الرواتب", orient:"landscape", html: rpHead("مسير الرواتب", a, b) +
       rpKpis([["مصروف الرواتب", M(all.expense)], ["صافي المستحق للموظفين", M(all.net)], ["المصروف فعلياً", M(all.paid)], ["المتبقي", `<b class="${all.remain > 0.004 ? "rp-neg" : ""}">${M(all.remain)}</b>`]]) +
