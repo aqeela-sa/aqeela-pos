@@ -1212,6 +1212,9 @@ const homeView = () => isStaff() ? STAFF_HOME : "dashboard";
 const STAFF_REPORTS = new Set(["summary","sales","expenses","production","recon","custody","apps","supplier","payables","buyer","prices","daily"]);
 const STAFF_HIDDEN = Object.keys(STAFF_COLL_PAGE);   // opened per granted page, by the app and by the database rules
 const isStaff = () => S.role === "staff";
+/* when a record was first entered (its «create» history entry; the oldest kept entry or the last save otherwise), and that local day */
+const enteredAt = x => { const h = (x && x.history) || []; const c = h.find(e => e.action === "create") || h[h.length - 1]; return (c && c.at) || (x && x.updatedAt) || ""; };
+const enteredDay = x => { const t = enteredAt(x); return t ? iso(new Date(t)) : ""; };
 const creatorOf = x => { const h = (x && x.history) || []; const c = h.find(e => e.action === "create"); return (c && c.by) || (h.length ? h[h.length - 1].by : "") || (x && x.by) || ""; };
 function applyRole(){
   document.documentElement.dataset.role = S.role || "admin";
@@ -2337,21 +2340,25 @@ function viewReports(){
     <div class="f"><label for="rp_a">من تاريخ</label><input id="rp_a" type="date" value="${r.a}"></div>
     <div class="f"><label for="rp_b">إلى تاريخ</label><input id="rp_b" type="date" value="${r.b}"></div>
     <div class="f" id="rp_empw" ${RP_EXTRA.includes(r.type)?"":"hidden"}><label for="rp_emp" id="rp_empl">${rpExtraLabel(r.type)}</label><select id="rp_emp">${rpExtraOpts(r.type, r.emp)}</select></div>
+    <div class="f" id="rp_byw" ${r.type === "buyer" ? "" : "hidden"}><label for="rp_by">حسب</label><select id="rp_by"><option value="">تاريخ الفاتورة</option><option value="entry" ${r.by === "entry" ? "selected" : ""}>تاريخ الإدخال في البرنامج</option></select></div>
     <div class="f wide"><span class="small muted" style="font-weight:700">فترات سريعة</span><div class="actions">
-      <button type="button" class="btn ghost sm" data-p="m0">هذا الشهر</button><button type="button" class="btn ghost sm" data-p="m1">الشهر الماضي</button>
+      <button type="button" class="btn ghost sm" data-p="e0" id="rp_e0" ${r.type === "buyer" ? "" : "hidden"}>أُدخلت اليوم</button><button type="button" class="btn ghost sm" data-p="m0">هذا الشهر</button><button type="button" class="btn ghost sm" data-p="m1">الشهر الماضي</button>
       <button type="button" class="btn ghost sm" data-p="w0">آخر 7 أيام</button><button type="button" class="btn ghost sm" data-p="d30">آخر 30 يوماً</button>
       <button type="button" class="btn ghost sm" data-p="q0">هذا الربع</button><button type="button" class="btn ghost sm" data-p="q1">الربع الماضي</button><button type="button" class="btn ghost sm" data-p="y0">هذه السنة</button><button type="button" class="btn ghost sm" data-p="all">منذ البداية</button></div></div>
   </div><p class="small muted" style="margin:10px 0 0">التقرير يتحدث تلقائياً مع البيانات. «تنزيل PDF» يحفظ الملف مباشرة. «نسخة للطباعة» تنزّل ملفاً تفتحه في المتصفح فتظهر نافذة الطباعة فوراً، ومنها تطبع أو تحفظ PDF بأعلى جودة.</p></div>
   <div class="rp-wrap"><div id="rpPaper" class="rp-paper"></div></div>`;
 }
 function bindReports(){
-  document.querySelectorAll(".rp-type").forEach(b => b.onclick = () => { const prev = S.rp.type; S.rp.type = b.dataset.k; if (prev !== S.rp.type) S.rp.emp = ""; document.querySelectorAll(".rp-type").forEach(x => x.classList.toggle("on", x === b)); $("#rp_empw").hidden = !RP_EXTRA.includes(S.rp.type); $("#rp_empl").textContent = rpExtraLabel(S.rp.type); $("#rp_emp").innerHTML = rpExtraOpts(S.rp.type, S.rp.emp); renderReport(); });
+  document.querySelectorAll(".rp-type").forEach(b => b.onclick = () => { const prev = S.rp.type; S.rp.type = b.dataset.k; if (prev !== S.rp.type) S.rp.emp = ""; document.querySelectorAll(".rp-type").forEach(x => x.classList.toggle("on", x === b)); $("#rp_empw").hidden = !RP_EXTRA.includes(S.rp.type); $("#rp_byw").hidden = $("#rp_e0").hidden = S.rp.type !== "buyer"; $("#rp_empl").textContent = rpExtraLabel(S.rp.type); $("#rp_emp").innerHTML = rpExtraOpts(S.rp.type, S.rp.emp); renderReport(); });
   $("#rp_a").onchange = () => { S.rp.a = $("#rp_a").value; renderReport(); };
   $("#rp_b").onchange = () => { S.rp.b = $("#rp_b").value; renderReport(); };
   $("#rp_emp").onchange = () => { S.rp.emp = $("#rp_emp").value; renderReport(); };
+  $("#rp_by").onchange = () => { S.rp.by = $("#rp_by").value; renderReport(); };
   document.querySelectorAll("[data-p]").forEach(b => b.onclick = () => {
     const t = today(), d = pd(t); let a, z = t;
-    if (b.dataset.p === "m0") [a,z] = monthRange(d.getFullYear(), d.getMonth()+1);
+    /* «أُدخلت اليوم»: what was entered into the program today, whatever the invoice dates */
+    if (b.dataset.p === "e0"){ a = t; S.rp.by = "entry"; $("#rp_by").value = "entry"; }
+    else if (b.dataset.p === "m0") [a,z] = monthRange(d.getFullYear(), d.getMonth()+1);
     else if (b.dataset.p === "m1") [a,z] = d.getMonth() === 0 ? monthRange(d.getFullYear()-1, 12) : monthRange(d.getFullYear(), d.getMonth());
     else if (b.dataset.p === "w0") a = addDays(t,-6);
     else if (b.dataset.p === "d30") a = addDays(t,-29);
@@ -4839,12 +4846,15 @@ RTYPES.push(["buyer","مشتريات حسب المشتري","فواتير كل �
 RP_EXTRA.push("buyer");
 Object.assign(REPORTS, {
   buyer(a, b, who){
-    const inv = S.invoices.filter(x => x.date >= a && x.date <= b).sort((x, y) => x.date < y.date ? -1 : x.date > y.date ? 1 : 0);
+    /* by invoice date, or (S.rp.by = "entry") by the day each invoice was entered into the program */
+    const ent = S.rp && S.rp.by === "entry", key = x => ent ? enteredDay(x) : x.date;
+    const inv = S.invoices.filter(x => { const k = key(x); return k && k >= a && k <= b; }).sort((x, y) => ent ? (enteredAt(x) < enteredAt(y) ? -1 : 1) : x.date < y.date ? -1 : x.date > y.date ? 1 : 0);
+    const basis = ent ? `<div class="rp-note">حسب تاريخ الإدخال في البرنامج: الفواتير التي أُدخلت ${a === b ? `يوم <span class="num">${dmy(a)}</span>` : `من <span class="num">${dmy(a)}</span> إلى <span class="num">${dmy(b)}</span>`}، أياً كان تاريخ الفاتورة نفسها.</div>` : "";
     const grp = (arr, kf) => { const m = new Map(); arr.forEach(x => { const k = kf(x) || "—", o = m.get(k) || {k, c:0, v:0}; o.c++; o.v += invTotal(x); m.set(k, o); }); return [...m.values()].sort((p, q) => q.v - p.v); };
     if (!who){
       const rows = grp(inv, x => x.buyer ? buyerCanon(x.buyer) : "بدون مشتري محدد"), tot = sumBy(inv, invTotal), maxV = Math.max(1, ...rows.map(x => x.v));
       const none = rows.find(x => x.k === "بدون مشتري محدد");
-      return {title:"مشتريات حسب المشتري", orient:"portrait", html: rpHead("مشتريات حسب المشتري", a, b) +
+      return {title:"مشتريات حسب المشتري", orient:"portrait", html: rpHead("مشتريات حسب المشتري" + (ent ? " (المُدخلة)" : ""), a, b) + basis +
         rpKpis([["إجمالي الفواتير", M(tot), `${inv.length} فاتورة`], ["عدد المشترين", `<span class="num">${rows.filter(x => x !== none).length}</span>`], ["بدون مشتري محدد", M(none ? none.v : 0), none ? `${none.c} فاتورة` : ""]]) +
         rpSec("ملخص المشترين", rpTable(["المشتري","الفواتير","المبلغ","مصاريف إنتاج","آجلة","النسبة",""], rows.map(r => { const mine = inv.filter(x => (x.buyer ? buyerCanon(x.buyer) : "بدون مشتري محدد") === r.k);
             return [esc(r.k), `<span class="num">${r.c}</span>`, `<b>${M(r.v)}</b>`, M(sumBy(mine.filter(isProd), invTotal)), MD(sumBy(mine.filter(isCredit), invTotal)), tot ? P(r.v / tot) : "—", rpBar(r.v, maxV, "var(--red)")]; }),
@@ -4854,14 +4864,14 @@ Object.assign(REPORTS, {
     const mine = inv.filter(x => x.buyer && buyerKey(x.buyer) === buyerKey(who)), tot = sumBy(mine, invTotal);
     const cats = grp(mine, x => x.category), sups = grp(mine, x => supKey(x.supplier)), pays = grp(mine, x => isCredit(x) ? "آجلة" : x.pay), maxC = Math.max(1, ...cats.map(x => x.v));
     const prod = sumBy(mine.filter(isProd), invTotal), days = new Set(mine.map(x => x.date)).size;
-    return {title:`مشتريات ${who}`, orient:"portrait", html: rpHead(`كشف مشتريات: ${esc(who)}`, a, b) +
+    return {title:`مشتريات ${who}`, orient:"portrait", html: rpHead(`كشف مشتريات: ${esc(who)}` + (ent ? " (المُدخلة)" : ""), a, b) + basis +
       rpKpis([["إجمالي المشتريات", M(tot), `${mine.length} فاتورة`], ["مصاريف إنتاج", M(prod), tot ? P(prod / tot) + " من مشترياته" : ""], ["أيام الشراء", `<span class="num">${days}</span>`, days ? `متوسط اليوم ${fmt(tot / days)}` : ""], ["آجلة", M(sumBy(mine.filter(isCredit), invTotal))]]) +
       (mine.length ? rpSec("حسب التصنيف", rpTable(["التصنيف","الفواتير","المبلغ","النسبة",""], cats.map(x => [esc(x.k), `<span class="num">${x.c}</span>`, M(x.v), tot ? P(x.v / tot) : "—", rpBar(x.v, maxC, "#5F5E5A")]), ["الإجمالي", `<span class="num">${mine.length}</span>`, M(tot), P(1), ""], ["34%","14%","18%","14%","20%"])) +
         `<div class="rp-two">` + rpSec("حسب المورد", rpTable(["المورد","الفواتير","المبلغ"], sups.map(x => [esc(x.k), `<span class="num">${x.c}</span>`, M(x.v)]), null, ["50%","20%","30%"])) +
         rpSec("حسب طريقة الدفع", rpTable(["الطريقة","الفواتير","المبلغ"], pays.map(x => [esc(x.k), `<span class="num">${x.c}</span>`, M(x.v)]), null, ["50%","20%","30%"])) + `</div>` +
         rpSec("سجل الفواتير", rpTable(["التاريخ","رقم الفاتورة","المورد","التصنيف","الدفع","إنتاج","الإجمالي"], mine.map(x => [`<span class="num">${dmy(x.date)}</span>`, esc(x.no || "—"), esc(supKey(x.supplier)), esc(x.category), esc(isCredit(x) ? "آجلة" : x.pay), isProd(x) ? "✓" : "", M(invTotal(x))]),
           ["الإجمالي","","","","","", `<b>${M(tot)}</b>`], ["12%","13%","20%","20%","13%","7%","15%"]))
-        : `<div class="rp-note">لا توجد فواتير مسجّلة باسم ${esc(who)} في هذه الفترة.</div>`) + rpFoot()};
+        : `<div class="rp-note">لا توجد فواتير ${ent ? "أُدخلت" : "مسجّلة"} باسم ${esc(who)} في هذه الفترة.</div>`) + rpFoot()};
   }
 });
 
