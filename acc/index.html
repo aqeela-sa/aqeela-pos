@@ -281,7 +281,7 @@ nav.tabs a{font-size:15px}
 :root[data-theme="dark"] .bal.cash .big{color:#F09595!important}
 
 /* soft green / soft blue accents */
-#fs button[type=submit],#i_save,#c_save,#a_new,#fpay button[type=submit],#fsup button[type=submit],#fstaff button[type=submit],#fadv button[type=submit],#fsp button[type=submit],#fsti button[type=submit],#fstc button[type=submit],#sk_count,#pr_appr,#pr_create,#pr_payall,[data-spay]{background:#5E9E6B!important;color:#fff!important;border-color:transparent!important}
+#fs button[type=submit],#i_save,#c_save,#a_new,#fpay button[type=submit],#fsup button[type=submit],#fstaff button[type=submit],#fadv button[type=submit],#fsp button[type=submit],#fsti button[type=submit],#fstc button[type=submit],#sk_count,#pr_appr,#pr_create,#pr_payall,[data-spay],#d_app{background:#5E9E6B!important;color:#fff!important;border-color:transparent!important}
 .status.ok{background:#5E9E6B!important;color:#fff}
 .status.ok::before{background:#fff!important}
 .bal.tot .hd{background:#5E9E6B!important;color:#fff}
@@ -291,7 +291,7 @@ nav.tabs a{font-size:15px}
 .bal.bank .big{color:#002147!important}
 .bal.bank{border-color:color-mix(in srgb,#002147 30%,var(--line))!important}
 [hidden]{display:none!important}
-#d_app{background:#C9605A!important;color:#fff!important}
+#d_app{background:#5E9E6B!important;color:#fff!important}
 .bal.cash .hd,.bal.bank .hd,.bal.tot .hd{color:#FFFFFF!important;font-weight:800;opacity:1;text-shadow:0 1px 2px rgba(0,0,0,.28);letter-spacing:.1px}
 
 /* crisp white labels */
@@ -704,7 +704,7 @@ a.bg-dash{display:grid;gap:8px;text-decoration:none;color:inherit}.bg-dash h3{ma
 @media (prefers-color-scheme:dark){[data-skin="teal"]:not([data-theme="light"]){--accent-soft:#12393B}}[data-skin="teal"][data-theme="dark"]{--accent-soft:#12393B}
 [data-skin="teal"] .rp-type.on{background:var(--accent-soft)!important}
 [data-skin="teal"] .chip.bad{background:var(--bad-bg);color:var(--bad)}[data-skin="teal"] .chip.ok{color:var(--good)}
-[data-skin="teal"] #d_app{background:var(--grad)!important}
+[data-skin="teal"] #d_app{background:linear-gradient(135deg,#34B07F,#1B6E52)!important;box-shadow:0 6px 16px rgba(27,110,82,.25)!important}
 
 /* teal skin: one calm card style for the balance tiles, an icon badge per tile */
 [data-skin="teal"] .bal,[data-skin="teal"] .bal.cash,[data-skin="teal"] .bal.bank,[data-skin="teal"] .bal.tot{border-color:var(--line)!important}
@@ -833,7 +833,7 @@ nav.tabs a[hidden],.nav-more[hidden]{display:none!important}
 [data-skin="rose"] .rp-type.on{background:var(--accent-soft)!important}
 [data-skin="rose"] .chip.bad{background:var(--bad-bg);color:var(--bad)}
 [data-skin="rose"] .chip.ok{color:var(--good)}
-[data-skin="rose"] #d_app{background:var(--grad)!important}
+[data-skin="rose"] #d_app{background:linear-gradient(135deg,#34B07F,#1B6E52)!important;box-shadow:0 6px 16px rgba(27,110,82,.25)!important}
 
 [data-skin="rose"] .bal,[data-skin="rose"] .bal.cash,[data-skin="rose"] .bal.bank,[data-skin="rose"] .bal.tot{border-color:var(--line)!important}
 [data-skin="rose"] .bal .hd,[data-skin="rose"] .bal.cash .hd,[data-skin="rose"] .bal.bank .hd,[data-skin="rose"] .bal.tot .hd,[data-skin="rose"] .bal.prod .hd,[data-skin="rose"] .bal.apps .hd{background:transparent!important;color:var(--ink)!important;display:flex;align-items:center;gap:10px;padding:16px 18px 2px;font-weight:600;font-size:14.5px;border:0!important}
