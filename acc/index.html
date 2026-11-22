@@ -1,7 +1,9 @@
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
-<script>try{document.documentElement.dataset.skin=localStorage.getItem("skin")||"rose"}catch(e){document.documentElement.dataset.skin="rose"}</script>
+<script>try{document.documentElement.dataset.skin=localStorage.getItem("skin")||"rose"}catch(e){document.documentElement.dataset.skin="rose"}
+/* the AQ logo from the first paint: the brand is known only after the settings load, so the last one seen is kept (AQ by default) */
+try{document.documentElement.dataset.aq=localStorage.getItem("aq")??"1"}catch(e){document.documentElement.dataset.aq="1"}</script>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>محاسبة شاورما العقيلة</title>
@@ -996,7 +998,7 @@ function applyBrand(){
   const B = brand(); document.title = "محاسبة " + B.ar;
   const em = document.querySelector(".brand .emblem"); if (em){ em.setAttribute("aria-label", brandShort()); const h = em.querySelector("h1"); if (h) h.textContent = brandShort(); }
   const l2 = document.querySelector(".brand .logo2"); if (l2){ l2.setAttribute("aria-label", brandShort() + (brandEn() ? " " + brandEn() : ""));
-    const svg = l2.querySelector("svg.wmk"); let tx = l2.querySelector(".wmk-t"); const own = brandIsAqeela(); document.documentElement.dataset.aq = own ? "1" : "";
+    const svg = l2.querySelector("svg.wmk"); let tx = l2.querySelector(".wmk-t"); const own = brandIsAqeela(); document.documentElement.dataset.aq = own ? "1" : ""; try { localStorage.setItem("aq", own ? "1" : ""); } catch(e){}
     if (svg) svg.style.display = own ? "" : "none";
     if (!own){ if (!tx){ l2.insertAdjacentHTML("beforeend", brandWordmark("wmk-t")); } else tx.outerHTML = brandWordmark("wmk-t"); } else if (tx) tx.remove(); }
 }
