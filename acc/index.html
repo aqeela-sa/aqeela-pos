@@ -2111,14 +2111,18 @@ function rangeStats(a,b){
   /* buying equipment is an investment (fixed asset), not an expense: its cost reaches expenses through monthly depreciation */
   const invNoCus = sumBy(invs.filter(x => x.pay !== "من العهدة" && !isNonExpCat(x.category)), invTotal);
   const payExp = payrollExp(a, b);
-  const prodInv = invs.filter(isProd), packV = packConsVal(a, b), prod = sumBy(prodInv, invTotal) + packV, prepaid = prepaidShare(a, b);
+  /* production is set against the sales of the same days: a period reaching today stops at the last day whose sales are entered
+     (sales come in the next day), as the dashboard and the production page do — else today's purchases weigh on no sales */
+  const lastSale = b >= today() ? sales.filter(s => saleTotal(s) > 0).map(s => s.date).pop() : null, prodTo = lastSale && lastSale < b ? lastSale : b;
+  const packV = packConsVal(a, b), prodInv = invs.filter(x => isProd(x) && x.date <= prodTo), packP = prodTo === b ? packV : packConsVal(a, prodTo);
+  const prod = sumBy(prodInv, invTotal) + packP, prepaid = prepaidShare(a, b), prodLater = invs.filter(x => isProd(x) && x.date > prodTo);
   const exp = invNoCus + spentCus + payExp + prepaid + packV;
   const group = (arr, key) => { const m = new Map(); for (const x of arr){ const k = key(x) || "غير محدد"; const o = m.get(k) || {k, v:0, c:0}; o.v += invTotal(x); o.c++; m.set(k,o); } return [...m.values()].sort((p,q) => q.v - p.v); };
   return { a, b, sales, by, total, delivery, comm, netSales, days, avg: days ? netSales/days : 0,
-    invs, invTotal: sumBy(invs, invTotal), exp, spentCus, invNoCus, payExp, prepaid, prod, prodInv, prodPct: netSales > 0 ? prod/netSales : 0,
+    invs, invTotal: sumBy(invs, invTotal), exp, spentCus, invNoCus, payExp, prepaid, prod, prodInv, prodTo, prodLater, prodPct: netSales > 0 ? prod/netSales : 0,
     unpaid: invs.filter(x => isCredit(x) && (apState().byInv.get(x.id)?.remain || 0) > 0.004), net: netSales - exp,
     cats: group(invs, x => x.category), sups: group(invs, x => x.supplier), pays: group(invs, x => x.pay),
-    prodCats: [...group(prodInv, x => x.category), ...(packV ? [{k:"تغليف مطبوع مستهلك (حسب معدل الاستهلاك)", v:packV, c:0}] : [])].sort((p,q) => q.v - p.v), prodSups: group(prodInv, x => x.supplier), packV, cus };
+    prodCats: [...group(prodInv, x => x.category), ...(packP ? [{k:"تغليف مطبوع مستهلك (حسب معدل الاستهلاك)", v:packP, c:0}] : [])].sort((p,q) => q.v - p.v), prodSups: group(prodInv, x => x.supplier), packV: packP, packAll: packV, cus };
 }
 function receivableAt(d){
   const start = S.settings.startDate || "0000";
@@ -2167,7 +2171,7 @@ const REPORTS = {
         ["المبيعات الفعلية", M(s.netSales), `بعد عمولة التوصيل ${M(s.comm)}`],
         ["إجمالي المصروفات", M(s.exp), s.payExp ? `فواتير + عهد + رواتب ${fmt(s.payExp)}` : "فواتير + صرف العهد"],
         ["صافي التشغيل", `<span class="${s.net < 0 ? "rp-neg" : ""}">${M(s.net)}</span>`, s.netSales ? `هامش ${P(s.net/s.netSales)}` : ""],
-        ["مصاريف الإنتاج", M(s.prod), "فواتير موسومة «إنتاج»"],
+        ["مصاريف الإنتاج", M(s.prod), s.prodTo < b && s.prodLater.length ? `حتى ${dmy(s.prodTo)} آخر يوم مبيعات` : "فواتير موسومة «إنتاج»"],
         ["نسبة الإنتاج", `<span class="rp-t-${lvOf(s.prodPct)}">${s.netSales ? P(s.prodPct) : "—"}</span>`, s.netSales ? lvChip(s.prodPct) : ""],
         ["متوسط المبيعات اليومي", M(s.avg), "من المبيعات الفعلية"],
         ["المستحق للموردين", M(apTotal()), `${s.unpaid.length} فاتورة آجلة مفتوحة في الفترة`]
