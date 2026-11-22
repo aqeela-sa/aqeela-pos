@@ -4,7 +4,7 @@
 import * as F from "./fb.js";
 import { firebaseConfig } from "./firebase-config.js";
 
-const VERSION = "2.6.4";
+const VERSION = "2.6.5";
 const ADMIN_EMAIL = "abuabraj@gmail.com";
 const DEVICE_EMAIL = "cashier@aqeela-pos.app";
 const APP_NAME = `<span dir="ltr">Cashier AQ</span>`;
@@ -73,6 +73,7 @@ const hm = t => { const d = new Date(t); return `${pad(d.getHours())}:${pad(d.ge
 const addDays = (s, k) => { const d = new Date(s + "T12:00:00"); d.setDate(d.getDate() + k); return ymd(d); };
 const ls = { get: (k, d) => { try { const v = localStorage.getItem("aq_" + k); return v === null ? d : JSON.parse(v); } catch { return d; } },
   set: (k, v) => { try { localStorage.setItem("aq_" + k, JSON.stringify(v)); } catch {} } };
+let cartBack = false;
 async function sha(s) { const b = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s)); return [...new Uint8Array(b)].map(x => x.toString(16).padStart(2, "0")).join(""); }
 const rid = (n = 6) => [...crypto.getRandomValues(new Uint8Array(n))].map(x => "abcdefghjkmnpqrstuvwxyz23456789"[x % 31]).join("");
 function toast(t, bad) { $(".toast")?.remove(); const e = document.createElement("div"); e.className = "toast" + (bad ? " bad" : ""); e.textContent = t; document.body.append(e); setTimeout(() => e.remove(), 3200); }
@@ -82,7 +83,8 @@ const bizDay = (t = Date.now()) => ymd(new Date(t - (S.config?.cutoff ?? 4) * 36
 const S = {
   user: null, role: null, config: null, menu: [], menuReady: false, configReady: false,
   cashier: ls.get("cashier", null), view: "boot", shift: ls.get("shift", null), shiftOrders: [],
-  cart: { type: null, lines: [], discount: null, sel: null }, cat: "chicken",
+  /* الطلب الجاري يُحفظ في الجهاز مع كل تعديل، فإن أُعيد تحميل الصفحة (يحدث في سفاري أحياناً) يرجع كما كان */
+  cart: (() => { const c = ls.get("cart", null); if (c && Array.isArray(c.lines) && c.lines.length && Date.now() - (c.at || 0) < 12 * 36e5) { cartBack = true; return { type: c.type || null, lines: c.lines, discount: c.discount || null, sel: null, ...(c.phone ? { phone: c.phone } : {}), ...(c.name ? { name: c.name } : {}) }; } return { type: null, lines: [], discount: null, sel: null }; })(), cat: "chicken",
   today: [], pending: 0, online: navigator.onLine,
   dev: ls.get("dev", null) || (() => { const d = rid(4); ls.set("dev", d); return d; })(),
   device: Object.assign({ printMode: "browser", printerIp: "", autoPrint: true, test: false, kitchenMode: "same", kitchenIp: "" }, ls.get("device", {})),
@@ -371,7 +373,7 @@ function addItem(id) {
     const tgt = L.find(l => l.key === S.cart.sel) || L.filter(l => !l.addon).at(-1);
     if (!tgt) return toast("أضف الصنف أولاً ثم الإضافة عليه");
     tgt.mods.push({ id: it.id, name: it.name, price: priceOf(it), ref: it.ref || null }); S.cart.sel = tgt.key;
-    toast(`أُضيف «${it.name}» إلى ${tgt.name}`);
+    toast(tgt.qty > 1 ? `أُضيف «${it.name}» إلى كل الـ ${tgt.qty} من ${tgt.name} (+${m2(priceOf(it) * tgt.qty)} ر.س). لحبة واحدة فقط: أضف الصنف سطراً مستقلاً ثم الإضافة عليه` : `أُضيف «${it.name}» إلى ${tgt.name}`);
   } else {
     const ex = L.find(l => l.id === id && !l.mods.length && !hasNotes(l));
     if (ex) { ex.qty++; S.cart.sel = ex.key; }
@@ -385,6 +387,8 @@ const subtotal = () => r2(S.cart.lines.reduce((s, l) => s + lineTotal(l), 0));
 const discAmt = () => { const d = S.cart.discount, st = subtotal(); if (!d) return 0; return Math.min(st, r2(d.kind === "pct" ? st * d.value / 100 : d.value)); };
 const total = () => r2(subtotal() - discAmt());
 function drawCart() {
+  ls.set("cart", S.cart.lines.length ? { type: S.cart.type, lines: S.cart.lines, discount: S.cart.discount, phone: S.cart.phone || null, name: S.cart.name || null, at: Date.now() } : null);
+  if (cartBack && $("#cart")) { cartBack = false; setTimeout(() => toast("استُعيد الطلب الذي لم يكتمل قبل إعادة تحميل الصفحة"), 300); }
   const K = $("#cart"); if (!K) return; const L = S.cart.lines, n = L.reduce((s, l) => s + l.qty, 0), lk = isAgg(S.cart.type), pk = parked().length, dis = !L.length ? "disabled" : "";
   K.innerHTML = `<div class="c-h"><button class="c-back" id="cback" aria-label="رجوع للأصناف">${ic("close")}</button><div class="c-t"><b>طلب جديد</b><span class="num">#${pad(peekNo(), 4)}</span></div>
       <button class="c-ib ${pk ? "has" : ""}" id="pkl" title="الطلبات المعلّقة" ${pk ? "" : "disabled"}>${ic("pause")}${pk ? `<b class="num">${pk}</b>` : ""}</button>
@@ -453,7 +457,9 @@ function openParked() {
     if (S.cart.lines.length) { rest.push({ id: rid(6), at: Date.now(), by: S.cashier?.name || "", cart: { ...S.cart, sel: null }, total: total() }); toast("الطلب الحالي عُلّق مكانه"); }
     ls.set("parked", rest);
     const c = p.cart, gone = [];
-    c.lines = c.lines.filter(l => { const it = S.menu.find(m => m.id === l.id); if (!it || !avail(it, c.type)) { gone.push(l.name); return false; } return true; });
+    c.lines = c.lines.filter(l => { const it = S.menu.find(m => m.id === l.id); if (!it || !avail(it, c.type)) { gone.push(l.name); return false; } return true; })
+      /* بأسعار القائمة الحالية، إن تغيّر سعر صنف بعد تعليق الطلب */
+      .map(l => ({ ...l, price: priceOf(S.menu.find(m => m.id === l.id), c.type), mods: l.mods.filter(md => { const mi = S.menu.find(m => m.id === md.id); return mi && avail(mi, c.type); }).map(md => ({ ...md, price: priceOf(S.menu.find(m => m.id === md.id), c.type) })) }));
     S.cart = { ...c, sel: null }; closeModal(); drawTop(); drawCart(); drawMenu();
     if (gone.length) toast(`حُذفت أصناف لم تعد متوفرة: ${gone.join("، ")}`, true);
   });
@@ -735,6 +741,8 @@ function showDone(o) {
   $("#rk").onclick = () => printJob(o, { kitchen: true }, true);
   payKeys(e => { if (e.key === "Enter" || e.key === "Escape") { e.preventDefault(); closeModal(); } });
   if (!chg) S.doneTimer = setTimeout(closeModal, 6000);
+  /* لمسة خارج النافذة تبدأ الطلب التالي مباشرة (إلا إذا كان هناك باقٍ للعميل يجب أن يُرى) */
+  if (!chg) $("#ov").addEventListener("pointerdown", e => { if (e.target.id === "ov") closeModal(); });
 }
 
 /* ----- ملاحظات الصنف (مجانية) ----- */
