@@ -1942,6 +1942,21 @@ function renderReconList(){
     <p class="foot" style="margin-top:10px">${cash ? "المتوقع = أول اليوم + الداخل − الخارج. إذا سجّلت جرداً فعلياً ليوم ما، يبدأ اليوم التالي منه." : "مقبوضات البنك = مدى + فيزا (بعد تأخير التحصيل) + التحويلات البنكية + تحويلات التطبيقات الفعلية. إذا سجّلت رصيداً فعلياً ليوم ما، يبدأ اليوم التالي منه."}</p>`;
   el.querySelectorAll("tr.click").forEach(tr => tr.onclick = () => openRecon(tr.dataset.d));
 }
+/* what makes up a day's «مصروفات وعهد» in the reconciliation: the same items the ledger sums, one by one (and the cash side too) */
+function dayOutItems(d){
+  const out = {cash:[], bank:[]}, put = (k, label, amt, go) => out[k].push({label, amt:r2(amt), go});
+  for (const x of S.invoices){ if (x.status === "غير مدفوعة" || invCashDate(x) !== d) continue; const k = x.pay === "كاش" ? "cash" : (x.pay === "مدى/بطاقة" || x.pay === "تحويل بنكي") ? "bank" : null;
+    if (k) put(k, `فاتورة ${x.supplier || ""}${x.no ? " رقم " + x.no : ""} · ${x.pay}${x.date !== d ? ` (بتاريخ ${dmy(x.date)})` : ""}`, invTotal(x), "inv:" + x.id); }
+  for (const p of S.payments) if (p.date === d) put(p.pay === "كاش" ? "cash" : "bank", `سداد للمورد ${p.supplier || ""}`, n(p.amount));
+  const sd = S.settings.startDate;
+  if (!sd || d >= sd){
+    S.payroll.forEach(p => (p.lines || []).forEach(l => (l.pays || []).forEach(x => { if (x.date === d) put(x.pay === "تحويل بنكي" ? "bank" : "cash", `راتب ${l.name} · ${ymLabel(p.id)}`, n(x.amount)); })));
+    S.advances.forEach(a => { if (a.date === d) put(a.pay === "تحويل بنكي" ? "bank" : "cash", `سلفة ${a.name || ""}`, n(a.amount)); });
+  }
+  for (const x of S.custody){ if (x.date !== d) continue; const sign = x.type === "استلام عهدة" ? 1 : x.type === "إرجاع للصندوق" ? -1 : 0; if (!sign) continue;
+    put(x.source === "تحويل بنكي" ? "bank" : "cash", `${sign > 0 ? "عهدة مسلّمة إلى" : "عهدة أرجعها"} ${x.employee}${x.desc ? " · " + x.desc : ""}`, sign * n(x.amount), "cus:" + x.id); }
+  return out;
+}
 function openRecon(d){
   const rc = S.recon.get(d) || {}, row = ledger().find(r => r.date === d);
   const v = k => has(rc[k]) ? rc[k] : "";
@@ -1962,10 +1977,18 @@ function openRecon(d){
         <span class="by">بعد الاعتماد يُحسب الفرق التراكمي من هذا اليوم، فتُلغي فروق توقيت السحب والتسوية بعضها بعضاً.</span></div>
     </div>
     <p class="small muted" style="margin:0">اترك الخانة فارغة إذا لم تجرد. التسويات مثل رسوم البنك (بالسالب) أو مبالغ مستردة (بالموجب).</p>
+    ${(() => { const it = dayOutItems(d), fee = row ? n(row.bFee) : 0;
+      const box = (k, title, extra, total, open) => { const L = it[k], sum = r2(sumBy(L, x => x.amt) + extra);
+        return `<details ${open ? "open" : ""} style="border:1px solid var(--line);border-radius:12px;padding:8px 12px"><summary style="cursor:pointer;font-weight:700">${title}: <span class="num">${fmt(sum)}</span> <span class="small muted">(${L.length + (extra ? 1 : 0)} حركة)</span></summary>
+          ${L.length || extra ? `<div class="tw" style="margin-top:8px"><table><tbody>${L.map(x => `<tr${x.go ? ` class="click" data-go="${esc(x.go)}"` : ""}><td>${esc(x.label)}</td><td class="n"><b>${money(x.amt)}</b></td></tr>`).join("")}${extra ? `<tr><td>رسوم بنكية من كشف الحساب</td><td class="n"><b>${money(extra)}</b></td></tr>` : ""}</tbody></table></div>` : `<p class="small muted" style="margin:6px 0 0">لا توجد حركات.</p>`}
+          ${total != null && Math.abs(total - sum) > 0.005 ? `<p class="small muted">المجموع في جدول المطابقة <span class="num">${fmt(total)}</span>.</p>` : ""}</details>`; };
+      return box("bank", "تفاصيل «مصروفات وعهد» من البنك", fee, row ? r2(n(row.bankOut)) : null, true) + box("cash", "تفاصيل المصروفات والعهد من الخزنة", 0, null, false); })()}
     <div class="actions"><button class="btn" type="submit" ${S.canWrite?"":"disabled"}>حفظ</button><button class="btn ghost" type="button" id="r_close">إغلاق</button></div>
   </form>`;
   $("#modal").classList.add("open"); setTimeout(()=>$("#r_ac").focus(),50);
   $("#r_close").onclick = closeModal;
+  /* a line opens its invoice or custody entry */
+  $("#fr").querySelectorAll("tr[data-go]").forEach(tr => tr.onclick = () => { const [k, id] = tr.dataset.go.split(":"); closeModal(); if (k === "inv"){ location.hash = "#invoices"; setTimeout(() => S.loadInv && S.loadInv(id), 400); } else { location.hash = "#custody"; setTimeout(() => S.loadCus && S.loadCus(id), 400); } });
   $("#fr").onsubmit = async e => { e.preventDefault();
     const g = id => { const x = $(id).value; return x === "" ? null : n(x); };
     const data = {date:d, actualCash:g("#r_ac"), actualBank:g("#r_ab"), deposit:g("#r_dep"), withdraw:g("#r_wd"), adjust:g("#r_adj"), appTransfer: has(rc.appTransfer) ? n(rc.appTransfer) : null, notes:$("#r_notes").value.trim(), cashApproved: $("#r_capr").checked, bankApproved: $("#r_bapr").checked, ...stamp()};
