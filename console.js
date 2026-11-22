@@ -188,8 +188,15 @@ function picker(anchor, o) {
 const cache = new Map();
 async function load(a, b, coll = "orders") {
   const k = `${coll}|${a}|${b}`, c = cache.get(k); if (c && Date.now() - c.t < 45e3) return c.L;
-  const s = await A.F.getDocs(A.F.query(A.C(coll), A.F.where("day", ">=", a), A.F.where("day", "<=", b)));
-  const L = s.docs.map(d => d.data()); cache.set(k, { t: Date.now(), L }); return L;
+  let L;
+  if (coll === "orders") {
+    /* اليوم التشغيلي = يوم الوردية (كما في برنامج المحاسبة): طلب بعد بداية اليوم الجديد في وردية فُتحت قبلها يتبع يوم فتح الوردية */
+    const q = (cl, x, y) => A.F.getDocs(A.F.query(A.C(cl), A.F.where("day", ">=", x), A.F.where("day", "<=", y)));
+    const [so, ss] = await Promise.all([q("orders", a, A.addDays(b, 1)), q("shifts", A.addDays(a, -1), A.addDays(b, 1))]);
+    const sday = new Map(ss.docs.map(d => [d.id, d.data().day]));
+    L = so.docs.map(d => d.data()).map(o => { const sd = o.shiftId && sday.get(o.shiftId); return sd && sd !== o.day ? { ...o, day: sd, dayOrig: o.day } : o; }).filter(o => o.day >= a && o.day <= b);
+  } else L = (await A.F.getDocs(A.F.query(A.C(coll), A.F.where("day", ">=", a), A.F.where("day", "<=", b)))).docs.map(d => d.data());
+  cache.set(k, { t: Date.now(), L }); return L;
 }
 const applyF = L => L.filter(o => (st.flt.test || !o.test) && (!st.flt.type || o.type === st.flt.type) && (!st.flt.method || o.method === st.flt.method) && (!st.flt.cashier || o.cashierName === st.flt.cashier));
 const isOk = o => o.status === "paid" || !o.status, isVoid = o => o.status === "void", isUnpaid = o => o.status === "open";
