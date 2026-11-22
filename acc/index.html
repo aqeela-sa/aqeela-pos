@@ -931,6 +931,7 @@ nav.tabs a[hidden],.nav-more[hidden]{display:none!important}
 #acc_login{position:fixed;inset:0;z-index:200;display:grid;place-items:center;padding:20px;background:linear-gradient(160deg,#C1121F,#8E0D17)}
 #acc_login[hidden]{display:none}
 .acc-lg{width:min(380px,100%);background:#fff;color:#1d1d1f;border-radius:18px;padding:28px 24px;box-shadow:0 20px 60px rgba(0,0,0,.25);display:flex;flex-direction:column;gap:8px;font-family:inherit}
+.rp-acts{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:16px 0 10px;padding:10px 14px;background:var(--card);border:1px solid var(--line);border-radius:14px;position:sticky;top:8px;z-index:5;box-shadow:0 4px 14px rgba(0,0,0,.06)}
 .acc-lg-logo{width:64px;height:64px;border-radius:14px;align-self:center;margin-bottom:4px}
 .acc-lg h1{margin:0;font-size:20px;text-align:center}.acc-lg-sub{margin:0 0 8px;text-align:center;color:#6e6e73;font-size:14px}
 .acc-lg label{font-size:13px;font-weight:700;color:#3a3a3c;margin-top:4px}
@@ -2334,7 +2335,7 @@ function rpExtraOpts(t, v){
 function viewReports(){
   if (!S.rp){ const [a,b] = monthRange(S.y, S.m); S.rp = {type:"summary", a, b, emp:""}; }
   const r = S.rp;
-  return `<div class="bar"><h2>التقارير</h2><div class="actions"><button class="btn ghost" type="button" id="rp_html">نسخة للطباعة</button><button class="btn" type="button" id="rp_pdf">تنزيل PDF</button></div></div>
+  return `<div class="bar"><h2>التقارير</h2></div>
   <div class="card"><div class="rp-types">${RTYPES.map(([k,t,d]) => `<button type="button" class="rp-type ${k===r.type?"on":""}" data-k="${k}"><b>${t}</b><span>${d}</span></button>`).join("")}</div></div>
   <div class="card"><div class="fields" style="align-items:end">
     <div class="f"><label for="rp_a">من تاريخ</label><input id="rp_a" type="date" value="${r.a}"></div>
@@ -2346,6 +2347,7 @@ function viewReports(){
       <button type="button" class="btn ghost sm" data-p="w0">آخر 7 أيام</button><button type="button" class="btn ghost sm" data-p="d30">آخر 30 يوماً</button>
       <button type="button" class="btn ghost sm" data-p="q0">هذا الربع</button><button type="button" class="btn ghost sm" data-p="q1">الربع الماضي</button><button type="button" class="btn ghost sm" data-p="y0">هذه السنة</button><button type="button" class="btn ghost sm" data-p="all">منذ البداية</button></div></div>
   </div><p class="small muted" style="margin:10px 0 0">التقرير يتحدث تلقائياً مع البيانات. «تنزيل PDF» يحفظ الملف مباشرة. «نسخة للطباعة» تنزّل ملفاً تفتحه في المتصفح فتظهر نافذة الطباعة فوراً، ومنها تطبع أو تحفظ PDF بأعلى جودة.</p></div>
+  <div class="rp-acts" id="rp_acts"><b id="rp_ttl" style="font-size:14px"></b><div class="actions"><button class="btn ghost" type="button" id="rp_html">نسخة للطباعة</button><button class="btn" type="button" id="rp_pdf">تنزيل PDF</button></div></div>
   <div class="rp-wrap"><div id="rpPaper" class="rp-paper"></div></div>`;
 }
 function bindReports(){
@@ -2368,6 +2370,8 @@ function bindReports(){
     S.rp.a = a; S.rp.b = z; $("#rp_a").value = a; $("#rp_b").value = z; renderReport();
   });
   $("#rp_pdf").onclick = exportPdf;
+  /* the print/download bar sticks just under the page header while the report is scrolled */
+  { const h = document.querySelector("header.top"); if (h) $("#rp_acts").style.top = (h.offsetHeight + 8) + "px"; }
   $("#rp_html").onclick = exportPrintable;
 }
 function buildReport(){
@@ -2378,8 +2382,8 @@ function renderReport(){
   const el = $("#rpPaper"); if (!el) return;
   const sel = $("#rp_emp"); if (sel){ const v = sel.value; sel.innerHTML = rpExtraOpts(S.rp.type, v); if (S.rp.type !== "custody" && S.rp.type !== "buyer" && !sel.value && sel.options.length) sel.value = sel.options[0].value; S.rp.emp = sel.value; }
   const rep = buildReport();
-  if (!rep){ el.innerHTML = `<div class="rp-empty">اختر الفترة</div>`; return; }
-  el.className = "rp-paper " + rep.orient; el.innerHTML = rep.html;
+  if (!rep){ el.innerHTML = `<div class="rp-empty">اختر الفترة</div>`; if ($("#rp_ttl")) $("#rp_ttl").textContent = ""; return; }
+  el.className = "rp-paper " + rep.orient; el.innerHTML = rep.html; if ($("#rp_ttl")) $("#rp_ttl").textContent = rep.title || "";
   const wrap = el.parentElement, pw = (rep.orient === "landscape" ? 1047 : 718) + 48, avail = wrap.clientWidth - 24;
   el.style.zoom = avail > 0 && avail < pw ? (avail / pw).toFixed(3) : "";
 }
