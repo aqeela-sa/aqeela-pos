@@ -4,7 +4,7 @@
 import * as F from "./fb.js";
 import { firebaseConfig } from "./firebase-config.js";
 
-const VERSION = "2.6.3";
+const VERSION = "2.6.4";
 const ADMIN_EMAIL = "abuabraj@gmail.com";
 const DEVICE_EMAIL = "cashier@aqeela-pos.app";
 const APP_NAME = `<span dir="ltr">Cashier AQ</span>`;
@@ -226,7 +226,7 @@ function drawPin() {
     <div class="who">${list.map(c => `<button data-c="${c.id}" ${!c.pinHash ? "disabled" : ""}>${esc(c.name)}${!c.pinHash ? "<small>بدون رمز</small>" : ""}</button>`).join("")}</div>
     <div class="dots" id="dots">${"<i></i>".repeat(4)}</div>
     <div class="pad">${[1, 2, 3, 4, 5, 6, 7, 8, 9].map(k => `<button data-k="${k}">${k}</button>`).join("")}<button class="fn" data-k="c">مسح</button><button data-k="0">0</button><button class="fn" data-k="b">⌫</button></div>
-    <div style="display:flex;justify-content:space-between;margin-top:14px">${isAdmin() ? `<button class="link" id="toadm">لوحة المدير</button>` : "<span></span>"}<button class="link" id="lo" style="color:var(--mut)">خروج الجهاز</button></div>
+    <div style="display:flex;justify-content:space-between;margin-top:14px">${isAdmin() ? `<button class="link" id="toadm">لوحة المدير</button>` : `<button class="link" id="pdev" style="display:inline-flex;align-items:center;gap:6px">${ic("gear")}إعدادات الجهاز</button>`}<button class="link" id="lo" style="color:var(--mut)">خروج الجهاز</button></div>
   </div></div>`;
   const dots = () => $$("#dots i").forEach((d, i) => d.classList.toggle("on", i < pin.length));
   const sel = () => $$("[data-c]").forEach(b => b.classList.toggle("on", b.dataset.c === who)); sel();
@@ -241,6 +241,7 @@ function drawPin() {
     dots(); if (pin.length === 4) check(); });
   /* لوحة مفاتيح خارجية: الأرقام والحذف */
   S.pinKey = k => { if (/^\d$/.test(k) && pin.length < 4) { pin += k; dots(); if (pin.length === 4) check(); } else if (k === "Backspace") { pin = pin.slice(0, -1); dots(); } };
+  $("#pdev") && ($("#pdev").onclick = () => askManager("إعدادات الجهاز", openDevice));
   $("#lo").onclick = () => { if (S.shift) return toast("قفّل الوردية المفتوحة أولاً", true); askManager("خروج الجهاز من الحساب", () => F.signOut(auth)); };
   if ($("#toadm")) $("#toadm").onclick = openAdmin;
 }
@@ -486,13 +487,18 @@ function askManager(title, onOk) {
 function openDiscount() {
   const d = S.cart.discount || { kind: "amt", value: 0, reason: "" };
   modal(`${mh("خصم على الطلب")}<div class="mdl-b">
-    <div class="seg" style="margin-bottom:12px"><button data-k="amt" class="${d.kind === "amt" ? "on" : ""}" style="flex:1">مبلغ (ر.س)</button><button data-k="pct" class="${d.kind === "pct" ? "on" : ""}" style="flex:1">نسبة %</button></div>
-    <div class="f"><label for="dv">القيمة</label><input id="dv" type="number" inputmode="decimal" min="0" step="0.5" dir="ltr" value="${d.value || ""}"></div>
+    <p class="small muted" style="margin:0 0 6px">نوع الخصم: اختر أولاً</p>
+    <div style="display:flex;gap:10px;margin-bottom:12px"><button data-k="amt" class="btn ${d.kind === "amt" ? "" : "ghost"}" style="flex:1;min-height:52px;font-size:16px">مبلغ ثابت (ر.س)</button><button data-k="pct" class="btn ${d.kind === "pct" ? "" : "ghost"}" style="flex:1;min-height:52px;font-size:16px">نسبة مئوية %</button></div>
+    <div class="f"><label for="dv" id="dvl">${d.kind === "pct" ? "النسبة %" : "المبلغ (ر.س)"}</label><input id="dv" type="number" inputmode="decimal" min="0" step="0.5" dir="ltr" value="${d.value || ""}"></div>
     <div class="f"><label for="dr">السبب (يظهر في التقرير)</label><input id="dr" value="${esc(d.reason)}" placeholder="مثال: عميل دائم، تعويض تأخير"></div>
-    <p class="small muted" style="margin:0">المجموع قبل الخصم: ${money(subtotal())} ر.س</p></div>
+    <p class="small muted" style="margin:0">المجموع قبل الخصم: ${money(subtotal())} ر.س</p>
+    <p style="margin:6px 0 0;font-weight:700" id="dpv"></p></div>
     <div class="mdl-f">${S.cart.discount ? `<button class="btn ghost" id="drm" style="margin-inline-end:auto;color:var(--bad)">إزالة الخصم</button>` : ""}<button class="btn ghost" data-close>إلغاء</button><button class="btn" id="dok">تطبيق</button></div>`);
   let kind = d.kind;
-  $$("#ov [data-k]").forEach(b => b.onclick = () => { kind = b.dataset.k; $$("#ov [data-k]").forEach(x => x.classList.toggle("on", x === b)); });
+  const pv = () => { const v = +$("#dv").value || 0, st = subtotal(), a = Math.min(st, r2(kind === "pct" ? st * v / 100 : v)); $("#dvl").textContent = kind === "pct" ? "النسبة %" : "المبلغ (ر.س)";
+    $("#dpv").innerHTML = v > 0 ? `الخصم <span class="num">${money(a)}</span> ر.س · الإجمالي بعد الخصم <span class="num">${money(r2(st - a))}</span> ر.س` : ""; };
+  $$("#ov [data-k]").forEach(b => b.onclick = () => { kind = b.dataset.k; $$("#ov [data-k]").forEach(x => x.classList.toggle("ghost", x !== b)); pv(); });
+  $("#dv").oninput = pv; pv();
   $("#drm") && ($("#drm").onclick = () => { S.cart.discount = null; closeModal(); drawCart(); });
   $("#dok").onclick = () => { const v = r2($("#dv").value), reason = $("#dr").value.trim();
     if (!(v > 0)) return toast("أدخل قيمة الخصم", true); if (kind === "pct" && v > 100) return toast("النسبة لا تتجاوز 100%", true);
