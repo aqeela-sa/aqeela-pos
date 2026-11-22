@@ -1240,8 +1240,29 @@ function recWrite(coll, id, data, action, msg){
   const ref = id ? S.db.doc(coll + "/" + id) : S.db.collection(coll).doc();
   return write(() => ref.set(clean(body)), msg);
 }
-const archive = (coll, id, msg) => { const ex = findRaw(coll, id); return ex ? recWrite(coll, id, ex, "delete", msg || "تم الحذف، ويمكن استعادته من «السجل والأرشيف»") : Promise.resolve(true); };
-const restoreRec = (coll, id) => recWrite(coll, id, findRaw(coll, id), "restore", "تمت الاستعادة");
+const archive = async (coll, id, msg) => { const ex = findRaw(coll, id); if (!ex) return true;
+  const ok = await recWrite(coll, id, ex, "delete", msg || "تم الحذف، ويمكن استعادته من «السجل والأرشيف»"); if (ok && coll === "invoices") await syncInvCus(id, null); return ok; };
+const restoreRec = async (coll, id) => { const ok = await recWrite(coll, id, findRaw(coll, id), "restore", "تمت الاستعادة"); if (ok && coll === "invoices") await syncInvCus(id, {...findRaw(coll, id), deleted:false}); return ok; };
+/* an invoice paid «من العهدة» takes the money out of the buyer's custody: it keeps one linked custody spend (id «inv_<invoice>»),
+   created, updated or removed together with the invoice. The invoice stays the purchase record (supplier, production cost);
+   the spend is what lowers the custody balance and books the expense, as when it was entered by hand. */
+const invCusId = iid => "inv_" + iid;
+const invCusWant = x => !!(x && !x.deleted && x.pay === "من العهدة" && x.status !== "غير مدفوعة" && normName(x.buyer || ""));
+const invCusData = (iid, x) => ({date:x.date, employee:normName(x.buyer), type:"صرف من العهدة", amount:r2(invTotal(x)), category:x.category || "", desc:`فاتورة ${x.supplier || ""}${x.no ? " رقم " + x.no : ""}`.trim(), ref:x.no || "", source:"", notes:"تلقائياً من فاتورة مدفوعة من العهدة", invId:iid});
+async function syncInvCus(iid, x){
+  const cid = invCusId(iid), c = findRaw("custody", cid), live = !!(c && !c.deleted);
+  if (!invCusWant(x)){ return live ? recWrite("custody", cid, c, "delete", "") : true; }
+  const d = invCusData(iid, x);
+  if (live && ["date","employee","amount","category","desc","ref"].every(k => String(c[k] ?? "") === String(d[k] ?? ""))) return true;
+  return recWrite("custody", cid, {...(c ? strip(c) : {}), ...d}, live ? "edit" : c ? "restore" : "create", "");
+}
+/* invoices paid from custody with no spend behind them yet: entered before this link existed. One entered by hand
+   (same employee, day and amount) counts as covering it, so nothing is taken twice. */
+function invCusPending(){
+  const st = S.settings.startDate || "", byHand = S.custody.filter(c => c.type === "صرف من العهدة" && !c.invId);
+  return S.invoices.filter(x => invCusWant(x) && (!st || x.date >= st)).filter(x => { const c = findRaw("custody", invCusId(x.id)); return !(c && !c.deleted); })
+    .filter(x => !byHand.some(c => normName(c.employee || "") === normName(x.buyer) && c.date === x.date && Math.abs(n(c.amount) - invTotal(x)) < 0.005));
+}
 function recDesc(coll, x){
   if (!x) return "";
   if (coll === "sales") return `مبيعات يوم ${dmy(x.date)} · ${fmt(saleTotal(x))}`;
@@ -1484,7 +1505,7 @@ function viewInvoices(){
       <span class="total-line">الإجمالي: <span class="num" id="i_total">0.00</span> ر.س</span>
       <button class="btn ghost sm" type="button" id="i_cancel" hidden>إلغاء التعديل</button>
       <button class="btn danger sm" type="button" id="i_del" hidden>حذف (أرشفة) الفاتورة</button></div>
-    <p class="small muted" style="margin:0">الفاتورة المدفوعة من العهدة: اختر «من العهدة» هنا، وسجّل نفس المبلغ في صفحة العهد كـ«صرف من العهدة» ليُخصم من رصيد الموظف.</p>
+    <p class="small muted" style="margin:0">الفاتورة المدفوعة من العهدة: اختر «من العهدة» واكتب اسم المشتري، فتُخصم تلقائياً من عهدته، ولا حاجة لتسجيلها مرة ثانية في صفحة العهد.</p>
   </form>
   <div id="list"></div>`;
 }
@@ -1607,7 +1628,7 @@ function bindInvoices(){
     try {
       const up = await att.flush("invoices/" + iid);
       data.att = Math.max(0, (old && old.att ? old.att : 0) - att.removed.length) + up;
-      if (await recWrite("invoices", iid, data, null, S.editInv ? "تم حفظ التعديل" : "تمت إضافة الفاتورة")) { const keepDate = data.date, keepBuy = data.buyer; reset(); $("#i_date").value = keepDate; $("#i_buy").value = keepBuy || ""; }
+      if (await recWrite("invoices", iid, data, null, S.editInv ? "تم حفظ التعديل" : "تمت إضافة الفاتورة")) { await syncInvCus(iid, data); const keepDate = data.date, keepBuy = data.buyer; reset(); $("#i_date").value = keepDate; $("#i_buy").value = keepBuy || ""; }
     } finally { sv.disabled = !S.canWrite; }
   };
   armDelete($("#i_del"), async () => { if (S.editInv && await archive("invoices", S.editInv)) reset(); });
@@ -1656,7 +1677,7 @@ function renderInvList(){
 function viewCustody(){
   const st = S.settings;
   return `<div class="bar"><h2>سجل العهد</h2>${rgPicker()}</div>${readonlyNote()}
-  <div id="cusBal"></div>
+  <div id="cusBal"></div><div id="cusPend"></div>
   <form class="card entry" id="fc"><h3 id="fcTitle">حركة عهدة جديدة</h3>
     <div class="fields">
       <div class="f"><label for="c_date">التاريخ</label><input id="c_date" type="date" required max="${today()}" value="${today()}"></div>
@@ -1702,6 +1723,11 @@ function renderCusList(){
   if (bal){ const cb = custodyBalances();
     bal.innerHTML = cb.length ? `<div class="grid g3">${cb.map(x=>`<div class="kpi ${x.left<0?"orange":"dark"}"><span class="l">${esc(x.name)} · المتبقي لديه</span><span class="v num ${x.left<0?"neg":""}">${fmt(x.left)}</span><span class="small muted">استلم <span class="num">${fmt(x.rec)}</span> · صرف <span class="num">${fmt(x.spent)}</span> · أرجع <span class="num">${fmt(x.ret)}</span></span></div>`).join("")}</div>` : ""; }
   const el = $("#list"); if (!el) return;
+  const pend = invCusPending(), pb = $("#cusPend");
+  if (pb){ pb.innerHTML = pend.length ? `<div class="note warn" style="margin-top:12px"><b>فواتير مدفوعة من العهدة لم تُخصم من العهدة بعد (<span class="num">${pend.length}</span>) بإجمالي <span class="num">${fmt(sumBy(pend, invTotal))}</span>:</b>
+      <div class="tw" style="margin:8px 0"><table><thead><tr><th>التاريخ</th><th>المشتري</th><th>المورد</th><th>رقم الفاتورة</th><th class="n">المبلغ</th></tr></thead><tbody>${pend.map(x => `<tr><td class="num">${dmy(x.date)}</td><td><b>${esc(x.buyer)}</b></td><td>${esc(x.supplier || "")}</td><td class="num">${esc(x.no || "")}</td><td class="n">${money(invTotal(x))}</td></tr>`).join("")}</tbody></table></div>
+      ${S.canWrite ? `<button type="button" class="btn sm" id="cus_pend">خصمها من عهدة المشترين الآن</button>` : ""} <span class="small muted">تُسجَّل لكل فاتورة حركة «صرف من العهدة» بنفس المبلغ والتاريخ، وتبقى مرتبطة بها: أي تعديل أو حذف للفاتورة يعدّلها أو يحذفها تلقائياً.</span></div>` : "";
+    const b = $("#cus_pend"); if (b) b.onclick = async () => { b.disabled = true; let k = 0; for (const x of pend) if (await syncInvCus(x.id, x)) k++; toast(`خُصمت ${k} فاتورة من العهدة`); }; }
   const R = curR();
   const rows = S.custody.filter(x => inR(x.date,R)).sort((a,b)=> a.date<b.date?-1:a.date>b.date?1:(a.updatedAt||"")<(b.updatedAt||"")?-1:1);
   const tchip = t => t==="استلام عهدة" ? `<span class="chip ok">${t}</span>` : t==="صرف من العهدة" ? `<span class="chip bad">${t}</span>` : `<span class="chip info">${esc(t)}</span>`;
@@ -5583,7 +5609,7 @@ function dyData(d){
   const prevDays = [...S.sales.keys()].filter(k => k < d && saleTotal(S.sales.get(k)) > 0).sort().slice(-7);
   const avg7 = prevDays.length ? sumBy(prevDays, k => netSale(S.sales.get(k))) / prevDays.length : 0;
   const lw = S.sales.get(addDays(d, -7)), lwNet = lw && saleTotal(lw) > 0 ? netSale(lw) : null;
-  const invs = S.invoices.filter(x => x.date === d), prod = invs.filter(isProd), cus = S.custody.filter(x => x.date === d && x.type === "صرف من العهدة" && !isWithdrawCat(x.category));
+  const invs = S.invoices.filter(x => x.date === d), prod = invs.filter(isProd), cus = S.custody.filter(x => x.date === d && x.type === "صرف من العهدة" && !x.invId && !isWithdrawCat(x.category));
   const row = ledger().find(r => r.date === d) || null;
   const [ma] = monthRange(+d.slice(0, 4), +d.slice(5, 7)), M = rangeStats(ma, d);
   const B = bgGet(d.slice(0, 7)), P = B ? {sales:n(B.sales), pp:bgProdPct(B)} : null;
@@ -5769,7 +5795,7 @@ function gdSteps(){
 const GD_FAQ = [
   ["فاتورة واحدة فيها أكثر من صنف (دجاج وخضار وتغليف)", "في نموذج الفاتورة اختر «تقسيم على أكثر من قسم»، ووزّع المبلغ على الأقسام. زر «الباقي» يضع المتبقي في السطر الأخير، والمجموع لازم يساوي إجمالي الفاتورة."],
   ["فاتورة آجلة (على الحساب)", "اختر في خانة «الدفع» «آجلة (تُسدد لاحقاً)». تظهر في «المستحق للموردين»، وعند السداد سجّله من صفحة الموردين ← «تسجيل سداد»."],
-  ["اشتريت من العهدة", "سجّل الفاتورة بطريقة الدفع «من العهدة» (للتوثيق وحساب تكلفة الإنتاج)، وسجّل نفس المبلغ في صفحة العهد كـ«صرف من العهدة» ليُخصم من رصيد الموظف ويدخل في المصروفات. البرنامج لا يحسب المصروف مرتين: فاتورة «من العهدة» لا تدخل المصروفات ولا القيود، والصرف من العهدة هو الذي يدخلها."],
+  ["اشتريت من العهدة", "سجّل الفاتورة بطريقة الدفع «من العهدة» واكتب اسم المشتري. يسجّل البرنامج تلقائياً «صرف من العهدة» بنفس المبلغ فيُخصم من رصيده ويدخل في المصروفات، ويعدّله أو يحذفه مع الفاتورة. البرنامج لا يحسب المصروف مرتين: فاتورة «من العهدة» لا تدخل المصروفات ولا القيود، والصرف المرتبط بها هو الذي يدخلها."],
   ["ظهر فرق في جرد الخزنة", "تأكد أولاً أن كل فواتير الكاش وصرف العهد والإيداع في البنك مسجّلة. إذا بقي الفرق اكتب سببه في الملاحظات؛ الفرق يظهر في قائمة الدخل كعجز أو فائض جرد."],
   ["إيداع كاش في البنك", "في المطابقة اليومية اكتب المبلغ في «إيداع كاش في البنك»؛ ينقص من الخزنة ويزيد في البنك تلقائياً."],
   ["مبيعات فودكس تختلف عن المسجّل", "شاشة الاستيراد تعرض الأيام المسجّلة بلون مختلف مع الفرق. راجع الفرق، وإذا كان المسجّل خطأ حدّد اليوم واستورده."],
