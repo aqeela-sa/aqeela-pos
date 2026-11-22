@@ -6242,7 +6242,7 @@ const VIEWS = {
   reports:{v:viewReports, bind:bindReports, list:renderReport},
   accounting:{v:viewAccounting, bind:bindAccounting, list:renderAccounting},
   history:{v:viewHistory, bind:bindHistory, list:renderHistoryList},
-  setup:{v:viewSetup, bind:bindSetup}
+  setup:{v:viewSetup, bind:bindSetup, list:() => { const el = $("#lock_card"); if (!el || el.contains(document.activeElement)) return; const w = document.createElement("div"); w.innerHTML = lockCard(); const nw = w.firstElementChild; if (nw && nw.outerHTML !== el.outerHTML){ el.replaceWith(nw); bindLockCard(); } }}
 };
 function render(){
   if (isStaff() && !STAFF_VIEWS.has(S.view)) S.view = STAFF_HOME;
