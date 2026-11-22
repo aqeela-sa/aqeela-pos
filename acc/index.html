@@ -1997,7 +1997,9 @@ function bindSetup(){
     document.documentElement.dataset.skin = v; try { localStorage.setItem("skin", v); } catch(e){}
     document.querySelectorAll(".skin-opt").forEach(x => { x.classList.toggle("on", x === b); x.setAttribute("aria-checked", x === b); }); });
   const lines = id => [...new Set($(id).value.split("\n").map(s=>s.trim()).filter(Boolean))];
+  const formFresh = S.loaded.has("settings");
   $("#fset").onsubmit = async e => { e.preventDefault();
+    if (!formFresh){ toast("الصفحة فُتحت قبل وصول الإعدادات؛ حدّث الصفحة ثم احفظ"); render(); return; }
     const data = {startDate:$("#t_start").value, openingCash:n($("#t_oc").value), openingBank:n($("#t_ob").value), delayDays:Math.max(0,parseInt($("#t_delay").value)||0), countBeforeSales:$("#t_pre").checked, appCommission:Math.min(100,Math.max(0,n($("#t_comm").value))), appCycle:Math.max(1,parseInt($("#t_cycle").value)||15),
       productionCategories:[...document.querySelectorAll("#t_prod input:checked")].map(i=>i.value),
       employees:lines("#t_emp"), categories:lines("#t_cat"), ...stamp()};
@@ -5711,7 +5713,8 @@ function bindRestoreSettings(){
     if (J.aqeela !== "settings" || !J.data || typeof J.data !== "object"){ $("#rs_out").innerHTML = '<div class="note warn">هذا النص ليس نسخة إعدادات.</div>'; return; }
     const cur = {...S.settings}; delete cur.id; const bk = {...J.data}; delete bk.id; delete bk.by; delete bk.updatedAt;
     const short = v => { const x = JSON.stringify(v ?? ""); return x.length > 60 ? x.slice(0, 57) + "…" : x; };
-    const ch = Object.keys(bk).filter(k => JSON.stringify(cur[k]) !== JSON.stringify(bk[k]));
+    const canon = v => JSON.stringify(v, (k, x) => x && typeof x === "object" && !Array.isArray(x) ? Object.fromEntries(Object.keys(x).sort().map(q => [q, x[q]])) : x);
+    const ch = Object.keys(bk).filter(k => canon(cur[k]) !== canon(bk[k]));
     const kept = Object.keys(cur).filter(k => !(k in bk) && !["by","updatedAt"].includes(k));
     $("#rs_out").innerHTML = `<div class="note" style="margin-top:10px"><b>نسخة ${esc(J.label || "")}</b>: ${ch.length ? `سيتغير ${ch.length} بند:` : "لا يوجد اختلاف عن الإعدادات الحالية."}
       ${ch.length ? `<div class="tw" style="margin-top:8px"><table><thead><tr><th>البند</th><th>الحالي</th><th>بعد الاستعادة</th></tr></thead><tbody>${ch.map(k => `<tr><td dir="ltr">${esc(k)}</td><td dir="ltr" class="small">${esc(short(cur[k]))}</td><td dir="ltr" class="small">${esc(short(bk[k]))}</td></tr>`).join("")}</tbody></table></div>` : ""}
@@ -6286,11 +6289,15 @@ function loadedOne(k, fromCache){
   if (NEED.every(x => S.loaded.has(x))){ clearTimeout(S.timer); setStatus("متصل", true); }
 }
 let pending = 0;
+let pendSettings = false;
 function changed(kind){
   S.ver++;
+  /* several snapshots can land in one frame; a settings change must not be dropped by a later one */
+  if (kind === "settings") pendSettings = true;
   cancelAnimationFrame(pending);
   pending = requestAnimationFrame(() => {
-    if (kind === "settings"){ if (S.view === "setup" && !document.activeElement?.closest("#fset")) render(); else refreshSelects(); }
+    const st = pendSettings; pendSettings = false;
+    if (st){ if (S.view === "setup" && !document.activeElement?.closest("#fset")) render(); else refreshSelects(); }
     renderLists(); resolveNames();
   });
 }
