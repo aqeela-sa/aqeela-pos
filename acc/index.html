@@ -1956,9 +1956,14 @@ function viewSetup(){
     <p class="small muted" style="margin:0 0 10px">طرق الدفع وأنواع حركة العهد ثابتة لأن الحسابات تعتمد عليها: ${PAY.join("، ")} · ${CTYPES.join("، ")}.</p>
     <div class="actions"><span class="small">الحساب الحالي: <b dir="ltr">${esc((window.__accFb && window.__accFb.user.email()) || "")}</b></span><button class="btn ghost sm" type="button" id="t_out">تسجيل الخروج</button></div>
   </div>
-  <div class="card"><h3>نسخة احتياطية</h3>
-    <p class="small muted" style="margin:0 0 8px">نزّل نسخة إكسل كاملة (المبيعات، الفواتير، العهد، التحويلات، المطابقة اليومية، الأرشيف) واحفظها على جهازك أو في Google Drive.</p>
-    <div class="actions"><button class="btn" type="button" id="t_xlsx">تنزيل نسخة إكسل</button><button class="btn ghost" type="button" id="t_backup">نسخ البيانات (JSON)</button></div></div>
+  <div class="card" id="bk_card"><h3>النسخ الاحتياطي والاستعادة</h3>
+    ${S.isOwner && window.__accFb && window.__accFb.backup ? `<p class="small muted" style="margin:0 0 8px"><b>النسخة الكاملة</b> ملف واحد فيه كل بيانات البرامج الثلاثة: المحاسبة كاملة (مع المؤرشف وسجل التعديلات والصور والإعدادات والتطبيقات) وطلبات الكاشير ووردياته ومنيوه وإعداداته. نزّلها مرة كل أسبوع على الأقل واحفظها خارج الجهاز (Google Drive أو البريد). تُستعاد من هنا عند الحاجة.</p>
+    <div class="actions" style="align-items:center"><button class="btn" type="button" id="bk_dl">تنزيل نسخة احتياطية كاملة</button><button class="btn ghost" type="button" id="t_xlsx">تنزيل نسخة إكسل للقراءة</button>
+      <span class="small ${bkAge() > 7 ? "neg" : "muted"}">${S.settings.lastBackupAt ? `آخر نسخة: <span class="num">${dmy(S.settings.lastBackupAt.slice(0, 10))}</span>${bkAge() > 7 ? ` (قبل <span class="num">${bkAge()}</span> يوماً)` : ""}` : "لم تُنزَّل نسخة كاملة بعد"}</span></div><div id="bk_st" style="margin-top:8px">${S.bkMsg || ""}</div>
+    <details style="margin-top:12px" id="bk_det"><summary class="small" style="cursor:pointer"><b>استعادة من نسخة احتياطية</b></summary>
+      <p class="small muted" style="margin:8px 0">اختر ملف النسخة الكاملة. يعرض البرنامج قبل أي تغيير ما في الملف مقارنةً بالحالي، ثم تختار: إرجاع الناقص فقط (الآمن)، أو إرجاع الناقص وإعادة المختلف كما كان في النسخة. الاستعادة لا تحذف أي سجل.</p>
+      <input type="file" id="bk_file" accept=".json,application/json"><div id="bk_rs" style="margin-top:8px"></div></details>`
+    : `<p class="small muted" style="margin:0 0 8px">نزّل نسخة إكسل (المبيعات، الفواتير، العهد، التحويلات، المطابقة اليومية، الأرشيف) واحفظها على جهازك.</p><div class="actions"><button class="btn" type="button" id="t_xlsx">تنزيل نسخة إكسل</button></div>`}</div>
   ${S.isOwner ? `<div class="card"><h3>استيراد البيانات من البرنامج القديم</h3>
     <p class="small muted" style="margin:0 0 8px">مرة واحدة فقط: اختر «ملف النقل الكامل» الذي نزّلته من البرنامج القديم. يُنقل كل سجل كما هو (مع المؤرشف وسجل التعديلات والصور)، ثم يُطابَق العدد مجموعةً مجموعة.</p>
     <input type="file" id="t_imp" accept=".json,application/json"><div id="t_imp_st" style="margin-top:8px"></div></div>` : ""}
@@ -2025,7 +2030,8 @@ function bindSetup(){
   $("#t_xlsx").onclick = exportXlsx;
   if ($("#t_imp")) $("#t_imp").onchange = e => { const f = e.target.files[0]; if (f) importMigration(f, $("#t_imp_st")); };
   if ($("#t_out")) $("#t_out").onclick = () => window.__accFb && window.__accFb.user.signOut();
-  $("#t_backup").onclick = async () => {
+  bindBackup();
+  if ($("#t_backup")) $("#t_backup").onclick = async () => {
     const dump = {appTransfers:S.apps, settings:S.settings, sales:Object.fromEntries(S.sales), invoices:S.invoices, custody:S.custody, recon:Object.fromEntries(S.recon), journal:S.journal, suppliers:S.suppliers, payments:S.payments, staff:S.staff, advances:S.advances, payroll:S.payroll, stockItems:S.stockItems, stockCounts:S.stockCounts, exportedAt:new Date().toISOString()};
     try { await navigator.clipboard.writeText(JSON.stringify(dump)); toast("تم نسخ البيانات"); } catch(e){ toast("تعذّر النسخ في هذا المتصفح"); }
   };
@@ -5525,6 +5531,7 @@ function dyAlerts(d){
   const out = [], t = today(), st = S.settings.startDate || "";
   const miss = []; for (let k = addDays(t, -1); k >= addDays(t, -7); k = addDays(k, -1)){ if (st && k < st) break; if (!S.sales.has(k) || saleTotal(S.sales.get(k)) <= 0) miss.push(k); }
   if (miss.length) out.push(["bad", `مبيعات غير مسجلة: ${miss.reverse().map(k => dmy(k).slice(0, 5)).join("، ")}`]);
+  if (S.isOwner && bkAge() > 7) out.push(["warn", S.settings.lastBackupAt ? `آخر نسخة احتياطية كاملة قبل ${bkAge()} يوماً، نزّل نسخة جديدة من الإعدادات` : "لم تُنزَّل نسخة احتياطية كاملة بعد، نزّلها من الإعدادات"]);
   const rc = [...S.recon.entries()].filter(([, r]) => has(r.actualCash) || has(r.actualBank)).map(([k]) => k).sort().pop();
   if (!rc || rc < addDays(t, -2)) out.push(["warn", rc ? `آخر جرد للخزنة والبنك كان ${dmy(rc)}` : "لم يُسجّل أي جرد للخزنة والبنك"]);
   const LL = ledger(), r = LL.find(x => x.date === d), CUc = reconCum(LL, true), CUb = reconCum(LL, false);
@@ -5666,6 +5673,9 @@ function gdSteps(){
       st: B && B.hi >= y ? ["ok", `الكشف مستورد حتى ${dmy(B.hi).slice(0, 5)}`] : B ? ["todo", `آخر كشف حتى ${dmy(B.hi).slice(0, 5)}`] : ["todo", "لم يُستورد كشف بعد"]}); }
   const px = priceStats(addDays(t, -30), t).filter(x => x.chg != null && x.chg >= 0.1), ap = apTotal(), ar = appReceivable().left;
   const weekly = [
+    ...(S.isOwner ? [{k:"bk", t:"تنزيل نسخة احتياطية كاملة", go:"#setup", btn:"النسخ الاحتياطي",
+      how:"من الإعدادات ← «تنزيل نسخة احتياطية كاملة»، ثم احفظ الملف في Google Drive أو أرسله لبريدك. ملف واحد فيه كل بيانات المحاسبة والكاشير.",
+      st: bkAge() > 7 ? ["warn", S.settings.lastBackupAt ? `آخر نسخة قبل ${bkAge()} يوماً` : "لم تُنزَّل نسخة بعد"] : ["ok", `آخر نسخة ${dmy(S.settings.lastBackupAt.slice(0, 10))}`]}] : []),
     {k:"px", t:"مراجعة أسعار الشراء", go:"#suppliers", btn:"أسعار الشراء", pre:() => { S.supTab = "prices"; },
       how:"قارن آخر سعر بالمتوسط، وتأكد أنك تشتري من أرخص مورد لنفس الجودة.", st: px.length ? ["warn", `${px.length} صنف ارتفع سعره 10% أو أكثر`] : ["ok", "لا ارتفاعات ملحوظة"]},
     {k:"ap", t:"سداد الموردين الآجلين", go:"#suppliers", btn:"الموردون", pre:() => { S.supTab = "sup"; },
@@ -5735,6 +5745,55 @@ function renderGuide(){
 function gdDashChip(){
   const G = gdSteps(), left = G.daily.filter(s => s.st[0] === "todo" || s.st[0] === "warn").length;
   return `<a class="btn ghost sm gd-chip ${left ? "has" : ""}" href="#guide">${left ? `مهام اليوم <b class="num">${left}</b>` : "مهام اليوم ✓"}</a>`;
+}
+
+/* ---------- FULL BACKUP & RESTORE (owner) ---------- */
+const bkAge = () => S.settings.lastBackupAt ? Math.floor((Date.now() - new Date(S.settings.lastBackupAt).getTime()) / 864e5) : 999;
+const BK_NAMES = {settings:"الإعدادات", sales:"المبيعات", invoices:"الفواتير", custody:"العهد", appTransfers:"تحويلات التطبيقات", recon:"المطابقة اليومية", journal:"القيود اليدوية", suppliers:"الموردون", payments:"سداد الموردين", staff:"الموظفون", advances:"السلف", payroll:"مسيرات الرواتب", stockItems:"أصناف المخزون", stockCounts:"جرد المخزون", cfo:"المدير المالي", bankTx:"كشف البنك", menuItems:"تكلفة الوجبات", itemSales:"تقارير الأصناف", attachments:"الصور والمرفقات", platforms:"التطبيقات والعقود", users:"المستخدمون", orders:"طلبات الكاشير", shifts:"ورديات الكاشير", menu:"منيو الكاشير", config:"إعدادات الكاشير"};
+function bindBackup(){
+  const B = window.__accFb && window.__accFb.backup, dlb = $("#bk_dl"); if (!B || !dlb) return;
+  const st = h => { S.bkMsg = h; const e = $("#bk_st"); if (e) e.innerHTML = h; };
+  /* while the restore panel is open the page is not redrawn by incoming changes, so its comparison stays on screen */
+  $("#bk_det").ontoggle = () => { S.bkOpen = $("#bk_det").open; };
+  dlb.onclick = async () => {
+    dlb.disabled = true; st('<div class="note">جارٍ قراءة كل البيانات من الخادم…</div>');
+    try {
+      const J = await B.dump((i, t) => st(`<div class="note">جارٍ القراءة… <b class="num">${i}</b> من <b class="num">${t}</b></div>`));
+      const count = side => Object.values(J[side]).reduce((a, L) => a + L.length, 0), at = J.exportedAt;
+      /* the copy carries its own date, so restoring it later does not show the settings as changed */
+      (J.acc.settings || []).forEach(x => { if (x.id === "main") x.data = {...x.data, lastBackupAt:at, lastBackupCount:count("acc") + count("pos")}; });
+      const name = `aqeela-backup-${today()}-${new Date().toTimeString().slice(0, 5).replace(":", "")}.json`;
+      const dl = await window.claude.use("downloads"); await dl.save({filename:name, data:JSON.stringify(J), type:"application/json"});
+      const base = {...S.settings}; delete base.id;
+      try { await setSettingsDoc({...base, lastBackupAt:at, lastBackupCount:count("acc") + count("pos")}); } catch(e){}
+      st(`<div class="note"><b>تم تنزيل النسخة:</b> <span dir="ltr">${esc(name)}</span> · المحاسبة <b class="num">${count("acc")}</b> سجل · الكاشير <b class="num">${count("pos")}</b> سجل. احفظ الملف خارج الجهاز.</div>`);
+    } catch(e){ st(`<div class="note warn">تعذّر تجهيز النسخة: ${esc(e && (e.code || e.message) || e)}. تأكد من الاتصال وأعد المحاولة.</div>`); }
+    dlb.disabled = false;
+  };
+  $("#bk_file").onchange = async e => {
+    const f = e.target.files[0], out = $("#bk_rs"); if (!f) return;
+    let J; try { J = JSON.parse(await f.text()); } catch(err){ out.innerHTML = '<div class="note warn">الملف غير صالح.</div>'; return; }
+    if (!J || J.format !== "aqeela-full-backup" || !J.acc || !J.pos){ out.innerHTML = '<div class="note warn">هذا ليس ملف نسخة احتياطية كاملة من البرنامج.</div>'; return; }
+    out.innerHTML = '<div class="note">جارٍ المقارنة بالبيانات الحالية…</div>';
+    let C; try { C = await B.current(); } catch(err){ out.innerHTML = `<div class="note warn">تعذّرت قراءة البيانات الحالية: ${esc(err.code || err.message || err)}</div>`; return; }
+    const rows = [], miss = [], diff = [];
+    for (const side of ["acc", "pos"]) for (const [c, L] of Object.entries(J[side] || {})){
+      const cur = (C[side] || {})[c] || new Map(); let m = 0, d = 0;
+      for (const x of L){ if (!x || !x.id) continue; const now = cur.get(x.id), item = {side, coll:c, id:x.id, data:x.data || {}};
+        if (now == null){ m++; miss.push(item); } else if (now !== JSON.stringify(x.data || {})){ d++; diff.push(item); } }
+      rows.push([side, c, L.length, cur.size, m, d]); }
+    out.innerHTML = `<div class="note">نسخة <b class="num">${esc((J.exportedAt || "").slice(0, 16).replace("T", " "))}</b>${J.project && J.project !== "aqeela-pos" ? ` · <span class="neg">من مشروع آخر (${esc(J.project)})</span>` : ""}</div>
+      <div class="tw"><table><thead><tr><th>البيانات</th><th class="n">في النسخة</th><th class="n">الآن</th><th class="n">ناقص الآن</th><th class="n">مختلف</th></tr></thead><tbody>
+      ${rows.filter(r => r[2] || r[3]).map(([side, c, a, b, m, d]) => `<tr><td>${BK_NAMES[c] || esc(c)}</td><td class="n num">${a}</td><td class="n num">${b}</td><td class="n num ${m ? "neg" : ""}">${m}</td><td class="n num">${d}</td></tr>`).join("")}</tbody></table></div>
+      <p class="small muted">«ناقص الآن»: سجلات في النسخة غير موجودة الآن (حُذفت أو ضاعت). «مختلف»: سجلات عُدّلت بعد النسخة؛ إرجاعها يلغي تلك التعديلات.</p>
+      <div class="actions">${miss.length ? `<button class="btn" type="button" id="bk_m">إرجاع الناقص فقط (${miss.length})</button>` : '<span class="small">لا يوجد ناقص.</span>'}${diff.length ? `<button class="btn ghost" type="button" id="bk_md">إرجاع الناقص وإعادة المختلف (${miss.length + diff.length})</button>` : ""}</div><div id="bk_rs2"></div>`;
+    const run = async list => { const o2 = $("#bk_rs2");
+      try { await B.write(list, (d, t) => { o2.innerHTML = `<div class="note">جارٍ الاستعادة… <b class="num">${d}</b> من <b class="num">${t}</b></div>`; });
+        o2.innerHTML = `<div class="note"><b>تمت الاستعادة:</b> <b class="num">${list.length}</b> سجل. حدّث الصفحة لترى البيانات.</div>`; }
+      catch(err){ o2.innerHTML = `<div class="note warn">توقفت الاستعادة: ${esc(err.code || err.message || err)}. أعد المحاولة؛ ما كُتب يُكتب فوقه بنفس القيم.</div>`; } };
+    if ($("#bk_m")) armDelete($("#bk_m"), () => run(miss), "اضغط مرة أخرى للتأكيد");
+    if ($("#bk_md")) armDelete($("#bk_md"), () => run([...miss, ...diff]), "اضغط مرة أخرى: سيعيد المختلف كما كان في النسخة");
+  };
 }
 
 /* ---------- SETTINGS RESTORE (owner) ---------- */
@@ -6341,7 +6400,7 @@ function navMoreSync(){
     if (ar.left < nr.left + 8 || ar.right > nr.right - 8) nav.scrollLeft += (ar.left + ar.width / 2) - (nr.left + nr.width / 2); }
 }
 function renderLists(){ const V = VIEWS[S.view]; if (V.list) V.list(); }
-function route(){ const h = location.hash.slice(1); if (!["pos","platforms"].includes(h)) S.testView = false; S.view = VIEWS[h] && !(isStaff() && !STAFF_VIEWS.has(h)) ? h : homeView(); closeModal(); render(); }
+function route(){ const h = location.hash.slice(1); S.bkOpen = false; if (!["pos","platforms"].includes(h)) S.testView = false; S.view = VIEWS[h] && !(isStaff() && !STAFF_VIEWS.has(h)) ? h : homeView(); closeModal(); render(); }
 window.addEventListener("hashchange", route);
 /* settings changes refresh selects without wiping a half-typed form */
 function refreshSelects(){
@@ -6365,7 +6424,7 @@ function changed(kind){
   cancelAnimationFrame(pending);
   pending = requestAnimationFrame(() => {
     const st = pendSettings; pendSettings = false;
-    if (st){ if (S.view === "setup" && !document.activeElement?.closest("#fset")) render(); else refreshSelects(); }
+    if (st){ if (S.view === "setup" && !document.activeElement?.closest("#fset") && !S.bkOpen) render(); else refreshSelects(); }
     renderLists(); resolveNames();
   });
 }
@@ -6454,6 +6513,6 @@ async function fixAttFlags(){
 if (window.__accHost) window.__accStart = connect; else connect();
 </script>
 <script src="apps.js?v=9"></script>
-<script type="module" src="acc-fb.js?v=4"></script>
+<script type="module" src="acc-fb.js?v=5"></script>
 </body>
 </html>

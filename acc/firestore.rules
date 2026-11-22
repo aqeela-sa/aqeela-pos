@@ -12,6 +12,9 @@ service cloud.firestore {
         && get(/databases/$(database)/documents/acc_settings/main).data.get('staffPerms', {}).get('views', []).hasAny([page]);
     }
 
+    // a field the update leaves as it was
+    function same(k) { return request.resource.data.get(k, null) == resource.data.get(k, null); }
+
     // ---------- Cashier AQ ----------
     match /config/{id} {
       allow read: if isAdmin() || isCashier();
@@ -21,14 +24,20 @@ service cloud.firestore {
       allow read: if isAdmin() || isCashier() || granted('pos') || granted('platforms');
       allow write: if isAdmin();
     }
+    // the cashier device creates orders, and later may only pay, void, change the type or the preparation state:
+    // what was sold, its amount, its day and its shift never change once saved
     match /orders/{id} {
       allow read: if isAdmin() || isCashier() || granted('pos') || granted('platforms');
-      allow create, update: if isAdmin() || isCashier();
+      allow create: if isAdmin() || isCashier();
+      allow update: if isAdmin() || (isCashier() && same('total') && same('subtotal') && same('lines') && same('discount')
+                                     && same('day') && same('no') && same('shiftId') && same('test') && same('ts') && same('device'));
       allow delete: if isAdmin();
     }
+    // a closed shift is final for the cashier device
     match /shifts/{id} {
       allow read: if isAdmin() || isCashier() || granted('pos') || granted('platforms');
-      allow create, update: if isAdmin() || isCashier();
+      allow create: if isAdmin() || isCashier();
+      allow update: if isAdmin() || (isCashier() && resource.data.status == 'open');
       allow delete: if isAdmin();
     }
 

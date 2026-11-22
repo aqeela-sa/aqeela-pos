@@ -75,6 +75,40 @@ const userApi = {
   }
 };
 
+/* ---------- full backup and restore (owner): every accounting collection and the cashier's orders, shifts, menu and settings ---------- */
+const ACC_COLLS = ["settings","sales","invoices","custody","appTransfers","recon","journal","suppliers","payments","staff","advances","payroll","stockItems","stockCounts","cfo","bankTx","menuItems","itemSales","attachments","platforms","users"];
+const POS_COLLS = ["orders","shifts","menu","config"];
+/* Firestore timestamps become plain milliseconds, so the file is ordinary JSON and can be written back as it is */
+const plain = v => v && typeof v === "object" ? (typeof v.toMillis === "function" ? v.toMillis() : Array.isArray(v) ? v.map(plain) : Object.fromEntries(Object.entries(v).map(([k, x]) => [k, plain(x)]))) : v;
+const backup = {
+  ACC_COLLS, POS_COLLS,
+  async dump(progress){
+    const read = async name => (await F.getDocs(F.collection(fs, name))).docs.map(d => ({ id: d.id, data: plain(d.data()) }));
+    const acc = {}, pos = {}; let i = 0; const all = ACC_COLLS.length + POS_COLLS.length;
+    for (const c of ACC_COLLS){ acc[c] = await read(P + c); progress && progress(++i, all); }
+    for (const c of POS_COLLS){ pos[c] = await read(c); progress && progress(++i, all); }
+    return { format: "aqeela-full-backup", v: 1, exportedAt: new Date().toISOString(), project: firebaseConfig.projectId, by: current ? current.email : "", acc, pos };
+  },
+  /* the current documents, to compare with a backup before restoring */
+  async current(){
+    const read = async name => new Map((await F.getDocs(F.collection(fs, name))).docs.map(d => [d.id, JSON.stringify(plain(d.data()))]));
+    const acc = {}, pos = {};
+    for (const c of ACC_COLLS) acc[c] = await read(P + c);
+    for (const c of POS_COLLS) pos[c] = await read(c);
+    return { acc, pos };
+  },
+  /* writes only the given documents (never deletes anything), 400 per batch */
+  async write(list, progress){
+    let done = 0;
+    for (let i = 0; i < list.length; i += 400){
+      const b = F.writeBatch(fs);
+      list.slice(i, i + 400).forEach(({ side, coll, id, data }) => b.set(F.doc(fs, (side === "acc" ? P : "") + coll, id), data));
+      await b.commit(); done += Math.min(400, list.length - i); progress && progress(done, list.length);
+    }
+    return done;
+  }
+};
+
 /* ---------- file downloads (reports, backups) ---------- */
 const downloads = {
   async save({ filename, data, type }){
@@ -112,7 +146,7 @@ const pos = {
     return ids.length;
   }
 };
-window.__accFb = { db, user: userApi, roleOf, ADMIN_EMAIL, pos };
+window.__accFb = { db, user: userApi, roleOf, ADMIN_EMAIL, pos, backup };
 
 /* ---------- sign-in screen ---------- */
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
