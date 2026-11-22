@@ -896,6 +896,11 @@ nav.tabs a[hidden],.nav-more[hidden]{display:none!important}
 @media (max-width:760px){[data-skin="rose"][data-aq="1"] .logo2 .aqlogo{width:34px;height:34px}}
 [data-skin="rose"] nav.tabs a:not(.on),[data-skin="rose"] .nav-more:not(.on){color:#fff!important;font-weight:800!important;opacity:1!important;text-shadow:none!important}
 .skin-pick{display:flex;gap:12px;flex-wrap:wrap}
+.skin-mini{display:flex;align-items:center;justify-content:center;gap:8px;margin:28px 0 6px;font-size:11px;color:var(--muted)}
+.skin-mini .skin-opt{all:unset;cursor:pointer;display:block;padding:2px;border:1.5px solid transparent;border-radius:50%;min-width:0}
+.skin-mini .skin-opt i{display:block;width:14px;height:14px;border-radius:50%;box-shadow:inset 0 0 0 1px rgba(0,0,0,.15)}
+.skin-mini .skin-opt.on{border-color:var(--ink)}
+.skin-mini .skin-opt:focus-visible{outline:2px solid var(--red);outline-offset:2px}
 .skin-opt{all:unset;cursor:pointer;display:grid;gap:8px;justify-items:center;padding:10px;border:2px solid var(--line);border-radius:14px;background:var(--card);min-width:130px;text-align:center;font-weight:700}
 .skin-opt i{display:block;width:110px;height:46px;border-radius:10px}
 .skin-opt.on{border-color:var(--red);box-shadow:0 0 0 3px color-mix(in srgb,var(--red) 18%,transparent)}
@@ -1913,11 +1918,7 @@ function viewSetup(){
   const st = S.settings, lock = !S.canEdit;
   const sk = ["teal", "rose"].includes(document.documentElement.dataset.skin) ? document.documentElement.dataset.skin : "classic";
   return `<div class="bar"><h2>الإعدادات</h2></div>
-  <div class="card"><h3 style="margin:0 0 4px">مظهر البرنامج</h3><p class="small muted" style="margin:0 0 12px">يُحفظ على هذا الجهاز، ولا يغيّر أي بيانات.</p>
-    <div class="skin-pick" role="radiogroup" aria-label="مظهر البرنامج">
-      <button type="button" role="radio" aria-checked="${sk === "teal"}" class="skin-opt ${sk === "teal" ? "on" : ""}" data-sk="teal"><i style="background:linear-gradient(135deg,#15B5B8,#0E8C92 45%,#0B6470)"></i>الحديث (فيروزي)</button>
-      <button type="button" role="radio" aria-checked="${sk === "rose"}" class="skin-opt ${sk === "rose" ? "on" : ""}" data-sk="rose"><i style="background:#C1121F"></i>الحديث (أحمر)</button>
-      <button type="button" role="radio" aria-checked="${sk === "classic"}" class="skin-opt ${sk === "classic" ? "on" : ""}" data-sk="classic"><i style="background:#B71C1C"></i>الكلاسيكي (أحمر)</button></div></div>
+
   ${brandIsAqeela() ? `<div class="card" style="display:flex;align-items:center;gap:14px;flex-wrap:wrap"><div style="flex:1;min-width:220px"><h3 style="margin:0 0 4px">📘 دليل المستخدم</h3><p class="small muted" style="margin:0">كتاب PDF من 51 صفحة يشرح فكرة البرنامج وطريقة استخدام كل صفحاته، مناسب لتدريب أي موظف جديد.</p></div><button class="btn" type="button" id="set_book">تنزيل الدليل</button></div>` : ""}
   ${brandCard()}
   ${staffPermCard()}
@@ -1959,7 +1960,11 @@ function viewSetup(){
     <div class="actions"><button class="btn" type="button" id="t_xlsx">تنزيل نسخة إكسل</button><button class="btn ghost" type="button" id="t_backup">نسخ البيانات (JSON)</button></div></div>
   ${S.isOwner ? `<div class="card"><h3>استيراد البيانات من البرنامج القديم</h3>
     <p class="small muted" style="margin:0 0 8px">مرة واحدة فقط: اختر «ملف النقل الكامل» الذي نزّلته من البرنامج القديم. يُنقل كل سجل كما هو (مع المؤرشف وسجل التعديلات والصور)، ثم يُطابَق العدد مجموعةً مجموعة.</p>
-    <input type="file" id="t_imp" accept=".json,application/json"><div id="t_imp_st" style="margin-top:8px"></div></div>` : ""}`;
+    <input type="file" id="t_imp" accept=".json,application/json"><div id="t_imp_st" style="margin-top:8px"></div></div>` : ""}
+  <div class="skin-mini" role="radiogroup" aria-label="مظهر البرنامج"><span>المظهر</span>
+    <button type="button" role="radio" aria-checked="${sk === "teal"}" class="skin-opt ${sk === "teal" ? "on" : ""}" data-sk="teal" title="الحديث (فيروزي)" aria-label="الحديث (فيروزي)"><i style="background:linear-gradient(135deg,#15B5B8,#0B6470)"></i></button>
+    <button type="button" role="radio" aria-checked="${sk === "rose"}" class="skin-opt ${sk === "rose" ? "on" : ""}" data-sk="rose" title="الحديث (أحمر)" aria-label="الحديث (أحمر)"><i style="background:#C1121F"></i></button>
+    <button type="button" role="radio" aria-checked="${sk === "classic"}" class="skin-opt ${sk === "classic" ? "on" : ""}" data-sk="classic" title="الكلاسيكي" aria-label="الكلاسيكي"><i style="background:linear-gradient(135deg,#B71C1C 50%,#fff 50%)"></i></button></div>`;
 }
 /* one file with every collection exactly as stored (archived records and edit history included), the names behind the user ids,
    and invoice pictures turned into compressed images kept inside the file, for the one-time move to Firebase */
