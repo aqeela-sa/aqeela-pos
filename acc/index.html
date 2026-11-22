@@ -1150,6 +1150,12 @@ function monthStats(y,m){
 }
 
 /* ---------- writes ---------- */
+/* the settings document is always written whole ({...S.settings, change}); before it has arrived from the server,
+   S.settings holds only the defaults and such a write would wipe it. Refuse until it has loaded. */
+function setSettingsDoc(data){
+  if (!S.loaded.has("settings")){ toast("الإعدادات لم تُحمَّل بعد من الخادم؛ انتظر ثوانٍ ثم أعد المحاولة"); return Promise.reject(Object.assign(new Error("settings not loaded"), {code:"not_ready"})); }
+  return S.db.doc("settings/main").set(data);
+}
 async function write(fn, okMsg){
   if (!S.db){ toast("لا يوجد اتصال بقاعدة البيانات"); return false; }
   try { await fn(); if (okMsg) toast(okMsg); return true; }
@@ -1905,6 +1911,10 @@ function viewSetup(){
   ${brandIsAqeela() ? `<div class="card" style="display:flex;align-items:center;gap:14px;flex-wrap:wrap"><div style="flex:1;min-width:220px"><h3 style="margin:0 0 4px">📘 دليل المستخدم</h3><p class="small muted" style="margin:0">كتاب PDF من 51 صفحة يشرح فكرة البرنامج وطريقة استخدام كل صفحاته، مناسب لتدريب أي موظف جديد.</p></div><button class="btn" type="button" id="set_book">تنزيل الدليل</button></div>` : ""}
   ${brandCard()}
   ${staffPermCard()}
+  ${S.isOwner ? `<div class="card" id="rs_card"><h3 style="margin:0 0 4px">استعادة الإعدادات</h3>
+    <p class="small muted" style="margin:0 0 10px">لاستعادة نسخة من الإعدادات يعطيك إياها Claude. يعرض ما سيتغير قبل التطبيق، ويُبقي ما أُضيف بعد النسخة (مثل صلاحيات الموظفين).</p>
+    ${!S.settings.startDate ? '<div class="note warn" style="margin-bottom:10px"><b>تنبيه:</b> تاريخ بداية المتابعة وأرصدة البداية فارغة في الإعدادات الحالية.</div>' : ""}
+    <textarea id="rs_t" rows="3" dir="ltr" placeholder='{"aqeela":"settings", ...}'></textarea><div class="actions"><button class="btn ghost" type="button" id="rs_go">قراءة النسخة</button></div><div id="rs_out"></div></div>` : ""}
   ${S.isOwner ? `<div class="card" id="pc_card"><h3 style="margin:0 0 4px">بيانات الكاشير (التجارب)</h3>
     <p class="small muted" style="margin:0 0 12px">مسح طلبات وورديات من برنامج الكاشير. اضغط «فحص» أولاً لترى ما سيُمسح بالعدد والمبلغ، ثم اختر. المسح نهائي ولا يمس بيانات المحاسبة.</p>
     <div class="actions"><button class="btn ghost" type="button" id="pc_scan">فحص بيانات الكاشير</button></div><div id="pc_out"></div></div>` : ""}
@@ -1982,7 +1992,7 @@ async function importMigration(file, st){
   };
 }
 function bindSetup(){
-  bindLockCard(); bindBrandCard(); bindStaffPermCard(); bindPosClean(); if ($("#set_book")) $("#set_book").onclick = () => downloadBook($("#set_book"));
+  bindLockCard(); bindBrandCard(); bindStaffPermCard(); bindPosClean(); bindRestoreSettings(); if ($("#set_book")) $("#set_book").onclick = () => downloadBook($("#set_book"));
   document.querySelectorAll(".skin-opt").forEach(b => b.onclick = () => { const v = ["teal", "rose"].includes(b.dataset.sk) ? b.dataset.sk : "classic";
     document.documentElement.dataset.skin = v; try { localStorage.setItem("skin", v); } catch(e){}
     document.querySelectorAll(".skin-opt").forEach(x => { x.classList.toggle("on", x === b); x.setAttribute("aria-checked", x === b); }); });
@@ -1992,7 +2002,7 @@ function bindSetup(){
       productionCategories:[...document.querySelectorAll("#t_prod input:checked")].map(i=>i.value),
       employees:lines("#t_emp"), categories:lines("#t_cat"), ...stamp()};
     const base = {...S.settings}; delete base.id;
-    await write(() => S.db.doc("settings/main").set({...base, ...data}), "تم حفظ الإعدادات");
+    await write(() => setSettingsDoc({...base, ...data}), "تم حفظ الإعدادات");
   };
   $("#t_xlsx").onclick = exportXlsx;
   if ($("#t_imp")) $("#t_imp").onchange = e => { const f = e.target.files[0]; if (f) importMigration(f, $("#t_imp_st")); };
@@ -2975,7 +2985,7 @@ function renderAccSetup(el){
       if (V.registered && !V.from){ toast("حدد تاريخ بداية التسجيل في الضريبة"); return; }
       const acc = {partners: P.filter(p => p.name.trim()).map(p => ({name:p.name.trim(), share:n(p.share)})), vat:V, schedules: SC.filter(s => s.name && s.start), catMap: CM};
       const base = {...S.settings}; delete base.id;
-      await write(() => S.db.doc("settings/main").set({...base, acc, ...stamp()}), "تم حفظ الإعداد المحاسبي");
+      await write(() => setSettingsDoc({...base, acc, ...stamp()}), "تم حفظ الإعداد المحاسبي");
     };
   };
   draw();
@@ -4716,7 +4726,7 @@ function openPgSettings(){
   const saveCus = async (list, msg) => { const g0 = S.settings.prodGroups || {}, keep = new Set([...PG_BASE.map(g => g.k), ...list.map(g => g.k)]);
     const map = Object.fromEntries(Object.entries(g0.map || {}).filter(([, k]) => keep.has(k))), targets = Object.fromEntries(Object.entries(g0.targets || {}).filter(([k]) => keep.has(k)));
     const base = {...S.settings}; delete base.id;
-    if (await write(() => S.db.doc("settings/main").set({...base, prodGroups:{map, targets, custom:list}, ...stamp()}), msg)){ S.settings.prodGroups = {map, targets, custom:list}; pgSync(); renderLists(); openPgSettings(); } };
+    if (await write(() => setSettingsDoc({...base, prodGroups:{map, targets, custom:list}, ...stamp()}), msg)){ S.settings.prodGroups = {map, targets, custom:list}; pgSync(); renderLists(); openPgSettings(); } };
   drawCus();
   $("#pg_add").onclick = () => { const nm = $("#pg_newn").value.trim(); if (!nm) return;
     if ([...PG_BASE, ...custom].some(g => g.name.trim() === nm)){ toast("يوجد قسم بهذا الاسم"); return; }
@@ -4732,7 +4742,7 @@ function openPgSettings(){
     document.querySelectorAll("[data-pc]").forEach(se => { const c = cats[+se.dataset.pc]; map[c] = se.value; });
     Object.keys(map).forEach(c => { if (!keep.has(map[c])) delete map[c]; });
     const base = {...S.settings}; delete base.id;
-    if (await write(() => S.db.doc("settings/main").set({...base, prodGroups:{map, targets, custom}, ...stamp()}), "تم حفظ إعداد الأقسام")){ closeModal(); pgSync(); renderLists(); }
+    if (await write(() => setSettingsDoc({...base, prodGroups:{map, targets, custom}, ...stamp()}), "تم حفظ إعداد الأقسام")){ closeModal(); pgSync(); renderLists(); }
   };
 }
 
@@ -5048,7 +5058,7 @@ function bindLockCard(){
     const locks = new Set(lockedMonths()); lock ? locks.add(ym) : locks.delete(ym);
     const base = {...S.settings}; delete base.id;
     const lockLog = [{ym, action: lock ? "lock" : "unlock", at:new Date().toISOString(), by:S.uid || ""}, ...(S.settings.lockLog || [])].slice(0, 30);
-    if (await write(() => S.db.doc("settings/main").set({...base, locks:[...locks].sort(), lockLog, ...stamp()}), lock ? `تم إقفال ${ymName(ym)}` : `تم فتح ${ymName(ym)}`)){ S.settings.locks = [...locks].sort(); S.settings.lockLog = lockLog; render(); }
+    if (await write(() => setSettingsDoc({...base, locks:[...locks].sort(), lockLog, ...stamp()}), lock ? `تم إقفال ${ymName(ym)}` : `تم فتح ${ymName(ym)}`)){ S.settings.locks = [...locks].sort(); S.settings.lockLog = lockLog; render(); }
   };
   box.querySelectorAll("[data-lock]").forEach(b => armDelete(b, () => save(b.dataset.lock, true)));
   box.querySelectorAll("[data-unlock]").forEach(b => armDelete(b, () => save(b.dataset.unlock, false)));
@@ -5156,7 +5166,7 @@ function openFoodicsImport(){
     document.querySelectorAll("[data-fxm]").forEach(se => se.onchange = async () => { const m = se.dataset.fxm, v = se.value; if (!v) return;
       S.fxSession = {...(S.fxSession || {}), [m]:v};
       if (S.canEdit){ const base = {...S.settings}; delete base.id; const map = {...(S.settings.foodicsMap || {}), [m]:v};
-        if (await write(() => S.db.doc("settings/main").set({...base, foodicsMap:map, ...stamp()}), null)) S.settings.foodicsMap = map; }
+        if (await write(() => setSettingsDoc({...base, foodicsMap:map, ...stamp()}), null)) S.settings.foodicsMap = map; }
       draw(); });
     $("#fx_go").onclick = async () => {
       const sel = [...document.querySelectorAll("[data-fxi]:checked")].map(c => info[+c.dataset.fxi]); if (!sel.length){ toast("لم تحدّد أي يوم"); return; }
@@ -5429,7 +5439,7 @@ function openBudget(ym, mode){
       const s = r2(n($("#bg_sales").value)); if (!(s > 0) && !Object.keys(lines).length) return toast("اكتب هدف المبيعات أو بنداً واحداً على الأقل");
       all[ym] = {sales:s, prodPct:r2(n($("#bg_pp").value)), lines, at:new Date().toISOString(), by:S.names && S.names[S.uid] || ""}; }
     const base = {...S.settings}; delete base.id;
-    if (await write(() => S.db.doc("settings/main").set({...base, budgets:all, ...stamp()}), del ? "تم حذف الميزانية" : "تم حفظ الميزانية")){ S.settings.budgets = all; closeModal(); renderLists(); } };
+    if (await write(() => setSettingsDoc({...base, budgets:all, ...stamp()}), del ? "تم حذف الميزانية" : "تم حفظ الميزانية")){ S.settings.budgets = all; closeModal(); renderLists(); } };
   $("#bg_save").onclick = () => save(false);
   if ($("#bg_del")) $("#bg_del").onclick = () => { if (confirm("حذف ميزانية " + bgYmLabel(ym) + "؟")) save(true); };
 }
@@ -5693,6 +5703,25 @@ function gdDashChip(){
   return `<a class="btn ghost sm gd-chip ${left ? "has" : ""}" href="#guide">${left ? `مهام اليوم <b class="num">${left}</b>` : "مهام اليوم ✓"}</a>`;
 }
 
+/* ---------- SETTINGS RESTORE (owner) ---------- */
+function bindRestoreSettings(){
+  const b = $("#rs_go"); if (!b) return;
+  b.onclick = () => {
+    let J; try { const t = $("#rs_t").value.trim(); J = JSON.parse(t.slice(t.indexOf("{"), t.lastIndexOf("}") + 1)); } catch(e){ $("#rs_out").innerHTML = '<div class="note warn">النص غير مكتمل. انسخه كاملاً من رسالة Claude.</div>'; return; }
+    if (J.aqeela !== "settings" || !J.data || typeof J.data !== "object"){ $("#rs_out").innerHTML = '<div class="note warn">هذا النص ليس نسخة إعدادات.</div>'; return; }
+    const cur = {...S.settings}; delete cur.id; const bk = {...J.data}; delete bk.id; delete bk.by; delete bk.updatedAt;
+    const short = v => { const x = JSON.stringify(v ?? ""); return x.length > 60 ? x.slice(0, 57) + "…" : x; };
+    const ch = Object.keys(bk).filter(k => JSON.stringify(cur[k]) !== JSON.stringify(bk[k]));
+    const kept = Object.keys(cur).filter(k => !(k in bk) && !["by","updatedAt"].includes(k));
+    $("#rs_out").innerHTML = `<div class="note" style="margin-top:10px"><b>نسخة ${esc(J.label || "")}</b>: ${ch.length ? `سيتغير ${ch.length} بند:` : "لا يوجد اختلاف عن الإعدادات الحالية."}
+      ${ch.length ? `<div class="tw" style="margin-top:8px"><table><thead><tr><th>البند</th><th>الحالي</th><th>بعد الاستعادة</th></tr></thead><tbody>${ch.map(k => `<tr><td dir="ltr">${esc(k)}</td><td dir="ltr" class="small">${esc(short(cur[k]))}</td><td dir="ltr" class="small">${esc(short(bk[k]))}</td></tr>`).join("")}</tbody></table></div>` : ""}
+      ${kept.length ? `<div class="small muted" style="margin-top:6px">يبقى كما هو: <span dir="ltr">${kept.map(esc).join("، ")}</span></div>` : ""}</div>
+      ${ch.length ? '<div class="actions"><button class="btn" type="button" id="rs_apply">تطبيق الاستعادة</button></div>' : ""}`;
+    if ($("#rs_apply")) armDelete($("#rs_apply"), async () => {
+      if (await write(() => setSettingsDoc({...cur, ...bk, restoredAt: new Date().toISOString(), restoredFrom: J.label || "", ...stamp()}), "تمت استعادة الإعدادات")){ $("#rs_t").value = ""; render(); } }, "اضغط مرة أخرى للتطبيق");
+  };
+}
+
 /* ---------- CASHIER TEST DATA CLEANUP (owner) ---------- */
 function bindPosClean(){
   const b = $("#pc_scan"); if (!b || !window.__accFb || !window.__accFb.pos) return;
@@ -5740,7 +5769,7 @@ function bindStaffPermCard(){
   b.onclick = async () => {
     const views = [...document.querySelectorAll("[data-sp]")].filter(x => x.checked).map(x => x.dataset.sp), staffPermsNew = {views, month: $("#sp_month").checked};
     const base = {...S.settings}; delete base.id;
-    if (await write(() => S.db.doc("settings/main").set({...base, staffPerms:staffPermsNew, ...stamp()}), "تم حفظ الصلاحيات")) S.settings.staffPerms = staffPermsNew; };
+    if (await write(() => setSettingsDoc({...base, staffPerms:staffPermsNew, ...stamp()}), "تم حفظ الصلاحيات")) S.settings.staffPerms = staffPermsNew; };
 }
 
 /* ---------- PROJECT IDENTITY (هوية المشروع) ---------- */
@@ -5757,7 +5786,7 @@ function bindBrandCard(){
   const b = $("#br_save"); if (!b) return;
   b.onclick = async () => { const brandNew = {ar:$("#br_ar").value.trim(), short:$("#br_sh").value.trim(), en:$("#br_en").value.trim()};
     const base = {...S.settings}; delete base.id;
-    if (await write(() => S.db.doc("settings/main").set({...base, brand:brandNew, ...stamp()}), "تم حفظ هوية المشروع")){ S.settings.brand = brandNew; applyBrand(); render(); } };
+    if (await write(() => setSettingsDoc({...base, brand:brandNew, ...stamp()}), "تم حفظ هوية المشروع")){ S.settings.brand = brandNew; applyBrand(); render(); } };
 }
 
 /* ---------- BANK STATEMENT (كشف حساب البنك) ----------
@@ -5869,7 +5898,7 @@ function openBankImport(){
     for (const t of fresh){ try { await S.db.doc("bankTx/" + t.id).set({...t, seq: base + t.ord, imported: imp, by: S.uid || ""}); ok++; } catch(e){} }
     /* only once the new movements are saved, so a failed upload never leaves those days empty */
     if (ok === fresh.length) for (const t of stale){ const {id, ...r} = t; try { await S.db.doc("bankTx/" + id).set({...r, deleted:true, deletedAt: imp, supersededBy: imp}); rep++; } catch(e){} }
-    if (!S.settings.bankStmtFrom){ const B = bankStmt(); if (B){ const base2 = {...S.settings}; delete base2.id; try { await S.db.doc("settings/main").set({...base2, bankStmtFrom: B.from, ...stamp()}); } catch(e){} } }
+    if (!S.settings.bankStmtFrom){ const B = bankStmt(); if (B){ const base2 = {...S.settings}; delete base2.id; try { await setSettingsDoc({...base2, bankStmtFrom: B.from, ...stamp()}); } catch(e){} } }
     toast(`تم استيراد ${ok} حركة${rep ? ` واستبدال ${rep} حركة سابقة` : ""}`); closeModal(); S.reconTab = "stmt"; render();
   };
 }
