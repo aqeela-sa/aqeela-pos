@@ -2269,10 +2269,16 @@ const REPORTS = {
       `</div>` + rpFoot()};
   },
   expenses(a,b){
-    const s = rangeStats(a,b), maxC = Math.max(1, ...s.cats.map(x => x.v));
-    return {title:"تقرير المصروفات والفواتير", orient:"portrait", html:
-      rpHead("تقرير المصروفات والفواتير", a, b) +
-      rpKpis([["إجمالي الفواتير", M(s.invTotal), `${s.invs.length} فاتورة`], ["المصروفات الفعلية", M(s.exp), "بدون تكرار العهد"], ["صرف من العهد", M(s.spentCus), s.payExp ? `رواتب المسير: ${fmt(s.payExp)}` : ""], ["آجلة غير مسددة", M(sumBy(s.unpaid, x => apState().byInv.get(x.id).remain)), `${s.unpaid.length} فاتورة`, s.unpaid.length ? "rp-warn" : ""]]) +
+    /* S.rp.ef: "" every invoice · "prod" only those tagged production cost · "other" the rest */
+    const s0 = rangeStats(a,b), ef = S.rp && S.rp.ef || "", keep = x => ef === "prod" ? isProd(x) : ef === "other" ? !isProd(x) : true;
+    const grp = (arr, key) => { const m = new Map(); for (const x of arr){ const k = key(x) || "غير محدد"; const o = m.get(k) || {k, v:0, c:0}; o.v += invTotal(x); o.c++; m.set(k,o); } return [...m.values()].sort((p,q) => q.v - p.v); };
+    const invs = s0.invs.filter(keep), s = ef ? {...s0, invs, invTotal:sumBy(invs, invTotal), unpaid:s0.unpaid.filter(keep), cats:grp(invs, x => x.category), sups:grp(invs, x => x.supplier), pays:grp(invs, x => x.pay)} : s0;
+    const maxC = Math.max(1, ...s.cats.map(x => x.v)), tag = ef === "prod" ? " · فواتير تكاليف الإنتاج" : ef === "other" ? " · المصاريف الأخرى (غير الإنتاج)" : "";
+    const vatT = sumBy(s.invs, x => n(x.vat));
+    return {title:"تقرير المصروفات والفواتير" + (ef === "prod" ? " - الإنتاج" : ef === "other" ? " - غير الإنتاج" : ""), orient:"portrait", html:
+      rpHead("تقرير المصروفات والفواتير" + tag, a, b) +
+      (ef ? rpKpis([[ef === "prod" ? "فواتير تكاليف الإنتاج" : "فواتير المصاريف الأخرى", M(s.invTotal), `${s.invs.length} فاتورة`], ["من إجمالي الفواتير", s0.invTotal ? P(s.invTotal / s0.invTotal) : "—", `الإجمالي ${fmt(s0.invTotal)}`], ["منها ضريبة", M(vatT), ""], ["آجلة غير مسددة", M(sumBy(s.unpaid, x => apState().byInv.get(x.id).remain)), `${s.unpaid.length} فاتورة`, s.unpaid.length ? "rp-warn" : ""]])
+        : rpKpis([["إجمالي الفواتير", M(s.invTotal), `${s.invs.length} فاتورة`], ["المصروفات الفعلية", M(s.exp), "بدون تكرار العهد"], ["صرف من العهد", M(s.spentCus), s.payExp ? `رواتب المسير: ${fmt(s.payExp)}` : ""], ["آجلة غير مسددة", M(sumBy(s.unpaid, x => apState().byInv.get(x.id).remain)), `${s.unpaid.length} فاتورة`, s.unpaid.length ? "rp-warn" : ""]])) +
       rpSec("حسب التصنيف", rpTable(["التصنيف","عدد الفواتير","المبلغ","النسبة",""], s.cats.map(x => [esc(x.k), `<span class="num">${x.c}</span>`, M(x.v), s.invTotal ? P(x.v/s.invTotal) : "—", rpBar(x.v, maxC, "#5F5E5A")]), ["الإجمالي", `<span class="num">${s.invs.length}</span>`, M(s.invTotal), "100%", ""], ["32%","14%","18%","12%","24%"])) +
       `<div class="rp-two">` +
       rpSec("أكبر الموردين", rpTable(["المورد","الفواتير","المبلغ"], s.sups.slice(0,15).map(x => [esc(x.k), `<span class="num">${x.c}</span>`, M(x.v)]), null, ["50%","20%","30%"])) +
@@ -2394,6 +2400,7 @@ function viewReports(){
     <div class="f"><label for="rp_a">من تاريخ</label><input id="rp_a" type="date" value="${r.a}"></div>
     <div class="f"><label for="rp_b">إلى تاريخ</label><input id="rp_b" type="date" value="${r.b}"></div>
     <div class="f" id="rp_empw" ${RP_EXTRA.includes(r.type)?"":"hidden"}><label for="rp_emp" id="rp_empl">${rpExtraLabel(r.type)}</label><select id="rp_emp">${rpExtraOpts(r.type, r.emp)}</select></div>
+    <div class="f" id="rp_efw" ${r.type === "expenses" ? "" : "hidden"}><label for="rp_ef">الفواتير</label><select id="rp_ef"><option value="">كل الفواتير</option><option value="prod" ${r.ef === "prod" ? "selected" : ""}>فواتير تكاليف الإنتاج فقط</option><option value="other" ${r.ef === "other" ? "selected" : ""}>المصاريف الأخرى (غير الإنتاج)</option></select></div>
     <div class="f" id="rp_byw" ${r.type === "buyer" ? "" : "hidden"}><label for="rp_by">حسب</label><select id="rp_by"><option value="">تاريخ الفاتورة</option><option value="entry" ${r.by === "entry" ? "selected" : ""}>تاريخ الإدخال في البرنامج</option></select></div>
     <div class="f wide"><span class="small muted" style="font-weight:700">فترات سريعة</span><div class="actions">
       <button type="button" class="btn ghost sm" data-p="e0" id="rp_e0" ${r.type === "buyer" ? "" : "hidden"}>أُدخلت اليوم</button><button type="button" class="btn ghost sm" data-p="m0">هذا الشهر</button><button type="button" class="btn ghost sm" data-p="m1">الشهر الماضي</button>
@@ -2404,11 +2411,12 @@ function viewReports(){
   <div class="rp-wrap"><div id="rpPaper" class="rp-paper"></div></div>`;
 }
 function bindReports(){
-  document.querySelectorAll(".rp-type").forEach(b => b.onclick = () => { const prev = S.rp.type; S.rp.type = b.dataset.k; if (prev !== S.rp.type) S.rp.emp = ""; document.querySelectorAll(".rp-type").forEach(x => x.classList.toggle("on", x === b)); $("#rp_empw").hidden = !RP_EXTRA.includes(S.rp.type); $("#rp_byw").hidden = $("#rp_e0").hidden = S.rp.type !== "buyer"; $("#rp_empl").textContent = rpExtraLabel(S.rp.type); $("#rp_emp").innerHTML = rpExtraOpts(S.rp.type, S.rp.emp); renderReport(); });
+  document.querySelectorAll(".rp-type").forEach(b => b.onclick = () => { const prev = S.rp.type; S.rp.type = b.dataset.k; if (prev !== S.rp.type) S.rp.emp = ""; document.querySelectorAll(".rp-type").forEach(x => x.classList.toggle("on", x === b)); $("#rp_empw").hidden = !RP_EXTRA.includes(S.rp.type); $("#rp_byw").hidden = $("#rp_e0").hidden = S.rp.type !== "buyer"; $("#rp_efw").hidden = S.rp.type !== "expenses"; $("#rp_empl").textContent = rpExtraLabel(S.rp.type); $("#rp_emp").innerHTML = rpExtraOpts(S.rp.type, S.rp.emp); renderReport(); });
   $("#rp_a").onchange = () => { S.rp.a = $("#rp_a").value; renderReport(); };
   $("#rp_b").onchange = () => { S.rp.b = $("#rp_b").value; renderReport(); };
   $("#rp_emp").onchange = () => { S.rp.emp = $("#rp_emp").value; renderReport(); };
   $("#rp_by").onchange = () => { S.rp.by = $("#rp_by").value; renderReport(); };
+  $("#rp_ef").onchange = () => { S.rp.ef = $("#rp_ef").value; renderReport(); };
   document.querySelectorAll("[data-p]").forEach(b => b.onclick = () => {
     const t = today(), d = pd(t); let a, z = t;
     /* «أُدخلت اليوم»: what was entered into the program today, whatever the invoice dates */
