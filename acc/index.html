@@ -1454,7 +1454,7 @@ function renderSalesList(){
 function viewInvoices(){
   const c = S.settings.categories;
   return `<div class="bar"><h2>الفواتير (مشتريات ومصروفات)</h2>${rgPicker()}</div>${readonlyNote()}
-  <form class="card entry" id="fi"><h3 id="fiTitle">فاتورة جديدة</h3>
+  <form class="card entry" id="fi"><div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap"><h3 id="fiTitle" style="margin:0">فاتورة جديدة</h3>${S.canWrite ? `<button type="button" class="btn ghost sm" id="i_paste">لصق من Claude</button>` : ""}</div>
     <div class="fields">
       <div class="f"><label for="i_date">التاريخ</label><input id="i_date" type="date" required max="${today()}" value="${today()}"></div>
       <div class="f"><label for="i_no">رقم الفاتورة</label><input id="i_no" type="text"></div>
@@ -1529,6 +1529,40 @@ function bindInvoices(){
     $("#i_bt").value = has(x.beforeTax)?x.beforeTax:""; $("#i_vat").value = has(x.vat)?x.vat:""; if ($("#i_vatWrap")) $("#i_vatWrap").hidden = !vatReg() && !(n(x.vat) > 0); $("#i_pay").value = x.pay||"كاش"; $("#i_st").value = x.status||"مدفوعة"; $("#i_notes").value = x.notes||""; $("#i_buy").value = x.buyer||""; $("#i_cdate").value = x.cashDate||""; $("#i_qty").value = x.qty ?? ""; $("#i_unit").value = x.unit || ""; $("#i_prod").checked = isProd(x); S.prodTouched = true; S.invSplit = Array.isArray(x.split) && x.split.length > 1 ? x.split.map(l => ({k:l.k, a:n(l.amount)})) : null; pgUi(x.pgroup || "");
     $("#fiTitle").textContent = "تعديل فاتورة"; $("#i_save").textContent = "حفظ التعديل"; $("#i_cancel").hidden = false; $("#i_del").hidden = !S.canWrite; disarm($("#i_del"));
     f.classList.add("editing"); att.load("invoices/" + id); supHint(); payVis(); calc(); f.scrollIntoView({behavior:"smooth",block:"start"}); };
+  /* «لصق من Claude»: a photo of an invoice read by Claude into a short text, filled into this form for the user to check and save */
+  const fill = J => {
+    reset();
+    const num = v => v === "" || v == null ? "" : r2(n(v)), errs = [];
+    if (J.date && /^\d{4}-\d{2}-\d{2}$/.test(J.date)) $("#i_date").value = J.date > today() ? today() : J.date; else errs.push("التاريخ");
+    $("#i_no").value = J.no || ""; $("#i_sup").value = J.supplier || ""; $("#i_buy").value = J.buyer || "";
+    const cats = S.settings.categories || [];
+    if (J.category && cats.includes(J.category)) $("#i_cat").value = J.category;
+    $("#i_bt").value = num(J.beforeTax); $("#i_vat").value = num(J.vat);
+    if ($("#i_vatWrap") && n(J.vat) > 0) $("#i_vatWrap").hidden = false;
+    if (J.qty) $("#i_qty").value = J.qty; if (J.unit) $("#i_unit").value = J.unit;
+    $("#i_st").value = J.status === "غير مدفوعة" ? "غير مدفوعة" : "مدفوعة"; if (PAY.includes(J.pay)) $("#i_pay").value = J.pay;
+    $("#i_notes").value = J.notes || "";
+    supHint(); if (J.category && cats.includes(J.category)) $("#i_cat").value = J.category;
+    const tot = r2(n(J.beforeTax) + n(J.vat));
+    if (J.total != null && Math.abs(tot - r2(n(J.total))) > 0.005) errs.push(`المجموع (${fmt(tot)} لا يساوي ${fmt(n(J.total))})`);
+    const sp = Array.isArray(J.split) ? J.split.filter(l => PG_BY[l.k] && n(l.a) > 0).map(l => ({k:l.k, a:r2(n(l.a))})) : [];
+    if (J.production || sp.length){ $("#i_prod").checked = true; S.prodTouched = true; }
+    if (sp.length > 1){ S.invSplit = sp; if (Math.abs(r2(sumBy(sp, l => l.a)) - tot) > 0.005) errs.push("توزيع الأقسام لا يساوي الإجمالي"); }
+    pgUi(sp.length === 1 ? sp[0].k : ""); payVis(); calc(); spSum();
+    const dup = J.no && (S.invoices || []).find(v => !v.deleted && v.no && v.no.trim() === String(J.no).trim() && normName(v.supplier || "") === normName(J.supplier || ""));
+    const miss = [!$("#i_cat").value && "التصنيف", ...errs].filter(Boolean);
+    $("#i_cdask").hidden = false;
+    $("#i_cdask").innerHTML = `<div class="note ${dup || errs.length ? "warn" : ""}">${dup ? `<b>هذه الفاتورة مسجّلة من قبل بتاريخ <span class="num">${dmy(dup.date)}</span>.</b> لا تضفها مرة ثانية.<br>` : ""}عُبّئت الفاتورة من Claude. راجع <b>طريقة الدفع</b> (من أين خرج المبلغ)${miss.length ? ` و<b>${miss.join("، ")}</b>` : ""}، ثم اضغط «إضافة الفاتورة».</div>`;
+    f.scrollIntoView({behavior:"smooth", block:"start"}); };
+  $("#i_paste") && ($("#i_paste").onclick = () => {
+    $("#sheet").innerHTML = `<div class="entry"><h3 style="margin:0">لصق فاتورة من Claude</h3>
+      <p class="small muted" style="margin:0">أرسل صورة الفاتورة لـ Claude، وانسخ النص الذي يعطيك إياه والصقه هنا.</p>
+      <textarea id="ip_t" rows="7" dir="ltr" placeholder='{"aqeela":"invoice", ...}'></textarea><div id="ip_out"></div>
+      <div class="actions"><button class="btn" type="button" id="ip_go">تعبئة الفاتورة</button><button class="btn ghost" type="button" id="ip_x">إغلاق</button></div></div>`;
+    $("#modal").classList.add("open"); $("#ip_x").onclick = closeModal; setTimeout(() => $("#ip_t") && $("#ip_t").focus(), 50);
+    $("#ip_go").onclick = () => { let J; try { const t = $("#ip_t").value.trim(), i = t.indexOf("{"), j = t.lastIndexOf("}"); J = JSON.parse(t.slice(i, j + 1)); } catch(e){ J = null; }
+      if (!J || J.aqeela !== "invoice"){ $("#ip_out").innerHTML = '<div class="note warn">النص غير مكتمل. انسخه كاملاً من رسالة Claude.</div>'; return; }
+      closeModal(); fill(J); }; });
   f.oninput = e => { calc(); if (!e.target.closest || !e.target.closest("#i_sp")) spSum(); }; $("#i_15").onclick = () => { $("#i_vat").value = r2(n($("#i_bt").value)*0.15); calc(); spSum(); };
   $("#i_cancel").onclick = reset;
   f.onsubmit = async e => { e.preventDefault();
