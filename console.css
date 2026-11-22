@@ -260,3 +260,8 @@ a.cx-btn.pri{color:#fff}
 @media (max-width:1500px){.cx-t th{padding:13px 11px}.cx-t td{padding:14px 11px}}
 .cx-tw{scrollbar-width:thin}
 a.cx-ni{text-decoration:none;box-sizing:border-box}
+
+.cx-hrs{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:8px}
+.cx-hr{min-height:44px;border:1px solid #D4D4DA;border-radius:9px;background:#fff;color:var(--ink);font-size:15px;font-weight:600}
+.cx-hr.on{border-color:var(--acc);background:var(--acc);color:#fff}
+@media (max-width:820px){.cx-hrs{grid-template-columns:repeat(6,minmax(0,1fr))}}

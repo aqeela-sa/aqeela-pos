@@ -58,19 +58,20 @@ const NAV = [
   { id: "dash", ic: "dash", t: "الملخص" },
   { id: "orders", ic: "cart", t: "الطلبات" },
   { id: "customers", ic: "people", t: "العملاء" },
-  { g: "reports", ic: "trend", t: "التقارير", items: [["sales", "المبيعات"], ["pays", "المدفوعات"], ["items", "تحليل القائمة"], ["disc", "الخصومات والإلغاءات"], ["shifts", "الورديات"]] },
+  { g: "reports", ic: "trend", t: "التقارير", items: [["sales", "المبيعات"], ["hours", "المبيعات بالساعة"], ["pays", "المدفوعات"], ["items", "تحليل القائمة"], ["disc", "الخصومات والإلغاءات"], ["shifts", "الورديات"]] },
   { id: "stock", ic: "bag", t: "المخزون" },
   { id: "menu", ic: "food", t: "قائمة المنتجات" },
   { g: "admin", ic: "gear", t: "إدارة", items: [["staff", "الكاشيرون والرموز"], ["store", "الإيصال والإعدادات"], ["verify", "التحقق من إيصال"]] },
 ];
-const TITLES = { dash: "الملخص", orders: "الطلبات", customers: "العملاء", sales: "تقرير المبيعات", pays: "تقرير المدفوعات", items: "تحليل القائمة", disc: "الخصومات والإلغاءات", shifts: "الورديات", stock: "المخزون — التغليف", menu: "قائمة المنتجات والأسعار", staff: "الكاشيرون والرموز", store: "الإيصال والإعدادات", verify: "التحقق من إيصال" };
-const PARENT = { sales: "التقارير", pays: "التقارير", items: "التقارير", disc: "التقارير", shifts: "التقارير", staff: "إدارة", store: "إدارة", verify: "إدارة" };
+const TITLES = { dash: "الملخص", orders: "الطلبات", customers: "العملاء", sales: "تقرير المبيعات", hours: "المبيعات بالساعة", pays: "تقرير المدفوعات", items: "تحليل القائمة", disc: "الخصومات والإلغاءات", shifts: "الورديات", stock: "المخزون — التغليف", menu: "قائمة المنتجات والأسعار", staff: "الكاشيرون والرموز", store: "الإيصال والإعدادات", verify: "التحقق من إيصال" };
+const PARENT = { sales: "التقارير", hours: "التقارير", pays: "التقارير", items: "التقارير", disc: "التقارير", shifts: "التقارير", staff: "إدارة", store: "إدارة", verify: "إدارة" };
 
 export function mount(api, tab) {
   A = api; window.__cxUnmount = unmount;
   const t = A.bizDay();
   st = Object.assign({ page: "dash", open: { reports: true, admin: false }, p: "day", d: t, cmp: false, dtab: "gen", flt: { type: "", method: "", cashier: "", test: false },
     a: t, b: t, grp: "day", pgrp: "none", igrp: "none", q: "", status: "all", pg: 0, cat: "", chart: false, dkind: "disc" }, ls.get("st", {}));
+  if (!Array.isArray(st.hrs)) st.hrs = []; st.hrs = st.hrs.filter(h => Number.isInteger(h) && h >= 0 && h < 24);
   st.d = st.a = st.b = t; st.q = ""; st.pg = 0;
   const h = location.hash.match(/^#\/admin\/(\w+)/);
   st.page = tab || (h && TITLES[h[1]] ? h[1] : st.page);
@@ -98,7 +99,7 @@ function unmount() {
 const userName = () => A.S.user?.email === "abuabraj@gmail.com" ? "عاطف" : (A.S.cashier?.name || "المدير");
 function net() { const n = $("#cxnet"); if (!n) return; n.classList.toggle("off", !navigator.onLine); n.querySelector("span").textContent = navigator.onLine ? "متصل" : "بدون إنترنت"; }
 function onHash() { const h = location.hash.match(/^#\/admin\/(\w+)/); if (h && TITLES[h[1]] && h[1] !== st.page) go(h[1], true); }
-const save = () => ls.set("st", { open: st.open, p: st.p, cmp: st.cmp, dtab: st.dtab, grp: st.grp, pgrp: st.pgrp, igrp: st.igrp, chart: st.chart, flt: { ...st.flt }, page: st.page, dkind: st.dkind });
+const save = () => ls.set("st", { open: st.open, p: st.p, cmp: st.cmp, dtab: st.dtab, grp: st.grp, pgrp: st.pgrp, igrp: st.igrp, chart: st.chart, hrs: st.hrs, flt: { ...st.flt }, page: st.page, dkind: st.dkind });
 
 function go(page, noPush) {
   closePop(); closeDrawer(); st.page = page; st.pg = 0; save();
@@ -584,6 +585,46 @@ PAGES.sales = async () => {
     { k: "cost", t: "التكلفة", num: 1, f: m("cost") }, { k: "gp", t: "مجمل الربح", num: 1, f: r => `<span class="num" style="color:#15803D;font-weight:600">${nf(r.gp)}</span>` }, { k: "cpct", t: "نسبة التكلفة", num: 1, sv: r => r.cpct || 0, f: r => `<span class="num">${pct(r.cpct)}</span>` }, { k: "avg", t: "متوسط الطلب", num: 1, f: m("avg") }],
     rows, { foot: { label: "المجموع", n: ni(a.n), qty: ni(a.qty), gross: nf(a.gross), disc: nf(a.disc), net: nf(a.net), vT: nf(a.vT), cost: nf(a.cost), gp: nf(a.gp), cpct: pct(a.cpct), avg: nf(a.avg) }, empty: "لا توجد مبيعات في هذه الفترة" });
   drawCharts();
+};
+
+/* ---------- المبيعات بالساعة: يختار المدير يوماً (أو فترة) وساعة أو أكثر، والساعة 6م تعني 6:00 إلى 6:59 ---------- */
+const hrSpan = h => { const x = (h % 12) || 12, m = h < 12 ? "ص" : "م"; return `${x}:00 – ${x}:59 ${m}`; };
+PAGES.hours = async () => {
+  const [rb, rbind] = rangeBtn(PAGES.hours), cut = A.S.config?.cutoff ?? 4, HRS = [...Array(24).keys()].map(i => (i + cut) % 24);
+  const sel = HRS.filter(h => st.hrs.includes(h));
+  page(`<div class="cx-ctl">${rb}<span class="cx-sp"></span>${fltBtn()}</div>${fltChips()}
+    <div class="cx-card" style="margin-bottom:16px"><div class="cx-ch"><h3>اختر الساعات</h3><div style="display:flex;gap:8px"><button class="cx-btn" id="hall">الكل</button><button class="cx-btn" id="hclr">مسح</button></div></div>
+      <div class="cx-hrs">${HRS.map(h => `<button class="cx-hr ${st.hrs.includes(h) ? "on" : ""}" data-h="${h}" title="${hrSpan(h)}">${hrLab(h)}</button>`).join("")}</div>
+      <p style="color:#71717A;font-size:13px;margin:10px 0 0">كل ساعة تشمل الدقائق من :00 إلى :59 — اضغط أكثر من ساعة لجمعها. الساعات بعد منتصف الليل تُحسب لليوم التجاري (الوردية) نفسه.</p></div>
+    <div id="hb">${sel.length ? loadingTable() : emptyBox("اختر ساعة أو أكثر من الأعلى لعرض مبيعاتها")}</div>`,
+    { sub: "مبيعات ساعة محددة أو مجموع عدة ساعات في يوم أو فترة", acts: expBtn() });
+  rbind(); bindExp();
+  const set = v => { st.hrs = v; save(); PAGES.hours(); };
+  $$(".cx-hr").forEach(b => b.onclick = () => { const h = +b.dataset.h; set(st.hrs.includes(h) ? st.hrs.filter(x => x !== h) : [...st.hrs, h]); });
+  $("#hall").onclick = () => set(HRS.slice()); $("#hclr").onclick = () => set([]);
+  let all; try { all = await load(st.a, st.b); bindFlt(PAGES.hours, all.map(o => o.cashierName)); } catch (e) { $("#hb").innerHTML = errBox(e); return; }
+  if (!sel.length) return;
+  const L = applyF(all), hOf = o => new Date(o.ts).getHours(), inSel = L.filter(o => st.hrs.includes(hOf(o))), ok = inSel.filter(isOk);
+  const dayTot = L.filter(isOk).reduce((s, o) => s + o.total, 0), a = agg(inSel), sum = G => G.reduce((s, o) => s + o.total, 0);
+  const MS = Object.keys(A.METHODS).filter(k => k === "cash" || ok.some(o => o.method === k));
+  const row = (G, extra) => { const g = G.filter(isOk), s = agg(G); const r = { ...extra, n: s.n, net: s.net, avg: s.avg, vN: s.vN, vT: s.vT, share: dayTot ? s.net / dayTot * 100 : 0 }; MS.forEach(k => r["m_" + k] = sum(g.filter(o => o.method === k))); return r; };
+  const rows = sel.map((h, i) => row(L.filter(o => hOf(o) === h), { h, i, label: hrSpan(h) }));
+  const multi = st.a !== st.b, days = multi ? [...new Set(inSel.map(o => o.day))].sort() : [];
+  charts.clear(); EXP = [];
+  $("#hb").innerHTML = `<div class="cx-stats"><div class="cx-st"><span>صافي مبيعات الساعات المختارة</span><b class="num">${nf(a.net)}</b><small>${sel.length === 24 ? "كل الساعات" : sel.length > 6 ? `${ni(sel.length)} ساعات مختارة` : sel.map(hrLab).join(" + ")}</small></div>
+      <div class="cx-st"><span>عدد الطلبات</span><b class="num">${ni(a.n)}</b><small>${ni(a.qty)} صنف</small></div>
+      <div class="cx-st"><span>متوسط الطلب</span><b class="num">${nf(a.avg)}</b><small>للساعات المختارة</small></div>
+      <div class="cx-st"><span>من مبيعات ${multi ? "الفترة" : "اليوم"}</span><b class="num">${dayTot ? pct(a.net / dayTot * 100) : "0%"}</b><small>من أصل ${nf(dayTot)}</small></div></div>
+    <div class="cx-tcard"><div id="htb"></div></div>${multi ? `<h3 style="margin:22px 0 10px;font-size:16px">الساعات المختارة حسب اليوم</h3><div class="cx-tcard"><div id="hdb"></div></div>` : ""}`;
+  const mc = MS.map(k => ({ k: "m_" + k, t: A.METHODS[k], num: 1, f: r => `<span class="num">${nf(r["m_" + k])}</span>` }));
+  const base = [{ k: "n", t: "الطلبات", num: 1, f: r => `<span class="num">${ni(r.n)}</span>` }, ...mc, { k: "net", t: "صافي المبيعات", num: 1, f: r => `<b class="num">${nf(r.net)}</b>` },
+    { k: "avg", t: "متوسط الطلب", num: 1, f: r => `<span class="num">${nf(r.avg)}</span>` }, { k: "vT", t: "الإلغاءات", num: 1, f: r => `<span class="num">${nf(r.vT)}</span>${r.vN ? ` <small style="color:#71717A">(${r.vN})</small>` : ""}` },
+    { k: "share", t: "النسبة", num: 1, f: r => `<span class="num">${pct(r.share)}</span>` }];
+  const g = row(inSel, {}), foot = { n: ni(g.n), net: nf(g.net), avg: nf(g.avg), vT: nf(g.vT), share: pct(g.share), ...Object.fromEntries(MS.map(k => ["m_" + k, nf(g["m_" + k])])) };
+  table("#htb", "hours", [{ k: "label", t: "الساعة", sv: r => r.i, f: r => `<b dir="rtl">${r.label}</b>` }, ...base], rows,
+    { foot: { label: sel.length > 1 ? `مجموع ${ni(sel.length)} ساعات` : "المجموع", ...foot }, title: "المبيعات بالساعة", empty: "لا توجد مبيعات في الساعات المختارة" });
+  if (multi) table("#hdb", "hoursd", [{ k: "label", t: "اليوم", sv: r => r.d, f: r => `<b>${esc(r.label)}</b>` }, ...base], days.map(d => row(inSel.filter(o => o.day === d), { d, label: dFull(d) })),
+    { foot: { label: "المجموع", ...foot }, title: "الساعات المختارة حسب اليوم", empty: "لا توجد مبيعات في الساعات المختارة" });
 };
 
 /* ---------- تقرير المدفوعات ---------- */
