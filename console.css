@@ -259,3 +259,4 @@ a.cx-btn.pri{color:#fff}
 /* الجداول العريضة: مسافات أصغر حتى تظهر كل الأعمدة على شاشة اللابتوب والآيباد */
 @media (max-width:1500px){.cx-t th{padding:13px 11px}.cx-t td{padding:14px 11px}}
 .cx-tw{scrollbar-width:thin}
+a.cx-ni{text-decoration:none;box-sizing:border-box}

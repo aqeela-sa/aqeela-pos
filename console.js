@@ -77,7 +77,7 @@ export function mount(api, tab) {
   root = document.getElementById("app");
   root.innerHTML = `<div class="cx" id="cx">
     <aside class="cx-side"><div class="cx-logo"><img src="icons/logo.png" alt=""><b dir="ltr">Cashier AQ</b></div><nav class="cx-nav" id="cxnav"></nav>
-      <div class="cx-foot"><button class="cx-ni" data-act="pos">${ic("store")}<span>شاشة البيع</span></button></div></aside>
+      <div class="cx-foot"><a class="cx-ni" href="acc/" target="_blank" rel="noopener" title="برنامج المحاسبة (نافذة جديدة)">${ic("chart")}<span>برنامج المحاسبة ↗</span></a><button class="cx-ni" data-act="pos">${ic("store")}<span>شاشة البيع</span></button></div></aside>
     <div class="cx-scrim" data-act="nav"></div>
     <div class="cx-main"><header class="cx-top"><button class="cx-burger" data-act="nav" aria-label="القائمة">${ic("menu")}</button>
       <div class="cx-crumb" id="cxcrumb"></div><span class="cx-sp"></span>

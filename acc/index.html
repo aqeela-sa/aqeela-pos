@@ -1029,8 +1029,9 @@ const commRate = () => Math.min(100, Math.max(0, n(S.settings.appCommission))) /
    or Lokit's contract for delivery typed on the sales page); the settings rate only before the program start or until loaded */
 function saleComm(s, d){
   if (!s) return 0; d = d || s.date;
+  if (typeof pfDayComm !== "function" && s.source === "pos" && s.deliveryComm != null) return n(s.deliveryComm);
   if (typeof pfDayComm === "function"){
-    if (s.source === "pos"){ const v = pfDayComm(d); if (v != null) return v; }
+    if (s.source === "pos"){ const v = pfDayComm(d); if (v != null) return v; if (s.deliveryComm != null) return n(s.deliveryComm); }
     else if (n(s.delivery) > 0 && S.settings.startDate && d >= S.settings.startDate){ const v = pfDayCommAll(d); if (v != null) return v; }
   }
   return n(s.delivery) * commRate();
@@ -5992,7 +5993,43 @@ async function btSave(id, patch){ const t = (S.bankTx || []).find(x => x.id === 
    and how it compares with the production cost the invoices show for the same days. */
 const mnItems = () => (S.menuItems || []).filter(x => !x.deleted);
 const mnByKey = () => { const m = new Map(); mnItems().forEach(x => { if (x.code) m.set("c:" + x.code, x); m.set("n:" + x.name.trim(), x); }); return m; };
-const mnFind = (M, it) => M.get("c:" + it.code) || M.get("n:" + String(it.name).trim());
+const mnFind = (M, it) => M.get("c:" + it.code) || M.get("n:" + String(it.name).trim()) || mnPosCost(it);
+/* the cashier's own menu cost (كلفة الصنف في لوحة المدير) when the item has none here */
+function mnPosCost(it){
+  const M = (S.pos && S.pos.menu) || [], m = M.find(x => (it.code && x.ref === it.code) || String(x.name || "").trim() === String(it.name || "").trim());
+  return m && m.cost != null && m.cost !== "" ? {name:m.name, code:m.ref || "", cost:n(m.cost), pack:0, fromPos:true} : null;
+}
+/* item sales from the cashier for a period (shift days), in the same shape as the Foodics item report: the order total after
+   discount is shared over its lines and add-ons by their value */
+function posItemSales(a, b){
+  const P = S.pos; if (!P || !P.ready) return null;
+  const sday = new Map((P.shifts || []).map(x => [x.id, x.day])), by = new Map();
+  const put = (code, name, q, v) => { const k = code || "n:" + name, x = by.get(k) || {code:code || "", name, qty:0, net:0}; x.qty += q; x.net += v; by.set(k, x); };
+  for (const o of (P.orders || [])){
+    if (o.test || o.status !== "paid") continue;
+    const d = (o.shiftId && sday.get(o.shiftId)) || o.day; if (!d || d < a || d > b) continue;
+    const lines = o.lines || [], gross = lines.reduce((t, l) => t + n(l.qty) * (n(l.price) + (l.mods || []).reduce((u, m) => u + n(m.price), 0)), 0) || 1, f = n(o.total) / gross;
+    for (const l of lines){ put(l.ref, l.name, n(l.qty), n(l.qty) * n(l.price) * f); for (const m of (l.mods || [])) put(m.ref, m.name, n(l.qty), n(l.qty) * n(m.price) * f); }
+  }
+  return [...by.values()].map(x => ({...x, net: r2(x.net)})).sort((p, q) => q.net - p.net);
+}
+function openMenuFromPos(){
+  const t = today(), y = addDays(t, -1);
+  $("#sheet").innerHTML = `<div class="entry"><h3 style="margin:0">تقرير الأصناف من الكاشير</h3>
+    <p class="small muted" style="margin:0">يُبنى من طلبات الكاشير المدفوعة (حسب يوم الوردية، بدون التجريبي والملغي)، بنفس شكل تقرير فودكس، فتُحلَّل تكلفة كل وجبة وربحها.</p>
+    <div class="grid g2"><div class="f"><label for="mp_from">من</label><input id="mp_from" type="date" value="${addDays(y, -6)}"></div><div class="f"><label for="mp_to">إلى</label><input id="mp_to" type="date" value="${y}"></div></div>
+    <div id="mp_prev"></div>
+    <div class="actions"><button class="btn" type="button" id="mp_go">إنشاء التقرير</button><button class="btn ghost" type="button" id="mp_x">إلغاء</button></div></div>`;
+  $("#modal").classList.add("open"); $("#mp_x").onclick = closeModal;
+  const prev = () => { const a = $("#mp_from").value, b = $("#mp_to").value, L = a && b && a <= b ? posItemSales(a, b) : null;
+    $("#mp_prev").innerHTML = !L ? '<div class="note warn">حدد الفترة بشكل صحيح.</div>' : !L.length ? '<div class="note">لا توجد مبيعات في الكاشير في هذه الفترة.</div>'
+      : `<div class="bt-sum"><div><span>الأصناف</span><b class="num">${L.length}</b></div><div><span>الكمية</span><b class="num">${fmt0(sumBy(L, x => x.qty))}</b></div><div><span>صافي المبيعات</span><b class="num">${fmt(sumBy(L, x => x.net))}</b></div></div>`;
+    $("#mp_go").disabled = !L || !L.length; return L; };
+  $("#mp_from").onchange = prev; $("#mp_to").onchange = prev; prev();
+  $("#mp_go").onclick = async () => { const a = $("#mp_from").value, b = $("#mp_to").value, items = prev(); if (!items || !items.length) return;
+    const id = `pos_${a}_${b}`;
+    if (await write(() => S.db.doc("itemSales/" + id).set({from:a, to:b, items, source:"pos", importedAt:new Date().toISOString(), ...stamp()}), "تم إنشاء تقرير الأصناف من الكاشير")){ S.mnRep = id; closeModal(); renderMenu(); } };
+}
 function mnReports(){ return (S.itemSales || []).filter(x => !x.deleted).sort((a, b) => a.to < b.to ? 1 : a.to > b.to ? -1 : (a.from < b.from ? 1 : -1)); }
 function mnAnalyse(rep){
   const M = mnByKey(), rows = rep.items.map(it => { const p = mnFind(M, it) || null, q = n(it.qty), net = n(it.net);
@@ -6006,8 +6043,8 @@ function mnAnalyse(rep){
   return {rows, sales:S_, salesKnown:SK, tc:TC, food, packC, missing:rows.filter(r => r.unit == null), avgM};
 }
 const MN_CLS = {star:["نجم","ok","مبيعات عالية وربح عالٍ: حافظ عليه"], horse:["محبوب","info","مبيعات عالية وربح أقل: راجع التكلفة أو السعر"], puzzle:["لغز","warn","ربح عالٍ ومبيعات أقل: روّج له"], dog:["ضعيف","bad","مبيعات وربح أقل: أعد النظر فيه"]};
-function viewMenu(){ return `<div class="bar"><h2>تكلفة الوجبات وربحيتها</h2><div class="actions"><button class="btn ghost sm" type="button" id="mn_imp" ${S.canEdit ? "" : "disabled"}>استيراد تقرير الأصناف من فودكس</button><button class="btn ghost sm" type="button" id="mn_pdf">تقرير PDF</button></div></div>${readonlyNote()}<div id="list"></div>`; }
-function bindMenu(){ $("#mn_imp").onclick = openMenuImport; $("#mn_pdf").onclick = () => { const R = mnReports().find(r => r.id === S.mnRep) || mnReports()[0]; if (!R) return toast("استورد تقرير الأصناف أولاً"); const keep = S.rp; S.rp = {type:"menu", a:R.from, b:R.to, emp:R.id}; exportPdf().finally(() => { S.rp = keep; }); }; }
+function viewMenu(){ return `<div class="bar"><h2>تكلفة الوجبات وربحيتها</h2><div class="actions">${S.pos ? `<button class="btn sm" type="button" id="mn_pos" ${S.canEdit ? "" : "disabled"}>تقرير من الكاشير</button>` : ""}<button class="btn ghost sm" type="button" id="mn_imp" ${S.canEdit ? "" : "disabled"}>استيراد تقرير الأصناف من فودكس</button><button class="btn ghost sm" type="button" id="mn_pdf">تقرير PDF</button></div></div>${readonlyNote()}<div id="list"></div>`; }
+function bindMenu(){ $("#mn_imp").onclick = openMenuImport; if ($("#mn_pos")) $("#mn_pos").onclick = openMenuFromPos; $("#mn_pdf").onclick = () => { const R = mnReports().find(r => r.id === S.mnRep) || mnReports()[0]; if (!R) return toast("استورد تقرير الأصناف أولاً"); const keep = S.rp; S.rp = {type:"menu", a:R.from, b:R.to, emp:R.id}; exportPdf().finally(() => { S.rp = keep; }); }; }
 function renderMenu(){
   const el = $("#list"); if (!el) return;
   const reps = mnReports();
@@ -6017,7 +6054,7 @@ function renderMenu(){
   const rs = rangeStats(R.from > st ? R.from : st, R.to), actualPct = rs.netSales ? rs.prod / rs.netSales : null;
   const sort = S.mnSort || "profit", rows = A.rows.slice().sort((a, b) => sort === "pct" ? (n(b.pct) - n(a.pct)) : sort === "qty" ? b.q - a.q : sort === "name" ? (a.it.name < b.it.name ? -1 : 1) : n(b.profit) - n(a.profit));
   const totP = sumBy(A.rows.filter(r => r.profit != null), r => r.profit);
-  el.innerHTML = `<div class="actions" style="align-items:center"><label class="small muted" for="mn_rep">الفترة</label><select id="mn_rep">${reps.map(r => `<option value="${esc(r.id)}" ${r.id === R.id ? "selected" : ""}>${dmy(r.from)} – ${dmy(r.to)}</option>`).join("")}</select>
+  el.innerHTML = `<div class="actions" style="align-items:center"><label class="small muted" for="mn_rep">الفترة</label><select id="mn_rep">${reps.map(r => `<option value="${esc(r.id)}" ${r.id === R.id ? "selected" : ""}>${dmy(r.from)} – ${dmy(r.to)}${r.source === "pos" ? " · من الكاشير" : " · من فودكس"}</option>`).join("")}</select>
       <span style="flex:1"></span><div class="seg" role="group" aria-label="الترتيب">${[["profit","الربح"],["qty","الكمية"],["pct","نسبة التكلفة"],["name","الاسم"]].map(([k,l]) => `<button type="button" data-mns="${k}" class="${sort === k ? "on" : ""}">${l}</button>`).join("")}</div></div>
     ${A.missing.length ? `<div class="note warn">أصناف بدون تكلفة (لا تدخل في الحساب): ${A.missing.map(r => esc(r.it.name)).join("، ")}. اكتب تكلفتها في الجدول.</div>` : ""}
     <div class="grid g4">
@@ -6160,7 +6197,7 @@ function openPosDay(day){
 }
 const posAsSale = x => ({cash: x.cash || null, mada: x.mada || null, visa: x.visa || null, delivery: r2(x.lokit + x.hunger) || null});
 function viewPos(){
-  return `<div class="bar"><h2>مبيعات الكاشير</h2><div class="actions" style="margin:0">${testToggle()}${rgPicker()}</div></div>${testBanner()}
+  return `<div class="bar"><h2>مبيعات الكاشير</h2><div class="actions" style="margin:0"><a class="btn ghost sm" href="../#admin/dash" target="_blank" rel="noopener" title="لوحة المدير في برنامج الكاشير">لوحة المدير ↗</a>${testToggle()}${rgPicker()}</div></div>${testBanner()}
     <p class="small muted" style="margin:-4px 0 12px">المبيعات كما سجّلها برنامج الكاشير لحظة بلحظة، مقارنةً بالمبيعات المسجّلة في البرنامج (من فودكس). كل طلب يُحسب على يوم الوردية التي سُجّل فيها، فطلب الساعة 1 فجراً يتبع اليوم الذي فُتحت فيه الوردية.</p>
     <div id="list"></div>`;
 }
@@ -6248,7 +6285,7 @@ function renderPos(){
   el.querySelectorAll("tr[data-posday]").forEach(tr => tr.onclick = e => { if (e.target.closest("button")) return; openPosDay(tr.dataset.posday); });
   el.querySelectorAll("[data-posimp]").forEach(b => armDelete(b, async () => {
     const d = b.dataset.posimp, x = all.get(d), ex = S.sales.get(d);
-    const data = {...(ex ? strip(ex) : {}), date:d, ...posAsSale(x), transfer: ex ? (ex.transfer ?? null) : null, credit: ex ? (ex.credit ?? null) : null, count: x.count || null, source:"pos", notes: "من الكاشير" + (ex && ex.source === "foodics" ? " (بدل فودكس)" : "")};
+    const data = {...(ex ? strip(ex) : {}), date:d, ...posAsSale(x), transfer: ex ? (ex.transfer ?? null) : null, credit: ex ? (ex.credit ?? null) : null, count: x.count || null, source:"pos", deliveryComm: typeof pfDayComm === "function" ? pfDayComm(d) : null, notes: "من الكاشير" + (ex && ex.source === "foodics" ? " (بدل فودكس)" : "")};
     await recWrite("sales", d, data, null, "تم تسجيل مبيعات اليوم من الكاشير");
   }, "اضغط مرة أخرى للتأكيد"));
 }
@@ -6396,7 +6433,7 @@ function staffFeeds(){
   if (!wantPf && typeof pfUnsub !== "undefined" && pfUnsub){ try { pfUnsub(); } catch(e){} pfUnsub = null; }
   if (wantPos && !S.posUnsub && window.__accFb && window.__accFb.pos){
     const from = addDays(S.settings.startDate || "2026-11-14", -1);
-    S.posUnsub = window.__accFb.pos.watch(from, d => { S.pos = {...d, ready:true, at:Date.now()}; if (["pos","sales","platforms","dashboard","reports","accounting"].includes(S.view)) renderLists(); },
+    S.posUnsub = window.__accFb.pos.watch(from, d => { S.pos = {...d, ready:true, at:Date.now()}; if (["pos","sales","platforms","dashboard","reports","accounting","menu"].includes(S.view)) renderLists(); },
       e => { S.pos = {orders:[], shifts:[], ready:true, err: e && (e.code || e.message)}; if (S.view === "pos") renderLists(); });
   } else if (!wantPos && S.posUnsub){ try { S.posUnsub(); } catch(e){} S.posUnsub = null; S.pos = null; }
 }
