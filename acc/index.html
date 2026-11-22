@@ -5749,7 +5749,7 @@ function gdDashChip(){
 
 /* ---------- FULL BACKUP & RESTORE (owner) ---------- */
 const bkAge = () => S.settings.lastBackupAt ? Math.floor((Date.now() - new Date(S.settings.lastBackupAt).getTime()) / 864e5) : 999;
-const BK_NAMES = {settings:"الإعدادات", sales:"المبيعات", invoices:"الفواتير", custody:"العهد", appTransfers:"تحويلات التطبيقات", recon:"المطابقة اليومية", journal:"القيود اليدوية", suppliers:"الموردون", payments:"سداد الموردين", staff:"الموظفون", advances:"السلف", payroll:"مسيرات الرواتب", stockItems:"أصناف المخزون", stockCounts:"جرد المخزون", cfo:"المدير المالي", bankTx:"كشف البنك", menuItems:"تكلفة الوجبات", itemSales:"تقارير الأصناف", attachments:"الصور والمرفقات", platforms:"التطبيقات والعقود", users:"المستخدمون", orders:"طلبات الكاشير", shifts:"ورديات الكاشير", menu:"منيو الكاشير", config:"إعدادات الكاشير"};
+const BK_NAMES = {settings:"الإعدادات", sales:"المبيعات", invoices:"الفواتير", custody:"العهد", appTransfers:"تحويلات التطبيقات", recon:"المطابقة اليومية", journal:"القيود اليدوية", suppliers:"الموردون", payments:"سداد الموردين", staff:"الموظفون", advances:"السلف", payroll:"مسيرات الرواتب", stockItems:"أصناف المخزون", stockCounts:"جرد المخزون", cfo:"المدير المالي", bankTx:"كشف البنك", menuItems:"تكلفة الوجبات", itemSales:"تقارير الأصناف", attachments:"الصور والمرفقات", platforms:"التطبيقات والعقود", users:"المستخدمون", posDays:"ملخصات أيام الكاشير", orders:"طلبات الكاشير", shifts:"ورديات الكاشير", menu:"منيو الكاشير", config:"إعدادات الكاشير"};
 function bindBackup(){
   const B = window.__accFb && window.__accFb.backup, dlb = $("#bk_dl"); if (!B || !dlb) return;
   const st = h => { S.bkMsg = h; const e = $("#bk_st"); if (e) e.innerHTML = h; };
@@ -5840,7 +5840,9 @@ function bindPosClean(){
     const run = async (orders, shifts, msg) => {
       const incl = !!($("#pc_open") && $("#pc_open").checked), keep = o => !incl && openIds.has(o.shiftId);
       if (incl) shifts = [...shifts, ...openSh.filter(x => shifts === testS ? x.test : true)];
-      try { const o = await window.__accFb.pos.remove("orders", orders.filter(x => !keep(x)).map(x => x.id)); const s = await window.__accFb.pos.remove("shifts", shifts.map(x => x.id));
+      try { const gone = orders.filter(x => !keep(x)), o = await window.__accFb.pos.remove("orders", gone.map(x => x.id)); const s = await window.__accFb.pos.remove("shifts", shifts.map(x => x.id));
+        /* deleted real orders change the daily summaries: they are worked out again from the earliest day touched */
+        const d0 = gone.filter(x => !x.test).map(dayOf).filter(Boolean).sort()[0]; if (d0) await posSumReset(d0);
         toast(`${msg}: ${o} طلب و${s} وردية`); b.click(); }
       catch(e){ toast("تعذّر المسح: " + (e.code || e.message || e)); } };
     if ($("#pc_test")) armDelete($("#pc_test"), () => run(testO, testS, "تم مسح بيانات التجربة"), "اضغط مرة أخرى لمسح بيانات التجربة");
@@ -6062,9 +6064,9 @@ function mnPosCost(it){
    discount is shared over its lines and add-ons by their value */
 function posItemSales(a, b){
   const P = S.pos; if (!P || !P.ready) return null;
-  const sday = new Map((P.shifts || []).map(x => [x.id, x.day])), by = new Map();
+  const {orders:PO, sday} = posSrc(), by = new Map();
   const put = (code, name, q, v) => { const k = code || "n:" + name, x = by.get(k) || {code:code || "", name, qty:0, net:0}; x.qty += q; x.net += v; by.set(k, x); };
-  for (const o of (P.orders || [])){
+  for (const o of PO){
     if (o.test || o.status !== "paid") continue;
     const d = (o.shiftId && sday.get(o.shiftId)) || o.day; if (!d || d < a || d > b) continue;
     const lines = o.lines || [], gross = lines.reduce((t, l) => t + n(l.qty) * (n(l.price) + (l.mods || []).reduce((u, m) => u + n(m.price), 0)), 0) || 1, f = n(o.total) / gross;
@@ -6080,7 +6082,10 @@ function openMenuFromPos(){
     <div id="mp_prev"></div>
     <div class="actions"><button class="btn" type="button" id="mp_go">إنشاء التقرير</button><button class="btn ghost" type="button" id="mp_x">إلغاء</button></div></div>`;
   $("#modal").classList.add("open"); $("#mp_x").onclick = closeModal;
-  const prev = () => { const a = $("#mp_from").value, b = $("#mp_to").value, L = a && b && a <= b ? posItemSales(a, b) : null;
+  const prev = () => { const a = $("#mp_from").value, b = $("#mp_to").value;
+    if (a && b && a <= b && posOldMissing(a, b)){ $("#mp_prev").innerHTML = '<p class="muted">جارٍ قراءة طلبات الفترة من الكاشير…</p>'; $("#mp_go").disabled = true;
+      posOldLoad(a, b).then(() => { if ($("#mp_from") && $("#mp_from").value === a && $("#mp_to").value === b) prev(); }, e => { $("#mp_prev").innerHTML = `<div class="note warn">تعذّرت القراءة (${esc(e && (e.code || e.message) || e)}).</div>`; }); return null; }
+    const L = a && b && a <= b ? posItemSales(a, b) : null;
     $("#mp_prev").innerHTML = !L ? '<div class="note warn">حدد الفترة بشكل صحيح.</div>' : !L.length ? '<div class="note">لا توجد مبيعات في الكاشير في هذه الفترة.</div>'
       : `<div class="bt-sum"><div><span>الأصناف</span><b class="num">${L.length}</b></div><div><span>الكمية</span><b class="num">${fmt0(sumBy(L, x => x.qty))}</b></div><div><span>صافي المبيعات</span><b class="num">${fmt(sumBy(L, x => x.net))}</b></div></div>`;
     $("#mp_go").disabled = !L || !L.length; return L; };
@@ -6213,13 +6218,23 @@ const posTestOk = o => !!o.test === !!S.testView;
 const testToggle = () => `<button type="button" class="btn ${S.testView ? "" : "ghost"} sm" data-testview="1" aria-pressed="${!!S.testView}">${S.testView ? "إغلاق عرض التجربة" : "عرض بيانات التجربة"}</button>`;
 const testBanner = () => S.testView ? `<div class="note warn" style="margin-bottom:12px"><b>عرض بيانات التجربة:</b> تظهر هنا طلبات الوضع التجريبي في الكاشير فقط. لا تدخل في المبيعات ولا القيود ولا المطابقة، ولا تُعتمد ولا تُسجَّل منها تحويلات.</div>` : "";
 document.addEventListener("click", e => { const b = e.target.closest && e.target.closest("[data-testview]"); if (!b) return; S.testView = !S.testView; render(); });
-function posDays(){
-  const P = S.pos; if (!P || !P.ready) return null;
-  const sday = new Map((P.shifts || []).map(x => [x.id, x.day])), by = new Map();
-  for (const o of (P.orders || [])){
-    if (!posTestOk(o)) continue;
-    const d = (o.shiftId && sday.get(o.shiftId)) || o.day; if (!d) continue;
-    const x = by.get(d) || {date:d, cash:0, mada:0, visa:0, lokit:0, hunger:0, count:0, voids:0, voidAmt:0, open:0, openAmt:0, disc:0, hsN:0, hsGross:0, hsFee:0, hsDel:0, last:0};
+/* ---------- the cashier's history: a live window plus daily summaries ----------
+   Only the last POS_WIN days of orders are read live (from S.pos.from on). Every older business day is a small summary
+   (acc_posDays/{day}): the totals of the cashier page and each delivery-app order total, enough for the platform ledgers
+   and fees to come out exactly as from the orders. The owner's copy writes them; an older period's orders (items, one day's list)
+   are read once on demand. So the daily reads stay about the same however long the history grows. */
+const POS_WIN = 60;
+const posStart = () => addDays(S.settings.startDate || "2026-11-14", -1);
+const posWinFrom = () => { const w = addDays(today(), -(window.__posWin ?? POS_WIN)), st = posStart(); return w > st ? w : st; };
+/* the totals of each business day of the given orders (only those `keep` accepts), with each delivery-app order total in `ag`
+   in the orders' own sequence: keyed by payment method when the order has one that is not cash or a card, else by order type
+   as «t:type» (as the Apps page matches them) */
+function posAgg(orders, sday, keep, lo, hi){
+  const by = new Map();
+  for (const o of (orders || [])){
+    if (!keep(o)) continue;
+    const d = (o.shiftId && sday.get(o.shiftId)) || o.day; if (!d || (lo && d < lo) || (hi && d > hi)) continue;
+    const x = by.get(d) || {date:d, cash:0, mada:0, visa:0, lokit:0, hunger:0, count:0, voids:0, voidAmt:0, open:0, openAmt:0, disc:0, hsN:0, hsGross:0, hsFee:0, hsDel:0, last:0, ag:[]};
     const t = n(o.total);
     if (o.status === "void"){ x.voids++; x.voidAmt += t; }
     else if (o.status === "open"){ x.open++; x.openAmt += t; }
@@ -6227,18 +6242,83 @@ function posDays(){
       x[o.method] += t; x.count++; x.disc += n(o.discount && o.discount.amount);
       if (o.method === "hunger"){ x.hsN++; x.hsGross += t; x.hsFee += hsFee(t); x.hsDel += hsDelivery(t); }
     }
+    if (o.status === "paid"){ const k = o.method ? (["cash","mada","visa"].includes(o.method) ? null : o.method) : "t:" + (o.type || ""); if (k) x.ag.push({k, t}); }
     x.last = Math.max(x.last, n(o.paidAt || o.ts)); by.set(d, x);
   }
   by.forEach(x => { POS_M.forEach(k => x[k] = r2(x[k])); x.total = r2(POS_M.reduce((a, k) => a + x[k], 0)); x.hsFee = r2(x.hsFee); });
   return by;
+}
+function posDays(){
+  const P = S.pos; if (!P || !P.ready) return null;
+  const sday = new Map((P.shifts || []).map(x => [x.id, x.day])), by = posAgg(P.orders, sday, posTestOk);
+  if (!S.testView) for (const [d, x] of (P.sums || [])) if (!by.has(d)){ const {id, at, by:_b, ...r} = x; by.set(d, r); }
+  return by;
+}
+/* the summaries are complete up to the day before the live window (or the window reaches the start) */
+const posSumGap = () => { const P = S.pos; if (!P || !P.ready || P.from <= posStart()) return false; const th = P.meta && P.meta.through; return !th || th < addDays(P.from, -1); };
+const posSumNote = () => !posSumGap() || S.testView ? "" : S.pos.sumErr
+  ? `<div class="note warn" style="margin-bottom:12px">تعذّرت قراءة ملخصات أيام الكاشير الأقدم من <span class="num">${dmy(S.pos.from)}</span> (${esc(S.pos.sumErr)})، فلا تظهر أرقامها هنا. تُحل بنشر قواعد Firebase الأخيرة.</div>`
+  : `<div class="note warn" style="margin-bottom:12px">أيام الكاشير الأقدم من <span class="num">${dmy(S.pos.from)}</span> لم تُلخَّص بعد، فلا تظهر أرقامها هنا حتى يفتح المالك البرنامج.</div>`;
+/* canonical text of a summary, to write it only when it changed */
+const canon = v => Array.isArray(v) ? "[" + v.map(canon).join(",") + "]" : v && typeof v === "object" ? "{" + Object.keys(v).filter(k => !["id","at","by"].includes(k)).sort().map(k => JSON.stringify(k) + ":" + canon(v[k])).join(",") + "}" : JSON.stringify(v ?? null);
+/* owner only: bring the summaries up to yesterday. Days the live window holds are rewritten when they change; a gap left by a long
+   absence (or a reset after deleting old orders) is read once from the cashier and summarized. Days with a shift still open wait. */
+async function posSumSync(){
+  const P = S.pos, F = window.__accFb && window.__accFb.pos;
+  if (!S.isOwner || S.posSyncing || !F || !P || !P.ready || P.err || P.sumErr) return;
+  S.posSyncing = true;
+  try {
+    const W = P.from, st = posStart(), y = addDays(today(), -1), ops = [], stored = P.sumsAll || new Map(), keep = o => !o.test;
+    const openDays = new Set((P.shifts || []).filter(z => z.status === "open" && !z.test).map(z => z.day));
+    const diff = (lo, hi, by, skip) => {
+      for (const [d, x] of by) if (!skip(d) && (!stored.has(d) || canon(stored.get(d)) !== canon(x))) ops.push({day:d, data:{...x, at:new Date().toISOString()}});
+      for (const d of stored.keys()) if (d >= lo && d <= hi && !by.has(d) && !skip(d)) ops.push({day:d, data:null});
+    };
+    const th = P.meta && P.meta.through, g0 = th && th >= st ? addDays(th, 1) : st, g1 = addDays(W, -1);
+    if (g0 <= g1){ const R = await F.range(g0, g1); diff(g0, g1, posAgg(R.orders, new Map(R.shifts.map(x => [x.id, x.day])), keep, g0, g1), () => false); }
+    const firstOpen = [...openDays].sort()[0], hi = firstOpen && firstOpen <= y ? addDays(firstOpen, -1) : y;
+    if (W <= y) diff(W, y, posAgg(P.orders, new Map((P.shifts || []).map(x => [x.id, x.day])), keep, W, y), d => openDays.has(d) || d > hi);
+    const through = hi >= g1 ? hi : g1, meta = !th || th !== through ? {through, at:new Date().toISOString(), by:S.uid || ""} : null;
+    if (ops.length || meta) await F.saveSums(ops, meta);
+  } catch(e){ console.warn("posSumSync", e); }
+  finally { S.posSyncing = false; }
+}
+let posSumT = null; const posSumSoon = () => { clearTimeout(posSumT); posSumT = setTimeout(posSumSync, 2500); };
+/* after old orders were deleted: summarize again from the earliest day touched */
+async function posSumReset(fromDay){
+  const P = S.pos, F = window.__accFb && window.__accFb.pos; if (!S.isOwner || !F || !P) return;
+  const th = P.meta && P.meta.through, d = addDays(fromDay < posStart() ? posStart() : fromDay, -1);
+  if (th && d < th) await F.saveSums([], {through:d, at:new Date().toISOString(), by:S.uid || ""});
+}
+/* older orders, read on demand for a period (item reports, one day's list); kept for the session */
+S.posOld = {days:new Set(), orders:[], shifts:[]};
+function posOldMissing(a, b){
+  const P = S.pos; if (!P || !P.ready) return null;
+  const lo = a < posStart() ? posStart() : a, hi = b < P.from ? b : addDays(P.from, -1); if (lo > hi) return null;
+  for (let d = lo; d <= hi; d = addDays(d, 1)) if (!S.posOld.days.has(d)) return [lo, hi];
+  return null;
+}
+async function posOldLoad(a, b){
+  const m = posOldMissing(a, b); if (!m) return;
+  const R = await window.__accFb.pos.range(m[0], m[1]), O = S.posOld, sd = new Map(R.shifts.map(x => [x.id, x.day])), have = new Set(O.orders.map(o => o.id));
+  for (const z of R.shifts) if (!O.shifts.some(x => x.id === z.id)) O.shifts.push(z);
+  for (const o of R.orders){ const d = (o.shiftId && sd.get(o.shiftId)) || o.day; if (d >= m[0] && d <= m[1] && !have.has(o.id)) O.orders.push(o); }
+  for (let d = m[0]; d <= m[1]; d = addDays(d, 1)) O.days.add(d);
+}
+/* the live orders together with the older ones read so far */
+function posSrc(){
+  const P = S.pos || {}, O = S.posOld, sh = O.shifts.length ? [...O.shifts, ...(P.shifts || [])] : (P.shifts || []);
+  /* in document order, as one full read would give them, so sums come out to the last digit the same */
+  return {orders: O.orders.length ? (P.orders || []).concat(O.orders).sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0) : (P.orders || []), sday: new Map(sh.map(x => [x.id, x.day]))};
 }
 const POS_TYPE = {dine:"محلي", take:"سفري", delivery:"توصيل", lokit:"لوكيت", hunger:"هنقرستيشن"};
 const POS_METH = {cash:"كاش", mada:"مدى", visa:"فيزا", lokit:"لوكيت", hunger:"هنقرستيشن"};
 const hm = t => { const d = new Date(n(t)); return isNaN(d) ? "" : `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`; };
 /* every order of one shift day, in the order they were rung up, with their items: to trace a difference with Foodics down to the order */
 function openPosDay(day){
-  const P = S.pos || {}, sday = new Map((P.shifts || []).map(x => [x.id, x.day]));
-  const L = (P.orders || []).filter(o => posTestOk(o) && ((o.shiftId && sday.get(o.shiftId)) || o.day) === day).sort((a, b) => n(a.ts) - n(b.ts));
+  if (posOldMissing(day, day)){ toast("جارٍ قراءة طلبات اليوم…"); posOldLoad(day, day).then(() => openPosDay(day), e => toast("تعذّرت القراءة: " + (e && (e.code || e.message) || e))); return; }
+  const {orders:PO, sday} = posSrc();
+  const L = PO.filter(o => posTestOk(o) && ((o.shiftId && sday.get(o.shiftId)) || o.day) === day).sort((a, b) => n(a.ts) - n(b.ts));
   const st = o => o.status === "void" ? '<span class="chip bad">ملغي</span>' : o.status === "open" ? '<span class="chip warn">غير مدفوع</span>' : '<span class="chip ok">مدفوع</span>';
   const items = o => (o.lines || []).map(l => `<div><b class="num">${n(l.qty)}</b> × ${esc(l.name)}${(l.mods || []).length ? ` <span class="small muted">+ ${l.mods.map(m => esc(m.name)).join("، ")}</span>` : ""}${(l.notes || []).length || l.note ? ` <span class="small muted">(${esc([...(l.notes || []), l.note].filter(Boolean).join("، "))})</span>` : ""}</div>`).join("");
   const paid = L.filter(o => o.status !== "void" && o.status !== "open");
@@ -6330,7 +6410,7 @@ function renderPos(){
       <td>${s ? chip(diff) : ""}${det && !isPos ? `<div class="by">${det}</div>` : ""}</td>
       <td>${!S.testView && !live.has(x.date) && x.date <= t && S.canEdit && !isPos ? `<button type="button" class="btn ghost sm" data-posimp="${x.date}">${s ? "اعتماد أرقام الكاشير" : "تسجيل من الكاشير"}</button>` : ""}</td></tr>`;
   }).join("");
-  el.innerHTML = `<div class="grid g4" style="margin-bottom:14px">
+  el.innerHTML = `${posSumNote()}<div class="grid g4" style="margin-bottom:14px">
       <div class="kpi"><span class="l">مبيعات الكاشير · ${esc(RL)}</span><span class="v num">${fmt(sum("total"))}</span><span class="small muted">${days.reduce((a, x) => a + x.count, 0)} طلب في ${days.length} يوم</span></div>
       <div class="kpi green"><span class="l">كاش</span><span class="v num">${fmt(sum("cash"))}</span></div>
       <div class="kpi blue"><span class="l">مدى وفيزا</span><span class="v num">${fmt(r2(sum("mada") + sum("visa")))}</span></div>
@@ -6491,9 +6571,13 @@ function staffFeeds(){
   if (wantPf && typeof startPlatforms === "function") startPlatforms();
   if (!wantPf && typeof pfUnsub !== "undefined" && pfUnsub){ try { pfUnsub(); } catch(e){} pfUnsub = null; }
   if (wantPos && !S.posUnsub && window.__accFb && window.__accFb.pos){
-    const from = addDays(S.settings.startDate || "2026-11-14", -1);
-    S.posUnsub = window.__accFb.pos.watch(from, d => { S.pos = {...d, ready:true, at:Date.now()}; if (["pos","sales","platforms","dashboard","reports","accounting","menu"].includes(S.view)) renderLists(); },
-      e => { S.pos = {orders:[], shifts:[], ready:true, err: e && (e.code || e.message)}; if (S.view === "pos") renderLists(); });
+    const W = posWinFrom();
+    S.posUnsub = window.__accFb.pos.watch(W, addDays(W, -1), d => {
+      /* only the business days of the window are live; an older day comes whole from its summary */
+      const sd = new Map(d.shifts.map(x => [x.id, x.day])), orders = d.orders.filter(o => ((o.shiftId && sd.get(o.shiftId)) || o.day || "") >= W);
+      const all = new Map(d.sums.filter(x => x.id !== "_meta").map(x => [x.id, x])), sums = new Map([...all].filter(([k]) => k < W).sort((a, b) => a[0] < b[0] ? -1 : 1));
+      S.pos = {orders, shifts:d.shifts, menu:d.menu, from:W, sums, sumsAll:all, meta:d.sums.find(x => x.id === "_meta") || null, sumErr:d.sumErr, ready:true, at:Date.now()}; posSumSoon(); if (["pos","sales","platforms","dashboard","reports","accounting","menu"].includes(S.view)) renderLists(); },
+      e => { S.pos = {orders:[], shifts:[], menu:[], from:W, sums:new Map(), sumsAll:new Map(), meta:null, ready:true, err: e && (e.code || e.message)}; if (S.view === "pos") renderLists(); });
   } else if (!wantPos && S.posUnsub){ try { S.posUnsub(); } catch(e){} S.posUnsub = null; S.pos = null; }
 }
 /* once: records marked as having pictures that were never attached lose the mark, so «مرفق» means a picture really exists */
@@ -6512,7 +6596,7 @@ async function fixAttFlags(){
 }
 if (window.__accHost) window.__accStart = connect; else connect();
 </script>
-<script src="apps.js?v=9"></script>
-<script type="module" src="acc-fb.js?v=5"></script>
+<script src="apps.js?v=10"></script>
+<script type="module" src="acc-fb.js?v=6"></script>
 </body>
 </html>

@@ -72,6 +72,8 @@ service cloud.firestore {
     match /acc_menuItems/{id}   { allow read, create, update: if isAdmin() || granted('menu'); allow delete: if isAdmin(); }
     match /acc_itemSales/{id}   { allow read, create, update: if isAdmin() || granted('menu'); allow delete: if isAdmin(); }
     match /acc_platforms/{id}   { allow read, create, update: if isAdmin() || granted('platforms'); allow delete: if isAdmin(); }
+    // daily summaries of the cashier's older days: written by the owner's copy, read wherever cashier figures are shown
+    match /acc_posDays/{id}     { allow read: if isAdmin() || granted('pos') || granted('platforms'); allow write: if isAdmin(); }
 
     // anything else: the owner only
     match /{document=**} {

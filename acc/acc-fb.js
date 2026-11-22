@@ -76,7 +76,7 @@ const userApi = {
 };
 
 /* ---------- full backup and restore (owner): every accounting collection and the cashier's orders, shifts, menu and settings ---------- */
-const ACC_COLLS = ["settings","sales","invoices","custody","appTransfers","recon","journal","suppliers","payments","staff","advances","payroll","stockItems","stockCounts","cfo","bankTx","menuItems","itemSales","attachments","platforms","users"];
+const ACC_COLLS = ["settings","sales","invoices","custody","appTransfers","recon","journal","suppliers","payments","staff","advances","payroll","stockItems","stockCounts","cfo","bankTx","menuItems","itemSales","attachments","platforms","users","posDays"];
 const POS_COLLS = ["orders","shifts","menu","config"];
 /* Firestore timestamps become plain milliseconds, so the file is ordinary JSON and can be written back as it is */
 const plain = v => v && typeof v === "object" ? (typeof v.toMillis === "function" ? v.toMillis() : Array.isArray(v) ? v.map(plain) : Object.fromEntries(Object.entries(v).map(([k, x]) => [k, plain(x)]))) : v;
@@ -126,13 +126,33 @@ window.claude = {
 };
 /* the cashier's own records (orders and shifts), read-only, for the owner: the accounting program compares and imports from them */
 const pos = {
-  watch(fromDay, cb, onErr){
-    let orders = null, shifts = null, menu = [];
-    const fire = () => { if (orders && shifts) cb({ orders, shifts, menu }); };
+  /* live: the orders whose day is from «fromDay» on, the shifts from «shFrom» on, the menu, and the daily summaries kept for the
+     older days (acc_posDays). Reading only a recent window keeps the daily reads small however long the history grows. */
+  watch(fromDay, shFrom, cb, onErr){
+    let orders = null, shifts = null, menu = [], sums = null, sumErr = null;
+    const fire = () => { if (orders && shifts && sums) cb({ orders, shifts, menu, sums, sumErr }); };
     const u1 = F.onSnapshot(F.query(F.collection(fs, "orders"), F.where("day", ">=", fromDay)), q => { orders = q.docs.map(d => ({ id: d.id, ...d.data() })); fire(); }, e => onErr && onErr(e));
-    const u2 = F.onSnapshot(F.query(F.collection(fs, "shifts"), F.where("day", ">=", fromDay)), q => { shifts = q.docs.map(d => ({ id: d.id, ...d.data() })); fire(); }, e => onErr && onErr(e));
+    const u2 = F.onSnapshot(F.query(F.collection(fs, "shifts"), F.where("day", ">=", shFrom)), q => { shifts = q.docs.map(d => ({ id: d.id, ...d.data() })); fire(); }, e => onErr && onErr(e));
     const u3 = F.onSnapshot(F.collection(fs, "menu"), q => { menu = q.docs.map(d => ({ id: d.id, ...d.data() })); fire(); }, () => {});
-    return () => { u1(); u2(); u3(); };
+    /* a missing permission here (rules not yet published) must not stop the live window: the summaries are then simply empty */
+    const u4 = F.onSnapshot(F.collection(fs, P + "posDays"), q => { sums = q.docs.map(d => ({ id: d.id, ...d.data() })); sumErr = null; fire(); }, e => { sums = []; sumErr = (e && (e.code || e.message)) || "error"; fire(); });
+    return () => { u1(); u2(); u3(); u4(); };
+  },
+  /* orders whose day is a … b+1 and shifts whose day is a−1 … b+1: every order of the business days a … b (an order after midnight
+     carries the next calendar day), read once when an older period is asked for */
+  async range(a, b){
+    const nx = (d, k) => { const x = new Date(d + "T12:00:00Z"); x.setUTCDate(x.getUTCDate() + k); return x.toISOString().slice(0, 10); };
+    const [o, sh] = await Promise.all([
+      F.getDocs(F.query(F.collection(fs, "orders"), F.where("day", ">=", a), F.where("day", "<=", nx(b, 1)))),
+      F.getDocs(F.query(F.collection(fs, "shifts"), F.where("day", ">=", nx(a, -1)), F.where("day", "<=", nx(b, 1))))]);
+    return { orders: o.docs.map(d => ({ id: d.id, ...d.data() })), shifts: sh.docs.map(d => ({ id: d.id, ...d.data() })) };
+  },
+  /* the owner's copy writes the daily summaries: {day, data} sets one, {day, data:null} removes it; «meta» is the marker doc */
+  async saveSums(ops, meta){
+    const all = [...ops.map(x => [x.day, x.data]), ...(meta ? [["_meta", meta]] : [])];
+    for (let i = 0; i < all.length; i += 400){ const b = F.writeBatch(fs);
+      all.slice(i, i + 400).forEach(([id, d]) => d ? b.set(F.doc(fs, P + "posDays", id), d) : b.delete(F.doc(fs, P + "posDays", id))); await b.commit(); }
+    return all.length;
   },
   /* every order and shift, any day (for the cleanup tool) */
   async all(){

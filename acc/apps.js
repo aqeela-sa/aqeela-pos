@@ -40,6 +40,7 @@ function pfFee(c, t){
   const comm = t * n(c.commissionPct) / 100, pay = t * n(c.paymentPct) / 100, del = pfDelivery(c, t), extra = n(c.perOrder);
   return {comm, pay, del, extra, total: comm + pay + del + extra};
 }
+const PF_SUM = Object.freeze({summary:true});
 const pfDayOf = (o, sday) => (o.shiftId && sday.get(o.shiftId)) || o.day;
 /* paid cashier orders of one platform, each with its business day and its fees */
 function pfOrders(pf, testMode = !!S.testView){
@@ -47,6 +48,8 @@ function pfOrders(pf, testMode = !!S.testView){
   const sday = new Map((P.shifts || []).map(x => [x.id, x.day]));
   const rows = (P.orders || []).filter(o => !!o.test === testMode && o.status === "paid" && (o.method === pf.posKey || (o.type === pf.posKey && !o.method)))
     .map(o => { const day = pfDayOf(o, sday), t = n(o.total), c = pfContract(pf, day); return {o, day, t, c, f: pfFee(c, t)}; });
+  /* the days before the live window: each order total kept in the day's summary, with the fees worked out the same way */
+  if (!testMode) for (const [day, x] of (P.sums || [])) for (const e of (x.ag || [])) if (e.k === pf.posKey || e.k === "t:" + pf.posKey){ const t = n(e.t), c = pfContract(pf, day); rows.push({o:PF_SUM, day, t, c, f: pfFee(c, t)}); }
   return pf.id === PF_SALES_APP && !testMode ? rows.concat(pfFromSales(pf, rows, sday)) : rows;
 }
 /* days whose Lokit orders were not rung up on the cashier (taken in Foodics and entered on the sales page): the sales page's
@@ -55,6 +58,7 @@ const PF_SALES_APP = "lokit";
 function pfFromSales(pf, rows, sday){
   const have = new Set(rows.map(r => r.day)), st = S.settings.startDate || "", other = new Map();
   for (const o of (S.pos.orders || [])) if (!o.test && o.status === "paid" && o.method && o.method !== pf.posKey && (S.platforms || []).some(p => p.posKey === o.method)){ const d = pfDayOf(o, sday); other.set(d, (other.get(d) || 0) + n(o.total)); }
+  for (const [d, x] of (S.pos.sums || [])) for (const e of (x.ag || [])) if (e.k !== pf.posKey && !String(e.k).startsWith("t:") && (S.platforms || []).some(p => p.posKey === e.k)) other.set(d, (other.get(d) || 0) + n(e.t));
   const out = [];
   for (const s of (S.sales ? S.sales.values() : [])){
     const day = s.date || s.id; if (!day || (st && day < st) || have.has(day)) continue;
@@ -163,7 +167,7 @@ function renderPlatforms(){
   if (!S.platforms){ cards.innerHTML = `<div class="empty card">جارٍ التحميل…</div>`; el.innerHTML = ""; return; }
   if (!S.pos || !S.pos.ready){ el.innerHTML = `<div class="empty card">جارٍ قراءة طلبات الكاشير…</div>`; }
   const R = curR();
-  cards.innerHTML = `<div class="pf-cards">${S.platforms.map(p => {
+  cards.innerHTML = `${posSumNote()}<div class="pf-cards">${S.platforms.map(p => {
     const L = pfLedger(p), m = L.days.filter(x => inR(x.date, R)), sales = m.reduce((a, x) => a + x.sales, 0), fees = m.reduce((a, x) => a + x.fees, 0), c = pfContract(p, today());
     return `<button type="button" class="pf-card ${p.id === S.pfSel ? "on" : ""}" data-pf="${esc(p.id)}">
       <b>${esc(p.name)}</b><span class="small muted">${c ? pfSummary(c) : "لا يوجد عقد"}</span>
@@ -321,11 +325,11 @@ function pfMenu(pf, el){
 
 /* ---- monthly item report: what the platform sold, what it would have brought sold directly, and what it actually paid ---- */
 function pfItems(pf, R){
-  const P = S.pos, sday = new Map((P.shifts || []).map(x => [x.id, x.day])), menu = new Map((P.menu || []).map(m => [m.id, m]));
+  const P = S.pos, {orders:PO, sday} = posSrc(), menu = new Map((P.menu || []).map(m => [m.id, m]));
   const by = new Map(), get = (l) => { const k = l.ref || l.id || l.name; if (!by.has(k)) by.set(k, {k, name:l.name, qA:0, sA:0, fees:0, del:0, pack:0, food:0, direct:0, qD:0, sD:0}); return by.get(k); };
   const priceOf = id => { const m = menu.get(id); return m ? n(m.price) : null; };
   let miss = 0;
-  for (const o of (P.orders || [])){
+  for (const o of PO){
     if (!posTestOk(o) || o.status !== "paid") continue;
     const day = pfDayOf(o, sday); if (!inR(day, R)) continue;
     const lines = o.lines || [], sub = lines.reduce((a, l) => a + n(l.total), 0) || 1, t = n(o.total);
@@ -346,7 +350,11 @@ function pfItems(pf, R){
 }
 function pfReport(pf, el){
   if (!pf.posKey){ el.innerHTML = `<div class="note">${esc(pf.name)} غير مربوط بالكاشير بعد.</div>`; return; }
-  const R = curR(), {L, miss} = pfItems(pf, R), sort = S.pfSort || "diff";
+  const R = curR(), p3 = new Date(S.y, S.m - 4, 1), a0 = iso(p3) < R[0] ? iso(p3) : R[0];
+  /* the period and the three months before it: older orders than the live window are read once, then the report is drawn */
+  if (!S.testView && posOldMissing(a0, R[1])){ el.innerHTML = '<div class="empty card">جارٍ قراءة طلبات الفترة من الكاشير…</div>';
+    if (!S.pfOldBusy){ S.pfOldBusy = true; posOldLoad(a0, R[1]).then(() => { S.pfOldBusy = false; if (el.isConnected) pfReport(pf, el); }, e => { S.pfOldBusy = false; el.innerHTML = `<div class="note warn">تعذّرت القراءة (${esc(e && (e.code || e.message) || e)}).</div>`; }); } return; }
+  const {L, miss} = pfItems(pf, R), sort = S.pfSort || "diff";
   L.sort((a, b) => sort === "qty" ? b.qA - a.qA : sort === "profit" ? b.profit - a.profit : b.diff - a.diff);
   const T = k => r2(L.reduce((a, x) => a + n(x[k]), 0));
   const prev = [1, 2, 3].map(k => { const d = new Date(S.y, S.m - 1 - k, 1), r = monthRange(d.getFullYear(), d.getMonth() + 1), X = pfItems(pf, r).L; return {m:d.getMonth(), y:d.getFullYear(), sA:X.reduce((a, x) => a + x.sA, 0), got:X.reduce((a, x) => a + x.got, 0), direct:X.reduce((a, x) => a + x.direct, 0)}; }).filter(x => x.sA);
