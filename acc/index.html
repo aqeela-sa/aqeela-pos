@@ -336,16 +336,6 @@ nav.tabs a:hover{background:rgba(255,255,255,.08);border-radius:8px 8px 0 0}
 .rp-paper .rp-t td{padding:calc(4px*var(--rk,1)) calc(5px*var(--rk,1));border:calc(1px*var(--rk,1)) solid #ECE8E5;text-align:center;white-space:normal;background:#FFFFFF;color:#1A1A1A;line-height:1.4}
 .rp-paper .rp-t tbody tr:nth-child(even) td{background:#FBFAF9}
 .rp-paper .rp-t td.t{text-align:right;font-weight:600}
-.rp-pr .rp-kpi .v{font-size:calc(20px*var(--rk,1))}.rp-pr .rp-kpi .l{font-size:calc(12px*var(--rk,1))}.rp-pr .rp-sec h3{font-size:calc(16px*var(--rk,1))}
-.rp-paper .rp-pr .rp-t{font-size:calc(16px*var(--rk,1))}
-.rp-paper .rp-pr .rp-t th{font-size:calc(14px*var(--rk,1));padding:calc(8px*var(--rk,1)) calc(6px*var(--rk,1))}
-.rp-paper .rp-pr .rp-t td{padding:calc(6px*var(--rk,1));vertical-align:middle}
-.rp-paper .rp-pr .rp-pay .rp-t td{height:calc(var(--prh,40px)*var(--rk,1));padding:0 calc(6px*var(--rk,1))}
-.rp-paper .rp-pr .rp-t td.t{font-size:calc(17px*var(--rk,1));font-weight:700}
-.rp-paper .rp-pr .rp-adv .rp-t{font-size:calc(12px*var(--rk,1))}.rp-paper .rp-pr .rp-adv .rp-t th,.rp-paper .rp-pr .rp-adv .rp-t td{padding:calc(3px*var(--rk,1)) calc(5px*var(--rk,1));font-size:calc(12px*var(--rk,1))}.rp-pr .rp-adv .rp-sec h3{font-size:calc(13px*var(--rk,1))}
-.rp-sig{display:grid;grid-template-columns:repeat(3,1fr);gap:calc(40px*var(--rk,1));margin:calc(30px*var(--rk,1)) calc(10px*var(--rk,1)) calc(6px*var(--rk,1))}
-.rp-sig div{display:flex;flex-direction:column;gap:calc(34px*var(--rk,1));font-size:calc(15px*var(--rk,1));font-weight:700;color:#3A3A3A}
-.rp-sig i{display:block;border-bottom:calc(1px*var(--rk,1)) solid #9A9A9A}
 .rp-paper .rp-t tr.tot td{background:#F4F1EF;font-weight:800;border-top:calc(2px*var(--rk,1)) solid #D9D3CF}
 .rp-paper .rp-t tr:last-child td{border-bottom:calc(1px*var(--rk,1)) solid #ECE8E5}
 .rp-empty{color:#888;padding:calc(10px*var(--rk,1))!important}
@@ -2483,8 +2473,28 @@ async function exportPdf(){
     box.appendChild(cap); document.body.appendChild(box);
     splitWords(cap);
     await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
-    const paper = cap.firstElementChild, top0 = paper.getBoundingClientRect().top, total = paper.scrollHeight;
-    const pxPerMm = W / (pageW - 2*mX), pagePx = Math.floor((pageH - mTop - mBot) * pxPerMm);
+    const paper = cap.firstElementChild, pxPerMm = W / (pageW - 2*mX), pagePx = Math.floor((pageH - mTop - mBot) * pxPerMm);
+    /* a sheet meant to fill its page (rep.fit) is drawn larger, everything in proportion, as far as it still fits on one page */
+    if (rep.fit && paper.scrollHeight < pagePx * 0.92){
+      /* larger only while every number and word still fits its column on one line, and the sheet on one page */
+      const roomy = () => paper.scrollHeight <= pagePx && [...paper.querySelectorAll("table.rp-t")].every(t => t.scrollWidth <= paper.clientWidth + 1)
+        && [...paper.querySelectorAll(".rp-t th, .rp-t td")].every(c => c.scrollWidth <= c.clientWidth + 1 && [...c.querySelectorAll("span, b")].every(w => w.getClientRects().length <= 1) && unbroken(c));
+      /* a bare one-word label (a header like «الغياب») must not be split across lines either */
+      const unbroken = c => { const tw = document.createTreeWalker(c, NodeFilter.SHOW_TEXT); while (tw.nextNode()){ const t = tw.currentNode; if (!/\S/.test(t.nodeValue) || /\S\s+\S/.test(t.nodeValue)) continue; const r = document.createRange(); r.selectNodeContents(t); if (r.getClientRects().length > 1) return false; } return true; };
+      let fitted = false;
+      for (let z = 1.8; z > 1.0; z = Math.round((z - 0.05) * 100) / 100){
+        cap.style.setProperty("--rk", RK * z); await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+        if (roomy()){ fitted = true; break; }
+      }
+      if (!fitted) cap.style.setProperty("--rk", RK);
+      /* what height is left goes to the rows of the first table (the sheet itself), giving room to sign */
+      await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+      const t0 = paper.querySelector("table.rp-t"), rows = t0 ? [...t0.tBodies[0].rows] : [], left = pagePx - paper.scrollHeight - 4;
+      if (rows.length && left > 0){ const add = Math.min(Math.floor(left / rows.length / 2), 22 * RK);
+        rows.forEach(tr => [...tr.cells].forEach(td => { const cs = getComputedStyle(td); td.style.paddingTop = (parseFloat(cs.paddingTop) + add) + "px"; td.style.paddingBottom = (parseFloat(cs.paddingBottom) + add) + "px"; })); }
+      await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+    }
+    const top0 = paper.getBoundingClientRect().top, total = paper.scrollHeight;
     const rel = el => { const r = el.getBoundingClientRect(); return [r.top - top0, r.bottom - top0]; };
     const cands = new Set([total]);
     paper.querySelectorAll(".rp-sec, .rp-two, .rp-kpis, .rp-note, .rp-sign, .rp-foot").forEach(el => cands.add(Math.round(rel(el)[0]) - 1));
@@ -3675,16 +3685,13 @@ Object.assign(REPORTS, {
       /* the last column is left blank for each employee to sign on receiving the salary */
       return rpSec(`مسير ${ymLabel(p.id)} · ${prApproved(p) ? "معتمد" : "مسودة"}`, rpTable(["الموظف","الأساسي","الغياب","خصم الغياب","إضافي","خصومات","خصم سلفة","الصافي","المصروف","المتبقي","توقيع الاستلام"],
         (p.lines || []).map(l => { const c = prCalc(l); return [esc(l.name), M(c.base), n(l.absent) ? `<span class="num">${n(l.absent)}</span>` : "—", MD(c.absentAmt), MD(n(l.extra)), MD(n(l.deduct)), MD(n(l.advance)), `<b>${M(c.net)}</b>`, MD(c.paid), c.remain > 0.004 ? `<b class="rp-neg">${M(c.remain)}</b>` : "—", ""]; }),
-        ["الإجمالي", M(t.base), "", MD(t.absentAmt), MD(t.extra), MD(t.deduct), MD(t.advance), `<b>${M(t.net)}</b>`, MD(t.paid), MD(t.remain), ""], ["14%","8%","5%","7%","7%","7%","7%","9%","8%","8%","20%"])); });
+        ["الإجمالي", M(t.base), "", MD(t.absentAmt), MD(t.extra), MD(t.deduct), MD(t.advance), `<b>${M(t.net)}</b>`, MD(t.paid), MD(t.remain), ""], ["14%","8%","6%","7%","7%","8%","7%","9%","8%","8%","18%"])); });
     const advs = S.advances.filter(x => inR(x.date, [a,b])).sort((x,y) => x.date < y.date ? -1 : 1);
-    /* the sheet is printed for signing: large type, and rows tall enough to sign in, filling the page */
-    const nRows = ps.reduce((k, p) => k + (p.lines || []).length + 2, 0) + ps.length, advH = advs.length ? 66 + (advs.length + 2) * 22 : 0;
-    const rowH = Math.max(36, Math.min(76, Math.floor((410 - advH) / Math.max(1, nRows))));
-    const sig = `<div class="rp-sig">${["أعدّه","راجعه","اعتمده"].map(t => `<div><span>${t}</span><i></i></div>`).join("")}</div>`;
-    return {title:"مسير الرواتب", orient:"landscape", html: `<div class="rp-pr" style="--prh:${rowH}px">` + rpHead("مسير الرواتب", a, b) +
+    /* «fit»: the PDF enlarges the whole sheet, as it looks, until it fills the page */
+    return {title:"مسير الرواتب", orient:"landscape", fit:true, html: rpHead("مسير الرواتب", a, b) +
       rpKpis([["مصروف الرواتب", M(all.expense)], ["صافي المستحق للموظفين", M(all.net)], ["المصروف فعلياً", M(all.paid)], ["المتبقي", `<b class="${all.remain > 0.004 ? "rp-neg" : ""}">${M(all.remain)}</b>`]]) +
-      `<div class="rp-pay">${secs.join("") || rpSec("المسيرات", rpTable(["الموظف"], [], null))}</div>` +
-      (advs.length ? `<div class="rp-adv">` + rpSec("السلف المصروفة في الفترة", rpTable(["التاريخ","الموظف","المبلغ","صُرفت من","ملاحظات"], advs.map(x => [`<span class="num">${dmy(x.date)}</span>`, esc(x.name), M(n(x.amount)), esc(x.pay), esc(x.notes || "")]), ["الإجمالي","",M(sumBy(advs, x => n(x.amount))),"",""], ["14%","26%","16%","16%","28%"])) + `</div>` : "") + sig + rpFoot() + `</div>`};
+      (secs.join("") || rpSec("المسيرات", rpTable(["الموظف"], [], null))) +
+      (advs.length ? rpSec("السلف المصروفة في الفترة", rpTable(["التاريخ","الموظف","المبلغ","صُرفت من","ملاحظات"], advs.map(x => [`<span class="num">${dmy(x.date)}</span>`, esc(x.name), M(n(x.amount)), esc(x.pay), esc(x.notes || "")]), ["الإجمالي","",M(sumBy(advs, x => n(x.amount))),"",""], ["14%","26%","16%","16%","28%"])) : "") + rpFoot()};
   },
   payslip(a, b, key){
     const s = S.staff.find(v => v.id === key) || S.staff[0];
