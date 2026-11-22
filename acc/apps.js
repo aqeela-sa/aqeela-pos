@@ -95,13 +95,30 @@ const tiersIn = T => (T || []).map(x => Array.isArray(x) ? [n(x[0]), n(x[1])] : 
 const tiersOut = T => (T || []).map(x => Array.isArray(x) ? {min:n(x[0]), fee:n(x[1])} : {min:n(x.min), fee:n(x.fee)});
 const contractsOut = cs => (cs || []).map(c => ({...c, tiers: tiersOut(c.tiers)}));
 
-/* the platforms' cut for one shift day, from the cashier and the contracts (null until both are loaded); cached per data change */
-let pfDC = {key:null, by:null};
-function pfDayComm(d){
+/* the platforms' cut per shift day, by contract: «pos» from cashier orders only, «all» also counts the days taken from the
+   sales page (as on the Apps page). null until the cashier feed and the platforms are loaded; cached per data change */
+let pfDC = {key:null, pos:null, all:null};
+function pfFeeMaps(){
   if (!S.pos || !S.pos.ready || !S.platforms) return null;
-  const key = `${S.pos.at}|${S.pfVer || 0}`;
-  if (pfDC.key !== key){ const by = new Map(); for (const p of S.platforms) for (const r of pfOrders(p, false)) if (r.o) by.set(r.day, (by.get(r.day) || 0) + r.f.total); pfDC = {key, by}; }
-  return r2(pfDC.by.get(d) || 0);
+  const key = `${S.pos.at}|${S.pfVer || 0}|${S.ver || 0}`;
+  if (pfDC.key !== key){ const pos = new Map(), all = new Map();
+    for (const p of S.platforms) for (const r of pfOrders(p, false)){ all.set(r.day, (all.get(r.day) || 0) + r.f.total); if (r.o) pos.set(r.day, (pos.get(r.day) || 0) + r.f.total); }
+    pfDC = {key, pos, all}; }
+  return pfDC;
+}
+function pfDayComm(d){ const M = pfFeeMaps(); return M ? r2(M.pos.get(d) || 0) : null; }
+function pfDayCommAll(d){ const M = pfFeeMaps(); return M && M.all.has(d) ? r2(M.all.get(d)) : null; }
+/* the delivery-sales rate for a day typed on the sales page (Lokit's contract in force), for previews */
+function pfSalesRate(d){ const pf = (S.platforms || []).find(p => p.id === PF_SALES_APP); const c = pf && pfContract(pf, d || today()); return c ? (n(c.commissionPct) + n(c.paymentPct)) / 100 : null; }
+/* receivable from all platforms, the same figures as the Apps page; null when not loaded (the caller falls back) */
+function pfReceivable(){
+  if (!S.platforms || !S.pos || !S.pos.ready) return null;
+  let due = 0, paid = 0, gross = 0, next = null, last = null, late = 0;
+  for (const p of S.platforms){ const L = pfLedger(p);
+    due += L.net; paid += L.got; late += L.late; gross += L.days.reduce((a, x) => a + x.sales, 0);
+    for (const x of L.days) if (x.left > 0.009 && (!next || x.due < next)) next = x.due;
+    for (const t of L.tr) if (!last || t.date > last.date) last = {date:t.date, amt:n(t.amount)}; }
+  return {due:r2(due), paid:r2(paid), gross:r2(gross), left:r2(due - paid), late:r2(late), last, next, cycle:0, byContract:true};
 }
 
 /* ---------- data ---------- */

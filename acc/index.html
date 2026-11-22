@@ -1020,9 +1020,14 @@ const invTotal = x => n(x.beforeTax) + n(x.vat);
 const commRate = () => Math.min(100, Math.max(0, n(S.settings.appCommission))) / 100;
 /* the delivery platforms' cut of one day's sales: exact, contract by contract and order by order, once that day's sales are taken
    from the cashier (source "pos"); before that, the delivery total (all apps together, from Foodics) × the overall rate in the settings */
+/* what the delivery platforms keep from a day's sales: by the contracts on the Apps page (order by order from the cashier,
+   or Lokit's contract for delivery typed on the sales page); the settings rate only before the program start or until loaded */
 function saleComm(s, d){
   if (!s) return 0; d = d || s.date;
-  if (s.source === "pos" && typeof pfDayComm === "function"){ const v = pfDayComm(d); if (v != null) return v; }
+  if (typeof pfDayComm === "function"){
+    if (s.source === "pos"){ const v = pfDayComm(d); if (v != null) return v; }
+    else if (n(s.delivery) > 0 && S.settings.startDate && d >= S.settings.startDate){ const v = pfDayCommAll(d); if (v != null) return v; }
+  }
   return n(s.delivery) * commRate();
 }
 const netSale = s => saleTotal(s) - saleComm(s);
@@ -1106,6 +1111,7 @@ function balances(rows){
     cash: lc ? lc.ac : tr.cashExp, bank: lb ? lb.ab : tr.bankExp };
 }
 function appReceivable(){
+  const P = typeof pfReceivable === "function" && !S.testView ? pfReceivable() : null; if (P) return P;
   const st = S.settings, start = st.startDate || "0000";
   let due = 0, paid = 0, last = null;
   S.sales.forEach((s,d) => { if (d >= start) due += n(s.delivery) - saleComm(s, d); });
@@ -1134,9 +1140,10 @@ function monthStats(y,m){
   const total = by.reduce((t,x)=>t+x.v,0);
   const days = sales.filter(s => saleTotal(s) > 0).length;
   const invs = S.invoices.filter(x => inR(x.date,R));
-  const spentCus = S.custody.filter(x => inR(x.date,R) && x.type === "صرف من العهدة" && !isWithdrawCat(x.category)).reduce((t,x)=>t+n(x.amount),0);
+  const spentCus = S.custody.filter(x => inR(x.date,R) && x.type === "صرف من العهدة" && !isNonExpCat(x.category)).reduce((t,x)=>t+n(x.amount),0);
   const payExp = payrollExp(R[0], R[1]);
-  const exp = invs.filter(x => x.pay !== "من العهدة" && !isWithdrawCat(x.category) && !isCapexCat(x.category)).reduce((t,x)=>t+invTotal(x),0) + spentCus + payExp;
+  const used = R[0] <= today() ? packConsVal(R[0], R[1] < today() ? R[1] : today()) : 0, prepaid = prepaidShare(R[0], R[1]);
+  const exp = invs.filter(x => x.pay !== "من العهدة" && !isNonExpCat(x.category)).reduce((t,x)=>t+invTotal(x),0) + spentCus + payExp + prepaid + used;
   const unpaid = invs.filter(x => x.status === "غير مدفوعة").reduce((t,x)=>t+invTotal(x),0);
   const cats = new Map();
   for (const x of invs){ const c = x.category || "بدون تصنيف"; cats.set(c,(cats.get(c)||0)+invTotal(x)); }
@@ -1147,7 +1154,7 @@ function monthStats(y,m){
   const prodTo = R[1] >= today() && lastSale ? lastSale : R[1];
   const prod = invs.filter(x => isProd(x) && x.date <= prodTo).reduce((t,x)=>t+invTotal(x),0) + packConsVal(R[0], prodTo);
   return {total, by, days, comm, netSales, prod, prodTo, prodPct: netSales>0 ? prod/netSales : 0, avg: days ? netSales/days : 0, exp, net: netSales-exp, unpaid,
-    cats:[...cats].map(([c,v])=>({c,v})).sort((a,b)=>b.v-a.v), invTotal: invs.reduce((t,x)=>t+invTotal(x),0)};
+    cats:[...cats].map(([c,v])=>({c,v})).sort((a,b)=>b.v-a.v), invTotal: invs.reduce((t,x)=>t+invTotal(x),0), prepaid};
 }
 
 /* ---------- writes ---------- */
@@ -1305,10 +1312,11 @@ function renderDash(){
   }
   const cb = custodyBalances(), cusLeft = cb.reduce((t,x)=>t+x.left,0), ar = appReceivable();
   const pv = st.prodPct*100, prodLv = pv < 40 ? ["lv1","ممتازة"] : pv < 45 ? ["lv2","جيدة"] : pv < 47 ? ["lv3","مقبولة"] : ["lv4","سيئة"];
+  const sd1 = S.settings.startDate || "", sdIn = sd1 && sd1.slice(0,7) === ymOf(S.y,S.m) && sd1.slice(8) !== "01";
   const kpis = `<div class="grid g3">
-    <div class="kpi"><span class="l">المبيعات الفعلية · ${MONTHS[S.m-1]}</span><span class="v num">${fmt(st.netSales)}</span><span class="small muted">الإجمالي <span class="num">${fmt(st.total)}</span> − عمولة التوصيل <span class="num">${fmt(st.comm)}</span></span></div>
+    <div class="kpi"><span class="l">المبيعات الفعلية · ${MONTHS[S.m-1]}${sdIn ? ` <span class="small muted">منذ <span class="num">${dmy(sd1).slice(0,5)}</span></span>` : ""}</span><span class="v num">${fmt(st.netSales)}</span><span class="small muted">الإجمالي <span class="num">${fmt(st.total)}</span> − عمولة التوصيل <span class="num">${fmt(st.comm)}</span></span></div>
 
-    <div class="kpi dark"><span class="l">إجمالي المصروفات</span><span class="v num">${fmt(st.exp)}</span><span class="small muted">فواتير + صرف العهد + الرواتب المعتمدة</span></div>
+    <div class="kpi dark"><span class="l">إجمالي المصروفات</span><span class="v num">${fmt(st.exp)}</span><span class="small muted">فواتير + صرف العهد + الرواتب المعتمدة${st.prepaid > 0.004 ? ` + حصة الإيجار والرخصة والإقامات <span class="num">${fmt(st.prepaid)}</span>` : ""}</span></div>
     <div class="kpi green"><span class="l">صافي التشغيل التقريبي</span><span class="v num ${st.net<0?"neg":""}">${fmt(st.net)}</span><span class="small muted">المبيعات الفعلية − المصروفات${S.settings.startDate && ymOf(S.y,S.m) >= S.settings.startDate.slice(0,7) && ymOf(S.y,S.m) <= today().slice(0,7) && !prApproved(prDoc(ymOf(S.y,S.m))) ? " · قبل رواتب الشهر (تُعتمد يوم 27)" : ""}</span></div>
     <div class="kpi dark"><span class="l">رصيد العهد المتبقي</span><span class="v num">${fmt(cusLeft)}</span><span class="small muted">لدى جميع الموظفين (تراكمي)</span></div>
     <div class="kpi"><span class="l">متوسط المبيعات اليومي</span><span class="v num">${fmt(st.avg)}</span><span class="small muted">عدد أيام البيع: ${st.days}</span></div>
@@ -1355,9 +1363,10 @@ function renderDash(){
       <div class="big num">${fmt(ar.left)}<small>ر.س</small></div>
       <div class="small">صافي مبيعات التوصيل (بعد العمولة${ar.gross ? ` <span class="num">${pct(1 - ar.due / ar.gross)}</span>` : ""}) <b class="num">${fmt(ar.due)}</b> − المحوَّل <b class="num">${fmt(ar.paid)}</b></div>
       <div class="small muted">${ar.last ? `آخر تحويل <span class="num">${dmy(ar.last.date)}</span> بمبلغ <span class="num">${fmt(ar.last.amt)}</span>` : "لم يُسجَّل أي تحويل بعد"} · المتوقع التالي <span class="num">${ar.next?dmy(ar.next):"—"}</span></div>
-      <div class="actions"><button class="btn sm" type="button" id="d_app" ${S.canWrite?"":"disabled"}>تسجيل تحويل من التطبيقات</button><a class="small" href="#apps">كل التحويلات</a></div></div></div>
+      ${ar.late > 0.009 ? `<div class="small neg">منه متأخر عن موعده: <b class="num">${fmt(ar.late)}</b></div>` : ""}
+      <div class="actions"><button class="btn sm" type="button" id="d_app" ${S.canWrite?"":"disabled"}>تسجيل تحويل من التطبيقات</button><a class="small" href="${ar.byContract ? "#platforms" : "#apps"}">${ar.byContract ? "التفاصيل حسب التطبيق" : "كل التحويلات"}</a></div></div></div>
   </div>`;
-  el.innerHTML = `<div class="grid" style="gap:16px">${top}${row2}${kpis}${bgDashCard()}${tables}${year}<p class="small muted" style="margin:0">الصافي تقديري: لا يشمل تكلفة المخزون الفعلية ولا الاستهلاكات. المصروفات = الفواتير (عدا المدفوعة من العهدة) + صرف العهد. المبيعات الفعلية = إجمالي المبيعات بعد خصم عمولة تطبيقات التوصيل. نسبة الإنتاج = فواتير «مصاريف إنتاج» والتغليف المستهلك ÷ المبيعات الفعلية.${yr.some(r => r.man) ? " (*) أشهر أو أيام قبل بدء البرنامج تؤخذ من الملخصات الشهرية اليدوية؛ مصروفاتها محاسبية (تشمل الإهلاك والاستحقاقات) ونسبة إنتاجها تقديرية، لذلك قد يختلف الشهر الذي بدأ فيه البرنامج عن بطاقات أعلى الصفحة التي تعرض بيانات البرنامج فقط." : ""}</p></div>`;
+  el.innerHTML = `<div class="grid" style="gap:16px">${top}${row2}${kpis}${bgDashCard()}${tables}${year}<p class="small muted" style="margin:0">الصافي تقديري: لا يشمل تكلفة المخزون الفعلية ولا الاستهلاكات. المصروفات = الفواتير (عدا المدفوعة من العهدة، ومسحوبات الشركاء، وشراء المعدات، وسداد التزامات سابقة كالرواتب المستحقة والضريبة) + صرف العهد + الرواتب المعتمدة + حصة الأيام من الإيجار والرخصة والإقامات المدفوعة مقدماً + التغليف المطبوع المستهلك. المبيعات الفعلية = إجمالي المبيعات بعد خصم عمولة تطبيقات التوصيل. نسبة الإنتاج = فواتير «مصاريف إنتاج» والتغليف المستهلك ÷ المبيعات الفعلية.${yr.some(r => r.man) ? " (*) أشهر أو أيام قبل بدء البرنامج تؤخذ من الملخصات الشهرية اليدوية؛ مصروفاتها محاسبية (تشمل الإهلاك والاستحقاقات) ونسبة إنتاجها تقديرية، لذلك قد يختلف الشهر الذي بدأ فيه البرنامج عن بطاقات أعلى الصفحة التي تعرض بيانات البرنامج فقط." : ""}</p></div>`;
   const b2 = $("#d_app"); if (b2) b2.onclick = () => openApp();
 }
 function yearChart(yr){
@@ -1384,7 +1393,7 @@ function viewSales(){
   return `<div class="bar"><h2>المبيعات اليومية</h2><div class="actions">${S.canWrite ? `<button class="btn ghost" type="button" id="s_fx">استيراد من فودكس</button>` : ""}${rgPicker()}</div></div>${readonlyNote()}
   <form class="card entry" id="fs"><h3 id="fsTitle">تسجيل مبيعات يوم</h3>
     <div class="fields">
-      <div class="f"><label for="s_date">التاريخ</label><input id="s_date" type="date" required value="${n(S.settings.delayDays) >= 1 ? addDays(today(), -1) : today()}"></div>
+      <div class="f"><label for="s_date">التاريخ</label><input id="s_date" type="date" required max="${today()}" value="${n(S.settings.delayDays) >= 1 ? addDays(today(), -1) : today()}"></div>
       ${SALE_FIELDS.map(([k,l])=>`<div class="f"><label for="s_${k}">${l}</label><input id="s_${k}" type="number" step="0.01" min="0" inputmode="decimal" placeholder="0"></div>`).join("")}
       <div class="f"><label for="s_count">عدد الفواتير</label><input id="s_count" type="number" step="1" min="0" inputmode="numeric"></div>
       <div class="f wide"><label for="s_notes">ملاحظات</label><input id="s_notes" type="text"></div>
@@ -1400,7 +1409,7 @@ function viewSales(){
 function bindSales(){
   if ($("#s_fx")) $("#s_fx").onclick = openFoodicsImport;
   const f = $("#fs");
-  const calc = () => { const t = SALE_FIELDS.reduce((a,[k])=>a+n($("#s_"+k).value),0); $("#s_total").textContent = fmt(t); $("#s_net").textContent = fmt(t - n($("#s_delivery").value)*commRate()); };
+  const calc = () => { const t = SALE_FIELDS.reduce((a,[k])=>a+n($("#s_"+k).value),0); $("#s_total").textContent = fmt(t); const rt = (typeof pfSalesRate === "function" && pfSalesRate($("#s_date") && $("#s_date").value)) ?? commRate(); $("#s_net").textContent = fmt(t - n($("#s_delivery").value) * rt); };
   const load = () => {
     const d = $("#s_date").value, s = S.sales.get(d);
     SALE_FIELDS.forEach(([k]) => $("#s_"+k).value = s && has(s[k]) ? s[k] : "");
@@ -1439,12 +1448,12 @@ function viewInvoices(){
   return `<div class="bar"><h2>الفواتير (مشتريات ومصروفات)</h2>${rgPicker()}</div>${readonlyNote()}
   <form class="card entry" id="fi"><h3 id="fiTitle">فاتورة جديدة</h3>
     <div class="fields">
-      <div class="f"><label for="i_date">التاريخ</label><input id="i_date" type="date" required value="${today()}"></div>
+      <div class="f"><label for="i_date">التاريخ</label><input id="i_date" type="date" required max="${today()}" value="${today()}"></div>
       <div class="f"><label for="i_no">رقم الفاتورة</label><input id="i_no" type="text"></div>
       <div class="f"><label for="i_sup">المورد / الجهة</label><input id="i_sup" type="text" list="sups" autocomplete="off"><datalist id="sups"></datalist><span class="by" id="i_suphint"></span></div>
       <div class="f"><label for="i_buy">المشتري</label><input id="i_buy" type="text" list="buyers" autocomplete="off" placeholder="من اشترى؟"><datalist id="buyers"></datalist></div>
       <div class="f"><label for="i_cat">التصنيف</label><select id="i_cat">${opts(c,"","اختر التصنيف")}</select></div>
-      <div class="f"><label for="i_bt">${vatReg() ? "المبلغ قبل الضريبة" : "المبلغ المدفوع (الإجمالي)"}</label><input id="i_bt" type="number" step="0.01" min="0" inputmode="decimal" required></div>
+      <div class="f"><label for="i_bt">${vatReg() ? "المبلغ قبل الضريبة" : "المبلغ المدفوع (الإجمالي)"}</label><input id="i_bt" type="number" step="0.01" min="0.01" inputmode="decimal" required></div>
       <div class="f" id="i_vatWrap" ${vatReg() ? "" : "hidden"}><label for="i_vat">ضريبة القيمة المضافة</label><div class="actions" style="flex-wrap:nowrap"><input id="i_vat" type="number" step="0.01" min="0" inputmode="decimal"><button type="button" class="btn ghost sm" id="i_15" title="احسب 15% من المبلغ">15%</button></div></div>
       <div class="f"><label for="i_qty">الكمية <span class="muted" style="font-weight:400">(اختياري)</span></label><div class="actions" style="flex-wrap:nowrap"><input id="i_qty" type="number" step="0.001" min="0" inputmode="decimal" placeholder="مثل 20" style="min-width:0"><input id="i_unit" type="text" list="units" placeholder="الوحدة" style="max-width:96px;min-width:0"><datalist id="units">${UNITS.map(u => `<option value="${u}">`).join("")}</datalist></div><span class="by" id="i_up"></span></div>
       <div class="f"><label for="i_pay">طريقة الدفع</label><select id="i_pay">${opts(PAY,"كاش")}</select></div>
@@ -1604,10 +1613,10 @@ function viewCustody(){
   <div id="cusBal"></div>
   <form class="card entry" id="fc"><h3 id="fcTitle">حركة عهدة جديدة</h3>
     <div class="fields">
-      <div class="f"><label for="c_date">التاريخ</label><input id="c_date" type="date" required value="${today()}"></div>
+      <div class="f"><label for="c_date">التاريخ</label><input id="c_date" type="date" required max="${today()}" value="${today()}"></div>
       <div class="f"><label for="c_emp">اسم الموظف</label><select id="c_emp" required>${opts(st.employees,"","اختر الموظف")}</select></div>
       <div class="f"><label for="c_type">نوع الحركة</label><select id="c_type">${opts(CTYPES,"استلام عهدة")}</select></div>
-      <div class="f"><label for="c_amt">المبلغ</label><input id="c_amt" type="number" step="0.01" min="0" inputmode="decimal" required></div>
+      <div class="f"><label for="c_amt">المبلغ</label><input id="c_amt" type="number" step="0.01" min="0.01" inputmode="decimal" required></div>
       <div class="f" id="c_srcWrap"><label for="c_src">مصدر العهدة</label><select id="c_src">${opts(SOURCES,"كاش")}</select></div>
       <div class="f"><label for="c_desc">البيان</label><input id="c_desc" type="text"></div>
       <div class="f"><label for="c_cat">التصنيف</label><select id="c_cat">${opts(st.categories,"","—")}</select></div>
@@ -1665,9 +1674,9 @@ function appForm(x){
   return `<form class="entry" id="fa"><h3 style="margin:0">${x.id?"تعديل تحويل":"تسجيل تحويل من تطبيقات التوصيل"}</h3>
     <div class="note">المستحق حالياً قبل هذا التحويل: <b class="num">${fmt(ar.left + (x.id ? n(x.amount) : 0))}</b> ر.س</div>
     <div class="fields">
-      <div class="f"><label for="a_date">تاريخ وصول التحويل للبنك</label><input id="a_date" type="date" required value="${esc(x.date||today())}"></div>
+      <div class="f"><label for="a_date">تاريخ وصول التحويل للبنك</label><input id="a_date" type="date" required max="${today()}" value="${esc(x.date||today())}"></div>
       <div class="f"><label for="a_app">التطبيق</label><input id="a_app" type="text" list="appnames" placeholder="مثال: جاهز" value="${esc(x.app)}"><datalist id="appnames">${names.map(a=>`<option value="${esc(a)}">`).join("")}</datalist></div>
-      <div class="f"><label for="a_amt">المبلغ المحوَّل (صافي)</label><input id="a_amt" type="number" step="0.01" min="0" inputmode="decimal" required value="${esc(has(x.amount)?x.amount:"")}"></div>
+      <div class="f"><label for="a_amt">المبلغ المحوَّل (صافي)</label><input id="a_amt" type="number" step="0.01" min="0.01" inputmode="decimal" required value="${esc(has(x.amount)?x.amount:"")}"></div>
       <div class="f"><label for="a_from">عن الفترة من</label><input id="a_from" type="date" value="${esc(x.from)}"></div>
       <div class="f"><label for="a_to">إلى</label><input id="a_to" type="date" value="${esc(x.to)}"></div>
       <div class="f wide"><label for="a_notes">ملاحظات</label><input id="a_notes" type="text" value="${esc(x.notes)}"></div>
@@ -2046,15 +2055,15 @@ function rangeStats(a,b){
   const days = sales.filter(s => saleTotal(s) > 0).length;
   const invs = S.invoices.filter(x => inR(x.date,R)).sort((x,y) => x.date < y.date ? -1 : 1);
   const cus = S.custody.filter(x => inR(x.date,R));
-  const spentCus = sumBy(cus.filter(x => x.type === "صرف من العهدة" && !isWithdrawCat(x.category)), x => n(x.amount));
+  const spentCus = sumBy(cus.filter(x => x.type === "صرف من العهدة" && !isNonExpCat(x.category)), x => n(x.amount));
   /* buying equipment is an investment (fixed asset), not an expense: its cost reaches expenses through monthly depreciation */
-  const invNoCus = sumBy(invs.filter(x => x.pay !== "من العهدة" && !isWithdrawCat(x.category) && !isCapexCat(x.category)), invTotal);
+  const invNoCus = sumBy(invs.filter(x => x.pay !== "من العهدة" && !isNonExpCat(x.category)), invTotal);
   const payExp = payrollExp(a, b);
-  const exp = invNoCus + spentCus + payExp;
-  const prodInv = invs.filter(isProd), packV = packConsVal(a, b), prod = sumBy(prodInv, invTotal) + packV;
+  const prodInv = invs.filter(isProd), packV = packConsVal(a, b), prod = sumBy(prodInv, invTotal) + packV, prepaid = prepaidShare(a, b);
+  const exp = invNoCus + spentCus + payExp + prepaid + packV;
   const group = (arr, key) => { const m = new Map(); for (const x of arr){ const k = key(x) || "غير محدد"; const o = m.get(k) || {k, v:0, c:0}; o.v += invTotal(x); o.c++; m.set(k,o); } return [...m.values()].sort((p,q) => q.v - p.v); };
   return { a, b, sales, by, total, delivery, comm, netSales, days, avg: days ? netSales/days : 0,
-    invs, invTotal: sumBy(invs, invTotal), exp, spentCus, invNoCus, payExp, prod, prodInv, prodPct: netSales > 0 ? prod/netSales : 0,
+    invs, invTotal: sumBy(invs, invTotal), exp, spentCus, invNoCus, payExp, prepaid, prod, prodInv, prodPct: netSales > 0 ? prod/netSales : 0,
     unpaid: invs.filter(x => isCredit(x) && (apState().byInv.get(x.id)?.remain || 0) > 0.004), net: netSales - exp,
     cats: group(invs, x => x.category), sups: group(invs, x => x.supplier), pays: group(invs, x => x.pay),
     prodCats: [...group(prodInv, x => x.category), ...(packV ? [{k:"تغليف مطبوع مستهلك (حسب معدل الاستهلاك)", v:packV, c:0}] : [])].sort((p,q) => q.v - p.v), prodSups: group(prodInv, x => x.supplier), packV, cus };
@@ -2496,6 +2505,19 @@ function catAccount(c){
 }
 const isWithdrawCat = c => /^3201/.test(catAccount(c));
 const isCapexCat = c => /^140[1-9]/.test(catAccount(c));
+/* not an expense of the period it is paid in: settling an earlier liability (salaries due, VAT), partners' drawings or capital,
+   equipment (depreciated), prepaid rent/licence/iqamas (spread monthly below) and stock bought for later (counted when used) */
+const isNonExpCat = c => /^(2|3|130|140[1-9]|1201)/.test(catAccount(c));
+/* the share of prepaid costs (rent, licence, iqamas…) that belongs to the days a..b, from the monthly schedules in the accounting setup;
+   only program days (from the start date) up to today, so it compares with the same days' sales */
+function prepaidShare(a, b){
+  const sd = S.settings.startDate, t = today(); if (sd && a < sd) a = sd; if (b > t) b = t; if (a > b) return 0;
+  let v = 0;
+  for (const x of accCfg().schedules){ if (!/^130/.test(x.counter || "") || !(n(x.monthly) > 0)) continue;
+    const s0 = x.start || "0000-01-01", e0 = x.end ? (x.end.length === 7 ? iso(new Date(+x.end.slice(0, 4), +x.end.slice(5, 7), 0)) : x.end) : "9999-12-31";
+    for (let d = a > s0 ? a : s0, last = b < e0 ? b : e0; d <= last; d = addDays(d, 1)){ const D = pd(d); v += n(x.monthly) / new Date(D.getFullYear(), D.getMonth() + 1, 0).getDate(); } }
+  return r2(v);
+}
 const vatReg = () => !!(S.settings.acc && S.settings.acc.vat && S.settings.acc.vat.registered);
 const vatOn = d => { const v = accCfg().vat; return !!(v.registered && v.from && d >= v.from); };
 const vatRate = () => (n(accCfg().vat.rate) || 15) / 100;
@@ -4230,7 +4252,9 @@ function bindCfo(){
   if (S.cfoDraft) $("#cfo_q").value = S.cfoDraft;
   $("#cfo_sugg").querySelectorAll("[data-q]").forEach(b => b.onclick = () => cfoAsk(b.dataset.q));
   renderCfoChat();
-  cfoSample().then(s => { S.cfoCan = !!s; if (!s){ const b = $("#cfo_run"); if (b){ b.disabled = true; b.title = "التحليل الآلي غير متاح في هذه النسخة"; } } else cfoAuto(); });
+  /* the written report and the chat need Claude; where it is not available they are hidden, and the reading, alerts,
+     indicators, forecast and simulator below (computed here from the data) stay */
+  cfoSample().then(s => { S.cfoCan = !!s; if (!s){ ["#cfo_run", "#cfo_chatbox"].forEach(id => { const e = $(id); if (e) e.hidden = true; }); renderCfoReport(); } else cfoAuto(); });
   if ($("#cfo_clear")) $("#cfo_clear").onclick = () => { S.cfoChat = []; cfoSaveChat(); renderCfoChat(); };
 }
 function cfoAuto(){
@@ -4288,6 +4312,7 @@ function renderCfoReport(){
   const el = $("#cfo_report"); if (!el) return;
   const R = cfoLatestReport(), rep = R && R.report;
   if (S.cfoBusy){ el.innerHTML = `<section class="cfo-card cfo-rep"><div class="cfo-hd"><h3>تقرير المدير المالي اليومي</h3></div><div class="cfo-wait"><span class="cfo-spin"></span>المدير المالي يقرأ كل الأرقام ويكتب تقرير اليوم… قد يستغرق دقيقة.</div></section>`; return; }
+  if (!rep && S.cfoCan === false){ el.innerHTML = ""; return; }
   if (!rep){ el.innerHTML = `<section class="cfo-card cfo-rep"><div class="cfo-hd"><h3>تقرير المدير المالي اليومي</h3></div><p class="cfo-empty">تقرير مكتوب يعدّه Claude من كل أرقام البرنامج: الخلاصة، وماذا تفعل الآن، والمخاطر القادمة، والأسباب. يُنشأ تلقائياً مرة كل يوم، أو اضغط «تحليل شامل جديد».</p></section>`; return; }
   const old = (Date.now() - new Date(R.at).getTime()) / 36e5 > 24;
   const P = {"عاجل":"#C62828","مهم":"#EF6C00","تحسين":"#1565C0"}, Sv = {"عالية":"#C62828","متوسطة":"#EF6C00","منخفضة":"#1565C0"};
@@ -6386,7 +6411,7 @@ async function fixAttFlags(){
 }
 if (window.__accHost) window.__accStart = connect; else connect();
 </script>
-<script src="apps.js?v=8"></script>
+<script src="apps.js?v=9"></script>
 <script type="module" src="acc-fb.js?v=4"></script>
 </body>
 </html>
