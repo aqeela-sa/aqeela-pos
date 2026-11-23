@@ -545,7 +545,7 @@ function remoteApproval(title, ok) {
   fire(F.setDoc(D("approvals", id), d), "طلب الموافقة");
   modal(`${mh("بانتظار موافقة المدير")}<div class="mdl-b" style="text-align:center"><div class="spin" style="margin:10px auto 14px"></div>
     <p style="margin:0 0 6px"><b>${esc(title)}</b></p><p class="small muted" style="margin:0" id="rwait">أُرسل الطلب إلى المدير. اترك هذه النافذة مفتوحة حتى يصل قراره.</p></div>
-    <div class="mdl-f"><button class="btn ghost" id="rcan">إلغاء الطلب</button></div>`, { mid: true });
+    <div class="mdl-f"><button class="btn ghost" id="rcan">سحب طلب الموافقة</button></div>`, { mid: true });
   let un = null; const stop = () => { un?.(); un = null; };
   $("#rcan").onclick = () => { stop(); fire(F.updateDoc(D("approvals", id), { status: "cancelled", decidedAt: Date.now() }), "إلغاء الطلب"); closeModal(); };
   un = F.onSnapshot(D("approvals", id), s => { const x = s.data(); if (!x || s.metadata.hasPendingWrites) return;
