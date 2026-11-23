@@ -19,7 +19,10 @@ function ktFind(name){ const k = ktKey(name); if (!k) return null;
 /* the items an invoice brought in, with the invoice's date */
 function ktInItems(a, b){
   const out = [];
-  for (const x of (S.invoices || [])) if (!x.deleted && Array.isArray(x.items) && x.date >= a && x.date <= b) for (const it of x.items) if (it && it.ing && n(it.q) > 0) out.push({...it, date:x.date, inv:x});
+  for (const x of (S.invoices || [])){ if (x.deleted || !(x.date >= a && x.date <= b)) continue;
+    if (Array.isArray(x.items) && x.items.length){ for (const it of x.items) if (it && it.ing && n(it.q) > 0) out.push({...it, date:x.date, inv:x}); }
+    /* else the invoice's item lines that are linked to an ingredient (quantity in the ingredient's unit) */
+    else if (Array.isArray(x.lines)) for (const l of x.lines) if (l && l.ing && n(l.q) > 0) out.push({ing:l.ing, q:n(l.q), a:n(l.a), date:x.date, inv:x}); }
   return out;
 }
 /* a prepared ingredient (made in the kitchen, e.g. the marinated shawarma mix, then the grilled shawarma) has a batch recipe:
