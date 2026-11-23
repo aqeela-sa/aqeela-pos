@@ -5891,7 +5891,9 @@ const gdMark = k => { try { localStorage.setItem("gd:" + k, "1"); } catch(e){} }
 const gdMarked = k => { try { return localStorage.getItem("gd:" + k) === "1"; } catch(e){ return false; } };
 function gdSteps(){
   const t = today(), y = addDays(t, -1), st = S.settings.startDate || "", adm = !isStaff();
-  const rc = S.recon.get(t) || {}, counted = has(rc.actualCash) && has(rc.actualBank), half = has(rc.actualCash) || has(rc.actualBank);
+  /* today's bank balance is there when typed in, or when an imported statement already reaches today */
+  const BSg = bankStmt(), bankToday = has((S.recon.get(t) || {}).actualBank) || !!(BSg && bankCovers(BSg, t) && BSg.by.get(t) && BSg.by.get(t).bal != null);
+  const rc = S.recon.get(t) || {}, counted = has(rc.actualCash) && bankToday, half = has(rc.actualCash) || bankToday;
   const ySale = S.sales.get(y), ySaved = ySale && saleTotal(ySale) > 0, preStart = st && y < st;
   const invT = S.invoices.filter(x => x.date === t), cusT = S.custody.filter(x => x.date === t);
   const noQty = S.invoices.filter(x => x.date >= addDays(t, -7) && isProd(x) && !hasQtyInv(x) && /دجاج|لحم|شحم|بطاطس/.test(x.category || ""));
@@ -5899,7 +5901,7 @@ function gdSteps(){
   const daily = [
     {k:"count", t:"جرد الخزنة والبنك", when:"العصر، قبل إدخال مبيعات أمس", go:"#recon", btn:"المطابقة اليومية",
       how:"عُدّ الكاش الموجود في الخزنة واكتبه في «الكاش الفعلي»، واكتب رصيد البنك من تطبيق البنك في «رصيد البنك الفعلي».",
-      st: counted ? ["ok", "تم الجرد اليوم"] : half ? ["warn", has(rc.actualCash) ? "الخزنة مسجّلة، البنك ناقص" : "البنك مسجّل، الخزنة ناقصة"] : ["todo", "لم يُسجّل جرد اليوم"]},
+      st: counted ? ["ok", "تم الجرد اليوم"] : half ? ["warn", has(rc.actualCash) ? "الخزنة مسجّلة، البنك ناقص" : "البنك مسجّل" + (bankToday && !has(rc.actualBank) ? " من الكشف" : "") + "، الخزنة ناقصة"] : ["todo", "لم يُسجّل جرد اليوم"]},
     {k:"sales", t:"إدخال مبيعات أمس", when:"بعد الجرد مباشرة", go:"#sales", btn:"المبيعات",
       how:"من فودكس صدّر تقرير المبيعات حسب طريقة الدفع (CSV)، ثم في صفحة المبيعات اضغط «استيراد من فودكس». أو اكتبها يدوياً: كاش، مدى، فيزا، تطبيقات التوصيل.",
       st: preStart ? ["ok", "قبل بداية البرنامج"] : ySaved ? ["ok", `مبيعات ${dmy(y).slice(0, 5)} مسجّلة: ${fmt(netSale(ySale))}`] : ["todo", `مبيعات ${dayName(y)} ${dmy(y).slice(0, 5)} غير مسجّلة`]},
