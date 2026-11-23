@@ -1974,9 +1974,15 @@ function bindRecon(){
 function reconCum(all, cash){
   const t = today(), fk = cash ? "cashApproved" : "bankApproved", dk = cash ? "cDiff" : "bDiff";
   let anchor = null; for (const r of all){ if (r.date > t) break; const rc = S.recon.get(r.date); if (rc && rc[fk] && (cash ? r.ac : r.ab) != null) anchor = r; }
-  const by = new Map(); let cum = 0, last = null;
+  /* an approval accepts the day's difference as it stood (kept with it); if that day's figures change later (a statement imported
+     again, an invoice edited), only the change since the approval is carried forward. An approval saved before this was kept
+     counts as approved at zero. */
+  const by = new Map(); let cum = 0, last = null, carry = 0;
+  if (anchor){ const rc = S.recon.get(anchor.date) || {}, ak = cash ? "cashApprovedDiff" : "bankApprovedDiff", now = anchor[dk];
+    if (now != null){ carry = r2(now - (has(rc[ak]) ? n(rc[ak]) : 0)); if (Math.abs(carry) < 0.005) carry = 0; }
+    if (carry){ cum = carry; last = anchor; by.set(anchor.date, cum); } }
   if (anchor) for (const r of all){ if (r.date <= anchor.date || r.date > t) continue; if (r[dk] != null){ cum = r2(cum + r[dk]); last = r; by.set(r.date, cum); } }
-  return {anchor, by, cum, last};
+  return {anchor, by, cum, last, carry};
 }
 function renderReconList(){
   const el = $("#list"); if (!el) return;
@@ -1996,7 +2002,7 @@ function renderReconList(){
   const first = rows[0], last = rows.filter(r => r.date <= t).pop() || rows[rows.length-1];
   const lastAct = [...rows].reverse().find(r => cash ? r.ac != null : r.ab != null);
   const CU = reconCum(all, cash), apK = cash ? "cashApproved" : "bankApproved";
-  const cumCell = r => (S.recon.get(r.date) || {})[apK] && CU.anchor && r.date <= CU.anchor.date ? `<div class="by">✓ معتمدة</div>` : CU.by.has(r.date) ? `<div class="by">تراكمي <span class="num">${CU.by.get(r.date) > 0 ? "+" : ""}${fmt(CU.by.get(r.date))}</span></div>` : "";
+  const cumCell = r => (S.recon.get(r.date) || {})[apK] && CU.anchor && r.date <= CU.anchor.date ? `<div class="by">✓ معتمدة${CU.carry && r.date === CU.anchor.date ? ` · تغيّر بعد الاعتماد <span class="num">${CU.carry > 0 ? "+" : ""}${fmt(CU.carry)}</span>` : ""}</div>` : CU.by.has(r.date) ? `<div class="by">تراكمي <span class="num">${CU.by.get(r.date) > 0 ? "+" : ""}${fmt(CU.by.get(r.date))}</span></div>` : "";
   const cumNote = !CU.anchor ? `<div class="note" style="margin-bottom:14px">لا توجد مطابقة ${cash ? "خزنة" : "بنك"} معتمدة بعد. افتح اليوم الذي طابقته وتأكدت منه وفعّل «اعتماد المطابقة»، ليظهر الفرق التراكمي منذه.</div>`
     : `<div class="note ${Math.abs(CU.cum) < 0.005 ? "" : CU.cum > 0 ? "" : "warn"}" style="margin-bottom:14px">منذ آخر مطابقة معتمدة <b class="num">${dmy(CU.anchor.date)}</b>${CU.last ? ` حتى <b class="num">${dmy(CU.last.date)}</b>` : ""}: الفرق التراكمي ${diff(CU.last ? CU.cum : 0)}
       ${!CU.last || Math.abs(CU.cum) < 0.005 ? " — كل الحركات منذ الاعتماد مطابقة." : cash
@@ -2082,6 +2088,11 @@ function openRecon(d){
     const data = {date:d, actualCash:g("#r_ac"), actualBank:g("#r_ab"), deposit:g("#r_dep"), withdraw:g("#r_wd"), adjust:g("#r_adj"), appTransfer: has(rc.appTransfer) ? n(rc.appTransfer) : null, notes:$("#r_notes").value.trim(), cashApproved: $("#r_capr").checked, bankApproved: $("#r_bapr").checked, ...stamp()};
     if (data.cashApproved && data.actualCash == null){ toast("لا يمكن اعتماد جرد الخزنة بدون إدخال الكاش الفعلي"); return; }
     if (data.bankApproved && data.actualBank == null && !(row && row.stmt)){ toast("لا يمكن اعتماد مطابقة البنك بدون رصيد فعلي أو كشف حساب لهذا اليوم"); return; }
+    /* keep the difference each approval accepts, worked out with the figures of this form */
+    if (row){ const dep = n(data.deposit), wd = n(data.withdraw), adj = n(data.adjust);
+      if (data.cashApproved){ const ce = r2(row.cOpen + row.cSales - row.cPurch - row.cCus - dep + wd), cc = S.settings.countBeforeSales ? r2(ce - row.cSales) : ce; data.cashApprovedDiff = r2(n(data.actualCash) - cc); }
+      if (data.bankApproved){ const be = r2(row.bOpen + row.bankIn - row.bankOut + (dep - wd) + adj), ab = data.actualBank != null && !(row.stmt && row.ab != null && !has(rc.actualBank)) ? n(data.actualBank) : row.ab;
+        if (ab != null) data.bankApprovedDiff = r2(ab - be); } }
     const empty = ["actualCash","actualBank","deposit","withdraw","adjust","appTransfer"].every(k => data[k] == null) && !data.notes && !data.cashApproved && !data.bankApproved;
     const ok = empty ? await archive("recon", d, "تم مسح المطابقة") : await recWrite("recon", d, data, null, "تم حفظ المطابقة");
     if (ok) closeModal();
