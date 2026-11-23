@@ -6724,7 +6724,8 @@ function changed(kind){
 }
 async function connect(){
   route();
-  S.timer = setTimeout(() => setStatus("تعذّر الوصول للبيانات حالياً؛ قد تكون الأرقام غير محدّثة"), 10000);
+  /* name what is still missing, so a closed permission shows where it is */
+  S.timer = setTimeout(() => { const miss = NEED.filter(x => !S.loaded.has(x)); setStatus("تعذّر الوصول للبيانات حالياً؛ قد تكون الأرقام غير محدّثة" + (miss.length ? " (" + miss.join("، ") + ")" : "")); }, 10000);
   if (!window.claude || !window.claude.use){ clearTimeout(S.timer); setStatus("غير متصل"); $("#main").insertAdjacentHTML("afterbegin", `<div class="note warn">افتح هذه الصفحة من Claude وأنت مسجّل الدخول لتظهر البيانات.</div>`); return; }
   const [db, user] = await Promise.all([window.claude.use("db"), window.claude.use("user")]);
   if (!db){ clearTimeout(S.timer); setStatus("غير متصل"); S.canWrite = false; render(); $("#main").insertAdjacentHTML("afterbegin", `<div class="note warn">لا يمكن الوصول إلى قاعدة البيانات من هذا العرض. تأكد أنك مسجّل الدخول وأن الصفحة مشاركة معك.</div>`); return; }
@@ -6738,7 +6739,7 @@ async function connect(){
     S.role = S.canEdit ? "admin" : "staff";
   }
   applyRole();
-  const fail = k => e => { if (e && e.code === "revoked"){ setStatus("انتهت صلاحية الوصول"); } else setStatus("انقطع الاتصال بالبيانات"); };
+  const fail = k => e => { if (e && e.code === "revoked"){ setStatus("انتهت صلاحية الوصول"); } else setStatus("انقطع الاتصال بالبيانات (" + k + (e && e.code ? ": " + e.code : "") + ")"); };
   applyBrand();
   db.doc("settings/main").onSnapshot(s => { S.settings = s.exists ? {...DEF, ...s.data()} : {...DEF};
     S.settings.employees = Array.isArray(S.settings.employees) ? S.settings.employees : []; S.settings.categories = Array.isArray(S.settings.categories) ? S.settings.categories : DEF.categories; pgSync(); applyBrand(); S.settings.productionCategories = Array.isArray(S.settings.productionCategories) ? S.settings.productionCategories : [];
