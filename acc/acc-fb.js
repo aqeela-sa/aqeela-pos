@@ -33,6 +33,9 @@ const login = {
 const reserved = em => em === ADMIN_EMAIL || STAFF_EMAILS.includes(em) || em === "cashier@aqeela-pos.app";
 
 /* ---------- the database interface the app was written against ---------- */
+/* also tell when cached data is confirmed by the server unchanged: without it a listener whose first answer came from the cache
+   (a document already read at sign-in, or a slow phone) never reports «from the server», and the app keeps saying it is not up to date */
+const MD = { includeMetadataChanges: true };
 const split = path => { const i = path.indexOf("/"); return [path.slice(0, i), path.slice(i + 1)]; };
 const docSnap = s => ({ id: s.id, exists: s.exists(), data: () => s.data(), metadata: { fromCache: !!(s.metadata && s.metadata.fromCache) } });
 const qSnap = q => ({ docs: q.docs.map(d => ({ id: d.id, exists: true, data: () => d.data() })), size: q.size, empty: q.empty, metadata: { fromCache: !!(q.metadata && q.metadata.fromCache) } });
@@ -43,13 +46,13 @@ function refApi(r){
     update: data => F.updateDoc(r, data),
     delete: () => F.deleteDoc(r),
     get: async () => docSnap(await F.getDoc(r)),
-    onSnapshot: (cb, err) => F.onSnapshot(r, s => cb(docSnap(s)), e => err && err(e))
+    onSnapshot: (cb, err) => F.onSnapshot(r, MD, s => cb(docSnap(s)), e => err && err(e))
   };
 }
 function queryApi(q){
   return {
     get: async () => qSnap(await F.getDocs(q)),
-    onSnapshot: (cb, err) => F.onSnapshot(q, s => cb(qSnap(s)), e => err && err(e)),
+    onSnapshot: (cb, err) => F.onSnapshot(q, MD, s => cb(qSnap(s)), e => err && err(e)),
     where: (f, op, v) => queryApi(F.query(q, F.where(f, op, v)))
   };
 }
