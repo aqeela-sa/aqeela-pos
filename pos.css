@@ -35,6 +35,9 @@ body{background:var(--page)}
 .net.pend{background:#FFF5E6;color:#92400E}.net.pend i{background:#F59E0B;box-shadow:0 0 0 3px rgba(245,158,11,.18)}
 .tchip{display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 10px;border-radius:8px;font-size:13px;font-weight:700}
 .tchip.test{background:#FFE9A8;color:#6b4e00}
+.tchip.pbad{white-space:nowrap;background:var(--bad);color:#fff;cursor:pointer;animation:pblink 1.6s ease-in-out infinite}.tchip.pwarn{white-space:nowrap;background:var(--warnbg);color:var(--warn);cursor:pointer}.tchip.pbad .ic,.tchip.pwarn .ic{width:18px;height:18px}
+@keyframes pblink{50%{opacity:.6}}
+#prs.bad{color:var(--bad);font-weight:700;font-size:15px}
 .tchip.lk{background:#EFE6F7;color:#5B2A86;font-size:15px;height:36px;padding:0 14px}.tchip .ic{width:20px;height:20px}
 .tbtn{position:relative;display:inline-flex;align-items:center;gap:8px;height:46px;padding:0 14px;border-radius:12px;border:1px solid #E4E4E8;background:#fff;font-weight:600;font-size:15px;color:var(--ink);white-space:nowrap}
 .tbtn:active{background:var(--bg)}

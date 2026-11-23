@@ -4,7 +4,7 @@
 import * as F from "./fb.js";
 import { firebaseConfig } from "./firebase-config.js";
 
-const VERSION = "2.6.8";
+const VERSION = "2.7.0";
 const ADMIN_EMAIL = "abuabraj@gmail.com";
 const DEVICE_EMAIL = "cashier@aqeela-pos.app";
 const APP_NAME = `<span dir="ltr">Cashier AQ</span>`;
@@ -87,10 +87,22 @@ const S = {
   cart: (() => { const c = ls.get("cart", null); if (c && Array.isArray(c.lines) && c.lines.length && Date.now() - (c.at || 0) < 12 * 36e5) { cartBack = true; return { type: c.type || null, lines: c.lines, discount: c.discount || null, sel: null, ...(c.phone ? { phone: c.phone } : {}), ...(c.name ? { name: c.name } : {}) }; } return { type: null, lines: [], discount: null, sel: null }; })(), cat: "chicken",
   today: [], pending: 0, online: navigator.onLine,
   dev: ls.get("dev", null) || (() => { const d = rid(4); ls.set("dev", d); return d; })(),
-  device: Object.assign({ printMode: "browser", printerIp: "", autoPrint: true, test: false, kitchenMode: "same", kitchenIp: "" }, ls.get("device", {})),
+  device: Object.assign({ printMode: "browser", printerIp: "", autoPrint: true, test: false, kitchenMode: "same", kitchenIp: "", drawer: false }, ls.get("device", {})),
+  printer: null, unprinted: null,
   unsub: [],
 };
 const saveDevice = () => ls.set("device", S.device);
+/* one cashier window per device: a second tab would share the order counter and fight the first over the offline store.
+   The window opened later stops and says where the cashier is open. */
+try { const bc = new BroadcastChannel("aq-pos"), me = rid(6);
+  bc.onmessage = e => { const m = e.data || {}; if (m.id === me) return;
+    if (m.t === "ping") bc.postMessage({ t: "here", id: me });
+    if (m.t === "here" && !S.dupe) { S.dupe = true; const d = document.createElement("div"); d.id = "dupe";
+      d.style.cssText = "position:fixed;inset:0;z-index:9999;background:rgba(24,24,27,.92);color:#fff;display:flex;align-items:center;justify-content:center;padding:24px;text-align:center";
+      d.innerHTML = `<div style="max-width:440px"><h2 style="margin:0 0 10px">الكاشير مفتوح في نافذة أخرى</h2><p style="line-height:1.8;margin:0 0 18px;opacity:.9">على هذا الجهاز نافذة كاشير مفتوحة من قبل. استخدمها وأغلق هذه النافذة، حتى لا تتكرر أرقام الطلبات.</p><button class="btn" id="dupr">أغلقت الأخرى، أعد التحميل</button></div>`;
+      document.body.appendChild(d); d.querySelector("#dupr").onclick = () => location.reload(); } };
+  bc.postMessage({ t: "ping", id: me });
+} catch {}
 const isAdmin = () => S.role === "admin";
 
 /* ---------- firebase ---------- */
@@ -313,7 +325,10 @@ function drawTop() {
     <div class="sp"></div><div class="t-st">${net}${topBtns(np)}</div>`;
   bindTop();
 }
-const topBtns = np => { const nu = unpaidList().length; return `${S.device.test ? `<span class="tchip test">تجريبي</span>` : ""}
+const prnChip = () => S.unprinted ? `<button class="tchip pbad" id="prx" title="${esc(S.unprinted.msg || "")}">${ic("print")}لم يُطبع <span class="num">${pad(S.unprinted.o.no, 4)}</span></button>`
+  : S.device.printMode === "epos" && S.printer?.err ? `<button class="tchip pbad" id="prc" title="${esc(S.printer.err)}">${ic("print")}الطابعة</button>`
+  : S.device.printMode === "epos" && S.printer?.near ? `<button class="tchip pwarn" id="prc" title="ركّب لفة ورق جديدة قريباً">${ic("print")}الورق قارب على الانتهاء</button>` : "";
+const topBtns = np => { const nu = unpaidList().length; return `${S.device.test ? `<span class="tchip test">تجريبي</span>` : ""}${prnChip()}
     <button class="tbtn ${nu ? "due" : ""}" id="unp" title="طلبات أُرسلت للمطبخ ولم تُدفع">${ic("clock")}<span class="tl">بانتظار الدفع</span>${nu ? `<b class="bd num">${nu}</b>` : ""}</button>
     <button class="tbtn ${np ? "hot" : ""}" id="prp" title="طلبات قيد التحضير">${ic("fire")}<span class="tl">قيد التحضير</span>${np ? `<b class="bd num">${np}</b>` : ""}</button>
     <button class="tbtn" id="ord" title="التقارير: المبيعات والطلبات والأصناف">${ic("dash")}<span class="tl">التقارير</span></button>
@@ -330,6 +345,8 @@ function bindTop(partial) {
   $("#me").onclick = e => cashierMenu(e.currentTarget);
   $("#ord").onclick = () => openReports(); $("#prp").onclick = openPrep; $("#unp").onclick = openUnpaid;
   $("#more").onclick = openMore;
+  if ($("#prx")) $("#prx").onclick = async () => { $("#prx").disabled = true; await retryPrint(); if ($("#prx")) $("#prx").disabled = false; };
+  if ($("#prc")) $("#prc").onclick = async () => { const r = await checkPrinter(true); toast(r === true ? "الطابعة جاهزة" : r, r !== true && !/قارب/.test(r)); };
 }
 function cashierMenu(btn) {
   popMenu(btn, `<div class="pm-h"><b>${esc(S.cashier?.name || "")}</b><small>الوردية مفتوحة منذ <span class="num">${S.shift ? hm(S.shift.openedAt) : ""}</span> · فتحها ${esc(S.shift?.openedBy?.name || "")}</small></div>
@@ -633,7 +650,7 @@ async function complete(method, given, change, ord) {
     if (ord.prep === "open") Object.assign(u, { prep: "done", deliveredAt: u.paidAt, deliveredBy: S.cashier.name });
     const o = Object.assign(ord, u); o.code = await receiptCode(o); u.code = o.code;
     fire(F.updateDoc(D("orders", o.id), u), "دفع الطلب"); keepLocal(o); drawTop();
-    showDone(o); if (S.device.autoPrint) printJob(o, { receipt: true });
+    showDone(o); if (S.device.autoPrint) autoPrint(o, { receipt: true, drawer: method === "cash" });
     return;
   }
   const o = buildOrder({ method, given: method === "cash" ? r2(given) : null, change: method === "cash" ? r2(change) : 0 });
@@ -642,7 +659,25 @@ async function complete(method, given, change, ord) {
   keepLocal(o);
   resetCart();
   showDone(o);
-  if (S.device.autoPrint) printJob(o, { receipt: true, kitchen: true });
+  if (S.device.autoPrint) autoPrint(o, { receipt: true, kitchen: true, drawer: method === "cash" });
+}
+/* automatic printing after a sale. If it fails the order is still saved: the done screen stays open with the reason and a retry,
+   and the top bar keeps a red «لم يُطبع» button for it until it prints */
+async function autoPrint(o, what) {
+  const r = await printJob(o, what, false, true);
+  if (r === true) { if (S.unprinted?.id === o.id) { S.unprinted = null; drawTop(); } return; }
+  S.unprinted = { id: o.id, o, what: { ...what, drawer: false }, msg: r }; drawTop();
+  const st = $("#prs"), done = $("#ov .done");
+  if (done && st && $("#ov #nw")) { clearTimeout(S.doneTimer); $("#ov .autobar")?.remove(); st.classList.add("bad"); st.textContent = r;
+    if (!$("#rpx")) { const b = document.createElement("button"); b.className = "btn"; b.id = "rpx"; b.style.marginTop = "10px"; b.innerHTML = `${ic("print")}إعادة الطباعة`; st.after(b);
+      b.onclick = async () => { b.disabled = true; st.classList.remove("bad"); st.textContent = "جارٍ الطباعة…"; await retryPrint(); b.disabled = false; }; } }
+  else toast(`الطلب ${pad(o.no, 4)} حُفظ ولم يُطبع: ${r}`, true);
+}
+async function retryPrint() {
+  const u = S.unprinted; if (!u) return true;
+  const r = await printJob(u.o, u.what, false, true), st = $("#prs");
+  if (r === true) { S.unprinted = null; drawTop(); if (st) { st.classList.remove("bad"); st.textContent = "✓ طُبع"; } $("#rpx")?.remove(); toast(`طُبع الطلب ${pad(u.o.no, 4)}`); return true; }
+  u.msg = r; if (st) { st.classList.add("bad"); st.textContent = r; } else toast(r, true); return r;
 }
 
 /* ----- طلبات الاتصال: إرسال للمطبخ بدون دفع، والدفع عند حضور العميل ----- */
@@ -967,18 +1002,21 @@ function openDevice() {
       <option value="ip" ${d.kitchenMode === "ip" ? "selected" : ""}>طابعة مطبخ مستقلة (عنوان IP آخر)</option>
       <option value="none" ${d.kitchenMode === "none" ? "selected" : ""}>بدون ورقة مطبخ</option></select></div>
     <div class="f" id="kipf"><label for="kip">عنوان طابعة المطبخ (IP)</label><input id="kip" dir="ltr" inputmode="decimal" placeholder="192.168.1.51" value="${esc(d.kitchenIp || "")}"><span class="hint">تعمل بطابعة إبسون عبر الشبكة فقط، بنفس خطوات الطابعة الأولى.</span></div>
+    <div class="setrow"><div><b>فتح درج النقود مع الدفع كاش</b><span>إن كان درج النقود موصولاً بالطابعة (منفذ DK)</span></div><button class="sw ${d.drawer ? "on" : ""}" id="dw" aria-label="فتح درج النقود"></button></div>
     <div class="setrow"><div><b>طباعة تلقائية بعد كل طلب</b><span>إيصال العميل وورقة المطبخ، وإلا تُطبع بالأزرار</span></div><button class="sw ${d.autoPrint ? "on" : ""}" id="ap" aria-label="طباعة تلقائية"></button></div>
     <div class="setrow"><div><b>وضع تجريبي</b><span>الطلبات تُعلَّم «تجريبي» ولا تدخل في التقارير ولا المحاسبة</span></div><button class="sw ${d.test ? "on" : ""}" id="tm" aria-label="وضع تجريبي"></button></div>
     <div class="setrow"><div><b>رمز هذا الجهاز</b><span>يظهر في أرقام الطلبات الداخلية</span></div><span class="num chip">${esc(S.dev)}</span></div>
     <p id="pt" class="small muted"></p></div>
-    <div class="mdl-f"><button class="btn ghost" id="tp" style="margin-inline-end:auto">${ic("print")}طباعة تجربة</button><button class="btn ghost" data-close>إغلاق</button><button class="btn" id="sv">حفظ</button></div>`);
-  const t = { ap: d.autoPrint, tm: d.test };
+    <div class="mdl-f"><button class="btn ghost" id="tp">${ic("print")}طباعة تجربة</button><button class="btn ghost" id="tc" style="margin-inline-end:auto">فحص الطابعة</button><button class="btn ghost" data-close>إغلاق</button><button class="btn" id="sv">حفظ</button></div>`);
+  const t = { ap: d.autoPrint, tm: d.test, dw: !!d.drawer };
+  $("#dw").onclick = () => { t.dw = !t.dw; $("#dw").classList.toggle("on", t.dw); };
   const ipv = () => { $("#ipf").style.display = $("#pm").value === "epos" ? "" : "none"; $("#kipf").style.display = $("#km").value === "ip" ? "" : "none"; }; ipv(); $("#pm").onchange = ipv; $("#km").onchange = ipv;
   $("#ap").onclick = () => { t.ap = !t.ap; $("#ap").classList.toggle("on", t.ap); };
   $("#tm").onclick = () => { t.tm = !t.tm; $("#tm").classList.toggle("on", t.tm); };
-  const apply = () => { Object.assign(S.device, { printMode: $("#pm").value, printerIp: $("#ip").value.trim(), autoPrint: t.ap, test: t.tm, kitchenMode: $("#km").value, kitchenIp: $("#kip").value.trim() }); saveDevice(); };
+  const apply = () => { Object.assign(S.device, { printMode: $("#pm").value, printerIp: $("#ip").value.trim(), autoPrint: t.ap, test: t.tm, drawer: t.dw, kitchenMode: $("#km").value, kitchenIp: $("#kip").value.trim() }); saveDevice(); };
   $("#tp").onclick = async () => { apply(); $("#pt").textContent = "جارٍ الطباعة…";
     const res = await printJob(sampleOrder(), { receipt: true, kitchen: true }, true, true); $("#pt").textContent = res === true ? "✓ تمت الطباعة" : res || ""; };
+  $("#tc").onclick = async () => { apply(); $("#pt").textContent = "جارٍ الفحص…"; const r = await checkPrinter(true); $("#pt").textContent = r === true ? "✓ الطابعة متصلة وجاهزة" : r; };
   $("#sv").onclick = () => { const was = S.view; apply(); closeModal(); toast("تم حفظ إعدادات الجهاز"); render(was === "pin" ? "pin" : "pos"); };
 }
 function sampleOrder() {
@@ -1036,18 +1074,47 @@ function raster(cv) {
     if (px[i + 3] > 128 && lum < 140) out[y * bw + (x >> 3)] |= 0x80 >> (x & 7); }
   let s = ""; for (let i = 0; i < out.length; i += 0x8000) s += String.fromCharCode.apply(null, out.subarray(i, i + 0x8000)); return btoa(s);
 }
-async function eposPrint(cvs, ip) {
-  cvs = [].concat(cvs);
-  const xml = `<?xml version="1.0" encoding="utf-8"?><s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"><s:Body><epos-print xmlns="http://www.epson-pos.com/schemas/2011/03/epos-print">` +
-    cvs.map(cv => `<image width="${cv.width}" height="${cv.height}" color="color_1" mode="mono">${raster(cv)}</image><feed line="3"/><cut type="feed"/>`).join("") + `</epos-print></s:Body></s:Envelope>`;
-  const ac = new AbortController(), tm = setTimeout(() => ac.abort(), 12000);
-  try {
-    const r = await fetch(`https://${ip}/cgi-bin/epos/service.cgi?devid=local_printer&timeout=10000`, { method: "POST", headers: { "Content-Type": "text/xml; charset=utf-8", "SOAPAction": '""' }, body: xml, signal: ac.signal });
-    const t = await r.text(); const ok = /success="true"/.test(t);
-    if (!ok) { const c = (t.match(/code="([^"]*)"/) || [])[1] || r.status; throw new Error(c === "EPTR_REC_EMPTY" ? "الورق انتهى" : c === "EPTR_COVER_OPEN" ? "غطاء الطابعة مفتوح" : "رمز الخطأ " + c); }
-    return true;
-  } finally { clearTimeout(tm); }
+/* ePOS-Print: one job at a time per printer (two orders a second apart never cross on the paper).
+   ASB status bits Epson returns with every job: paper end / near end, cover open, offline, cutter… */
+const ASB = { END: 0x00080000, NEAR: 0x00020000, COVER: 0x00000020, OFF: 0x00000008, CUT: 0x00000800, MECH: 0x00000400, UNREC: 0x00002000, AUTOREC: 0x00004000 };
+const asbText = st => { st = +st || 0; return st & ASB.END ? "الورق انتهى" : st & ASB.COVER ? "غطاء الطابعة مفتوح" : st & ASB.CUT ? "مشكلة في قاطع الورق" : st & (ASB.MECH | ASB.UNREC | ASB.AUTOREC) ? "خطأ في الطابعة (أطفئها وشغّلها)" : st & ASB.OFF ? "الطابعة غير جاهزة" : ""; };
+const EPOS_CODES = { EPTR_REC_EMPTY: "الورق انتهى", EPTR_COVER_OPEN: "غطاء الطابعة مفتوح", EPTR_CUTTER: "مشكلة في قاطع الورق", EPTR_MECHANICAL: "خطأ في الطابعة (أطفئها وشغّلها)", EPTR_AUTOMATICAL: "خطأ مؤقت في الطابعة", EPTR_UNRECOVERABLE: "خطأ في الطابعة (أطفئها وشغّلها)", EX_TIMEOUT: "الطابعة لم تستجب في الوقت", DeviceNotFound: "رقم الجهاز في الطابعة ليس local_printer", ParameterError: "خطأ في أمر الطباعة", SchemaError: "خطأ في أمر الطباعة" };
+const eposQ = new Map();
+function eposSend(ip, body) {
+  const prev = eposQ.get(ip) || Promise.resolve();
+  const job = prev.catch(() => {}).then(async () => {
+    const xml = `<?xml version="1.0" encoding="utf-8"?><s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"><s:Body><epos-print xmlns="http://www.epson-pos.com/schemas/2011/03/epos-print">${body}</epos-print></s:Body></s:Envelope>`;
+    const ac = new AbortController(), tm = setTimeout(() => ac.abort(), 15000);
+    try {
+      const r = await fetch(`https://${ip}/cgi-bin/epos/service.cgi?devid=local_printer&timeout=10000`, { method: "POST", headers: { "Content-Type": "text/xml; charset=utf-8", "SOAPAction": '""' }, body: xml, signal: ac.signal });
+      const t = await r.text(), st = +((t.match(/status="(\d+)"/) || [])[1] || 0);
+      if (!/success="true"/.test(t)) { const c = (t.match(/code="([^"]*)"/) || [])[1] || ""; const e = new Error(asbText(st) || EPOS_CODES[c] || ("رمز الخطأ " + (c || r.status))); e.st = st; throw e; }
+      return { st };
+    } finally { clearTimeout(tm); }
+  });
+  eposQ.set(ip, job); return job;
 }
+/* receipts as raster images, each fed and cut; the cash drawer (if one is plugged into the printer) opens with the first */
+async function eposPrint(cvs, ip, opts = {}) {
+  cvs = [].concat(cvs);
+  const body = (opts.drawer ? `<pulse drawer="drawer_1" time="pulse_100"/>` : "") + cvs.map(cv => `<image width="${cv.width}" height="${cv.height}" color="color_1" mode="mono">${raster(cv)}</image><feed line="3"/><cut type="feed"/>`).join("");
+  const r = await eposSend(ip, body); notePrinter(r.st, ""); return true;
+}
+/* a printing error in words the cashier can act on */
+const printErr = (e, ip, what = "الطابعة") => e.name === "AbortError" ? `${what} لا ترد (تأكد أنها تعمل وعلى نفس الشبكة)`
+  : /Load failed|Failed to fetch|NetworkError|network/i.test(e.message || "") ? `لا يمكن الوصول إلى ${what}. افتح https://${ip} في Safari واقبل الشهادة، وتأكد أن الآيباد على نفس الواي فاي`
+  : e.message;
+/* printer state for the top bar: paper near its end, or the last error; checked quietly with an empty job */
+function notePrinter(st, err) {
+  const was = JSON.stringify(S.printer || {}); S.printer = { near: !!(st & ASB.NEAR) && !(st & ASB.END), err: err || "", at: Date.now() };
+  if (JSON.stringify(S.printer) !== was) drawTop();
+}
+async function checkPrinter(manual) {
+  if (S.device.printMode !== "epos" || !S.device.printerIp) return manual ? "طريقة الطباعة ليست طابعة إبسون عبر الشبكة" : null;
+  try { const r = await eposSend(S.device.printerIp, ""); const m = asbText(r.st); notePrinter(r.st, m); return m || (r.st & ASB.NEAR ? "الطابعة جاهزة، والورق قارب على الانتهاء" : true); }
+  catch (e) { const m = printErr(e, S.device.printerIp); notePrinter(e.st || 0, m); return m; }
+}
+setInterval(() => { if (S.view === "pos" && !$("#ov") && !document.hidden) checkPrinter(); }, 120e3);
 function browserPrint(cvs) {
   cvs = [].concat(cvs);
   return new Promise(res => { $("#print").innerHTML = cvs.map(() => `<img alt="" style="display:block;page-break-after:always">`).join("");
@@ -1062,17 +1129,17 @@ function showReceipt(cvs, msg) {
 async function printOrder(o, manual, quiet) { return printJob(o, { receipt: true }, manual, quiet); }
 /* إيصال العميل و/أو ورقة المطبخ حسب إعدادات الجهاز. يعيد true أو رسالة الخطأ */
 async function printJob(o, what, manual, quiet) {
-  const d = S.device, wantK = what.kitchen && d.kitchenMode !== "none";
+  const d = S.device, wantK = what.kitchen && d.kitchenMode !== "none", opts = { drawer: !!what.drawer && !!d.drawer };
   let rc = null, kc = null;
   try { if (what.receipt) rc = await drawReceipt(o); if (wantK) kc = await drawKitchen(o); }
   catch (e) { console.error(e); toast("تعذّر تجهيز الطباعة", true); return "تعذّر تجهيز الطباعة"; }
   if (!rc && !kc) { if (what.kitchen && !what.receipt && manual) toast("ورقة المطبخ مطفأة في إعدادات الجهاز"); return true; }
-  if (d.printMode !== "epos" || d.kitchenMode !== "ip" || !kc) return printCanvas([rc, kc].filter(Boolean), manual, quiet);
+  if (d.printMode !== "epos" || d.kitchenMode !== "ip" || !kc) return printCanvas([rc, kc].filter(Boolean), manual, quiet, opts);
   /* طابعة مطبخ مستقلة */
-  const r1 = rc ? await printCanvas(rc, manual, quiet) : true;
+  const r1 = rc ? await printCanvas(rc, manual, quiet, opts) : true;
   if (!d.kitchenIp) { const m = "لم يُحدَّد عنوان طابعة المطبخ"; if (!quiet) toast(m, true); return m; }
   try { await eposPrint(kc, d.kitchenIp); return r1; }
-  catch (e) { const m = "تعذّرت طباعة ورقة المطبخ: " + (e.name === "AbortError" ? "طابعة المطبخ لا ترد" : e.message === "Failed to fetch" ? "لا يمكن الوصول لطابعة المطبخ (افتح https://" + d.kitchenIp + " في Safari واقبل الشهادة)" : e.message); if (!quiet) toast(m, true); return m; }
+  catch (e) { const m = "تعذّرت طباعة ورقة المطبخ: " + printErr(e, d.kitchenIp, "طابعة المطبخ"); if (!quiet) toast(m, true); return m; }
 }
 /* ورقة المطبخ: رقم الطلب كبير، النوع، الأصناف والإضافات والملاحظات، بدون أسعار */
 async function drawKitchen(o) {
@@ -1100,14 +1167,14 @@ async function drawKitchen(o) {
   hr(); ctr(`عدد الأصناف: ${n}`, 30, 800);
   y += 30; const out = document.createElement("canvas"); out.width = W; out.height = Math.ceil(y); out.getContext("2d").drawImage(cv, 0, 0); out.dataset.kind = "kitchen"; return out;
 }
-async function printCanvas(cv, manual, quiet) { /* cv: لوحة أو أكثر */
+async function printCanvas(cv, manual, quiet, opts = {}) { /* cv: لوحة أو أكثر */
   const mode = S.device.printMode, st = $("#prs");
   if (mode === "none") { if (manual) showReceipt(cv); return true; }
   if (mode === "browser") { if (!manual && !quiet) return true; await browserPrint(cv); return true; }
   if (!S.device.printerIp) { const m = "لم يُحدَّد عنوان الطابعة في إعدادات الجهاز"; if (!quiet) toast(m, true); return m; }
   if (st) st.textContent = "جارٍ الطباعة…";
-  try { await eposPrint(cv, S.device.printerIp); if (st) st.textContent = "✓ طُبع الإيصال"; return true; }
-  catch (e) { const m = "تعذّرت الطباعة: " + (e.name === "AbortError" ? "الطابعة لا ترد (تأكد أنها تعمل وعلى نفس الشبكة)" : e.message === "Failed to fetch" ? "لا يمكن الوصول للطابعة (افتح https://" + S.device.printerIp + " في Safari واقبل الشهادة)" : e.message);
+  try { await eposPrint(cv, S.device.printerIp, opts); if (st) { st.textContent = "✓ طُبع الإيصال"; st.classList.remove("bad"); } return true; }
+  catch (e) { const m = "تعذّرت الطباعة: " + printErr(e, S.device.printerIp); notePrinter(e.st || 0, m);
     if (st) st.textContent = m; else if (!quiet) toast(m, true); return m; }
 }
 
