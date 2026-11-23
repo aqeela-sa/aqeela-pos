@@ -4,7 +4,7 @@
 import * as F from "./fb.js";
 import { firebaseConfig } from "./firebase-config.js";
 
-const VERSION = "2.7.0";
+const VERSION = "2.7.1";
 const ADMIN_EMAIL = "abuabraj@gmail.com";
 const DEVICE_EMAIL = "cashier@aqeela-pos.app";
 const APP_NAME = `<span dir="ltr">Cashier AQ</span>`;
@@ -1044,9 +1044,11 @@ async function drawReceipt(o) {
   if (o.test) { y += 6; g.fillRect(M, y, W - 2 * M, 40); g.fillStyle = "#fff"; ctr(o.sample ? "طباعة تجربة" : "تجريبي — ليس فاتورة", 26, 800); g.fillStyle = "#000"; y += 6; }
   hr(false);
   const d = new Date(o.ts);
-  lr(`طلب رقم ${pad(o.no, 4)}`, TYPES.find(t => t[0] === o.type)[1], 34, 800);
-  lr(`${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()}  ${hm(o.ts)}`, null, 24, 500);
-  lr(`الكاشير: ${o.cashierName}`, null, 24, 500);
+  /* the order number in its own box, large, so the customer can read it from across the counter */
+  { const bw = 380, bh = 142, top = y + 6; g.lineWidth = 4; g.strokeRect((W - bw) / 2, top, bw, bh);
+    y = top + 4; ctr("رقم الطلب", 24, 600); ctr(pad(o.no, 4), 72, 900); y = top + bh + 6; }
+  ctr(TYPES.find(t => t[0] === o.type)[1], 32, 800);
+  lr(`${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()}  ${hm(o.ts)}`, `الكاشير: ${o.cashierName}`, 22, 500);
   hr();
   for (const l of o.lines) {
     font(28, 700); let name = `${l.qty} × ${l.name}`; const maxW = W - 2 * M - 120;
