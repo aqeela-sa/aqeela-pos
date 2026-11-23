@@ -6156,9 +6156,12 @@ function bankStmt(){
   let from = st.bankStmtFrom || "";
   if (!from){ const first = [...S.recon.entries()].filter(([d, r]) => has(r.actualBank) && d >= (st.startDate || "")).map(([d]) => d).sort()[0]; from = first || addDays(st.startDate || lo, delay); }
   if (from < lo) from = lo;
-  /* card sales whose money was due inside [from, hi] but is not in the statement yet: expected the day after */
-  let due = 0, got = 0;
-  if (delay > 0) for (let d = from; d <= hi; d = addDays(d, 1)){ const s = S.sales.get(addDays(d, -delay)) || {}; due += n(s.mada) + n(s.visa); got += (by.get(d) || {}).gross || 0; }
+  /* card sales whose money was due inside [from, hi] but is not in the statement yet: expected the day after.
+     An approved bank reconciliation closes everything up to its day: what had not arrived by then is not carried on as still due
+     (if the bank pays it later, it shows as a surplus on that day). */
+  let due = 0, got = 0, p0 = from;
+  S.recon.forEach((r, d) => { if (r && r.bankApproved && d <= hi && d >= p0) p0 = addDays(d, 1); });
+  if (delay > 0) for (let d = p0; d <= hi; d = addDays(d, 1)){ const s = S.sales.get(addDays(d, -delay)) || {}; due += n(s.mada) + n(s.visa); got += (by.get(d) || {}).gross || 0; }
   const importedAt = L.reduce((m, t) => (t.imported || "") > m ? t.imported : m, "");
   return {by, lo, hi, from, delay, pending:r2(due - got), list:L, importedAt};
 }
