@@ -5897,7 +5897,11 @@ function gdSteps(){
   const ySale = S.sales.get(y), ySaved = ySale && saleTotal(ySale) > 0, preStart = st && y < st;
   const invT = S.invoices.filter(x => x.date === t), cusT = S.custody.filter(x => x.date === t);
   const noQty = S.invoices.filter(x => x.date >= addDays(t, -7) && isProd(x) && !hasQtyInv(x) && /دجاج|لحم|شحم|بطاطس/.test(x.category || ""));
-  const row = ledger().find(r => r.date === t), dd = row ? [row.cDiff, row.bDiff].filter(v => v != null && Math.abs(v) > 0.5) : [];
+  /* the difference to review: since the last approved reconciliation when there is one (a payment the bank takes a day later
+     shows +x then −x and cancels out), else today's */
+  const LG = ledger(), row = LG.find(r => r.date === t), cuC = reconCum(LG, true), cuB = reconCum(LG, false);
+  const dfC = row && row.cDiff != null ? (cuC.anchor ? cuC.cum : row.cDiff) : null, dfB = row && row.bDiff != null ? (cuB.anchor ? cuB.cum : row.bDiff) : null;
+  const dd = [["الخزنة", dfC], ["البنك", dfB]].filter(([, v]) => v != null && Math.abs(v) > 0.5);
   const daily = [
     {k:"count", t:"جرد الخزنة والبنك", when:"العصر، قبل إدخال مبيعات أمس", go:"#recon", btn:"المطابقة اليومية",
       how:"عُدّ الكاش الموجود في الخزنة واكتبه في «الكاش الفعلي»، واكتب رصيد البنك من تطبيق البنك في «رصيد البنك الفعلي».",
@@ -5906,14 +5910,15 @@ function gdSteps(){
       how:"من فودكس صدّر تقرير المبيعات حسب طريقة الدفع (CSV)، ثم في صفحة المبيعات اضغط «استيراد من فودكس». أو اكتبها يدوياً: كاش، مدى، فيزا، تطبيقات التوصيل.",
       st: preStart ? ["ok", "قبل بداية البرنامج"] : ySaved ? ["ok", `مبيعات ${dmy(y).slice(0, 5)} مسجّلة: ${fmt(netSale(ySale))}`] : ["todo", `مبيعات ${dayName(y)} ${dmy(y).slice(0, 5)} غير مسجّلة`]},
     {k:"inv", t:"تسجيل فواتير المشتريات", when:"عند كل شراء، أو آخر اليوم", go:"#invoices", btn:"الفواتير",
-      how:"اكتب المورد والتصنيف والمبلغ، ومن اشترى، و«الكمية والوحدة» للدجاج واللحم والبطاطس، وأرفق صورة الفاتورة. إذا فيها أكثر من صنف اضغط «تقسيم على أكثر من قسم».",
-      st: noQty.length ? ["warn", `${invT.length} فاتورة اليوم · ${noQty.length} فاتورة إنتاج هذا الأسبوع بدون كمية`] : invT.length ? ["ok", `${invT.length} فاتورة اليوم · ${fmt(sumBy(invT, invTotal))}`] : ["info", "لا توجد فواتير اليوم بعد"]},
+      how:"اكتب المورد والتصنيف والمبلغ، ومن اشترى، و«الكمية والوحدة» للدجاج واللحم والبطاطس، وأرفق صورة الفاتورة. إذا فيها أكثر من صنف اضغط «تفصيل الأصناف والأقسام» واكتب لكل صنف كميته ووحدته ومبلغه.",
+      items: noQty.map(x => ({id:x.id, l:`${x.supplier || "—"} · ${dmy(x.date)} · ${fmt(invTotal(x))} ر.س · ${x.category || ""}`})),
+      st: noQty.length ? ["warn", `${invT.length} فاتورة اليوم · ${noQty.length} فاتورة إنتاج هذا الأسبوع بدون كمية (اضغطها لإضافة الكمية والوحدة)`] : invT.length ? ["ok", `${invT.length} فاتورة اليوم · ${fmt(sumBy(invT, invTotal))}`] : ["info", "لا توجد فواتير اليوم بعد"]},
     {k:"cus", t:"تسجيل العهد", when:"عند الاستلام أو الصرف أو الإرجاع", go:"#custody", btn:"العهد",
       how:"«استلام عهدة» عند أخذ مبلغ من الخزنة، و«صرف من العهدة» لكل مصروف منها، و«إرجاع للصندوق» عند إرجاع الباقي.",
       st: cusT.length ? ["ok", `${cusT.length} حركة اليوم`] : ["info", "لا توجد حركات عهدة اليوم"]},
     {k:"recon", t:"مراجعة الفروقات", when:"بعد إدخال كل شيء", go:"#recon", btn:"المطابقة اليومية",
       how:"إذا ظهر فرق في الخزنة أو البنك فغالباً فاتورة أو حركة لم تُسجّل، أو مبلغ مكتوب خطأ. راجع فواتير اليوم والعهد قبل اعتبارها عجزاً.",
-      st: !counted ? ["info", "بعد الجرد"] : dd.length ? ["warn", `يوجد فرق: ${dd.map(v => (v > 0 ? "+" : "") + fmt(v)).join(" · ")}`] : ["ok", "الخزنة والبنك مطابقان"]},
+      st: !counted ? ["info", "بعد الجرد"] : dd.length ? ["warn", `يوجد فرق: ${dd.map(([l, v]) => `${l} ${v > 0 ? "+" : ""}${fmt(v)}`).join(" · ")}`] : ["ok", "الخزنة والبنك مطابقان"]},
     {k:"share", t:"إرسال الملخص اليومي", when:"آخر خطوة", go:"#daily", btn:"الملخص اليومي",
       how:"افتح الملخص اليومي وتأكد من الأرقام والتنبيهات، ثم «مشاركة الملخص» على واتساب أو «تنزيل PDF».",
       st: gdMarked("share:" + t) ? ["ok", "تم إرساله اليوم"] : ["todo", "لم يُرسل اليوم"]}
@@ -5959,7 +5964,7 @@ function gdSteps(){
   return {daily, weekly, monthly};
 }
 const GD_FAQ = [
-  ["فاتورة واحدة فيها أكثر من صنف (دجاج وخضار وتغليف)", "في نموذج الفاتورة اختر «تقسيم على أكثر من قسم»، ووزّع المبلغ على الأقسام. زر «الباقي» يضع المتبقي في السطر الأخير، والمجموع لازم يساوي إجمالي الفاتورة."],
+  ["فاتورة واحدة فيها أكثر من صنف (دجاج وخضار وتغليف)", "في نموذج الفاتورة اضغط «تفصيل الأصناف والأقسام»، واكتب لكل صنف اسمه وكميته ووحدته وقسمه ومبلغه. زر «الباقي» يضع المتبقي في السطر، والمجموع لازم يساوي إجمالي الفاتورة."],
   ["فاتورة آجلة (على الحساب)", "اختر في خانة «الدفع» «آجلة (تُسدد لاحقاً)». تظهر في «المستحق للموردين»، وعند السداد سجّله من صفحة الموردين ← «تسجيل سداد»."],
   ["اشتريت من العهدة", "سجّل الفاتورة بطريقة الدفع «من العهدة» واكتب اسم المشتري. يسجّل البرنامج تلقائياً «صرف من العهدة» بنفس المبلغ فيُخصم من رصيده ويدخل في المصروفات، ويعدّله أو يحذفه مع الفاتورة. البرنامج لا يحسب المصروف مرتين: فاتورة «من العهدة» لا تدخل المصروفات ولا القيود، والصرف المرتبط بها هو الذي يدخلها."],
   ["ظهر فرق في جرد الخزنة", "تأكد أولاً أن كل فواتير الكاش وصرف العهد والإيداع في البنك مسجّلة. إذا بقي الفرق اكتب سببه في الملاحظات؛ الفرق يظهر في قائمة الدخل كعجز أو فائض جرد."],
@@ -5988,7 +5993,7 @@ function renderGuide(){
   const ic = {ok:"✓", warn:"!", todo:"", info:"•"};
   const sec = (title, sub, list, num) => !list.length ? "" : `<div class="card gd-sec"><div class="gd-hd"><h3>${title}</h3>${sub}</div><ol class="gd-l">${list.map((s, i) => `<li class="gd-i ${s.st[0]}">
       <span class="gd-n">${ic[s.st[0]] || (num ? i + 1 : "")}</span><div class="gd-b"><div class="gd-t"><b>${s.t}</b>${s.when ? `<span class="small muted">${s.when}</span>` : ""}</div>
-      <div class="gd-s">${esc(s.st[1])}</div><details><summary class="small">كيف؟</summary><p class="small">${s.how}</p></details></div>
+      <div class="gd-s">${esc(s.st[1])}</div>${s.items && s.items.length ? `<div class="small" style="display:grid;gap:4px;margin:4px 0">${s.items.map(it => `<a href="#invoices" data-gdinv="${esc(it.id)}">${esc(it.l)}</a>`).join("")}</div>` : ""}<details><summary class="small">كيف؟</summary><p class="small">${s.how}</p></details></div>
       <a class="btn ghost sm" href="${s.go}" data-gd="${s.k}">${s.btn}</a></li>`).join("")}</ol></div>`;
   el.innerHTML = `<div class="gd">
     <div class="card gd-top"><div class="gd-ring" style="--p:${(dDone / G.daily.length * 100).toFixed(0)}"><span class="num">${dDone}/${G.daily.length}</span></div>
@@ -5996,6 +6001,7 @@ function renderGuide(){
     ${sec("كل يوم", "", G.daily, true)}${sec("كل أسبوع", '<span class="small muted">يفضّل يوم السبت</span>', G.weekly)}${sec("كل شهر", "", G.monthly)}
     <div class="card gd-sec"><div class="gd-hd"><h3>أسئلة سريعة</h3></div>${GD_FAQ.map(([q, a]) => `<details class="gd-q"><summary>${q}</summary><p>${a}</p></details>`).join("")}</div></div>`;
   el.querySelectorAll("[data-gd]").forEach(a => a.onclick = () => { const s = all.find(x => x.k === a.dataset.gd); if (s && s.pre) s.pre(); });
+  el.querySelectorAll("[data-gdinv]").forEach(a => a.onclick = () => { const id = a.dataset.gdinv; setTimeout(() => S.loadInv && S.loadInv(id), 400); });
 }
 function gdDashChip(){
   const G = gdSteps(), left = G.daily.filter(s => s.st[0] === "todo" || s.st[0] === "warn").length;
