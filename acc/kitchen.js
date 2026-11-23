@@ -46,22 +46,37 @@ function ktPrice(ing, d, depth){
 const ktRecipe = menuId => { const r = (S.recipes || new Map()).get(menuId); return r && !r.deleted && Array.isArray(r.lines) ? r.lines.filter(l => l.ing && n(l.q) > 0) : []; };
 const ktRecipeCost = (menuId, d) => sumBy(ktRecipe(menuId), l => { const g = ktIng(l.ing); return g ? n(l.q) * ktPrice(g, d) : 0; });
 
-/* what the cashier's paid orders of business days a..b used, by ingredient; and how much of the sales had a recipe */
+/* what was sold on business days a..b, item by item: [{d, id, name, q, v}].
+   A day the cashier sold on (real paid orders) comes from its orders, each line and each add-on (an add-on is a cashier item with its
+   own recipe). Any other day comes from the Foodics «products» reports imported in «تكلفة الوجبات»: the report that covers it most
+   narrowly (a daily report wins over a weekly one), spread evenly over its days, its products matched to the cashier menu by name. */
+function ktSold(a, b){
+  const out = [], posDays = new Set();
+  if (S.pos && S.pos.ready){ const {orders, sday} = posSrc();
+    for (const o of orders){ if (o.test || o.status !== "paid") continue;
+      const d = pfDayOf(o, sday); if (!d || d < a || d > b) continue; posDays.add(d);
+      for (const l of (o.lines || [])) for (const u of [l, ...(l.mods || [])]){ const q = n(l.qty); out.push({d, id:u.id || u.ref, name:u.name || "", q, v:n(u.price) * q, main:u === l}); } } }
+  const R = (S.itemSales || []).filter(r => !r.deleted && r.source !== "pos" && r.from && r.to && Array.isArray(r.items) && r.from <= b && r.to >= a);
+  if (R.length){
+    const menu = (S.pos && S.pos.menu || []).filter(m => !m.deleted), byKey = new Map(menu.map(m => [ktKey(m.name), m]));
+    for (let d = a > R.reduce((m, r) => r.from < m ? r.from : m, b) ? a : R.reduce((m, r) => r.from < m ? r.from : m, b); d <= b; d = addDays(d, 1)){
+      if (d < a || posDays.has(d)) continue;
+      const cov = R.filter(r => r.from <= d && r.to >= d).sort((x, y) => daysBetween(x.from, x.to) - daysBetween(y.from, y.to))[0]; if (!cov) continue;
+      const share = 1 / daysBetween(cov.from, cov.to);
+      for (const it of cov.items){ const q = n(it.qty) * share; if (!(q > 0)) continue; const m = byKey.get(ktKey(it.name));
+        out.push({d, id: m ? m.id : "fx:" + it.name, name: it.name, q, v: n(it.net) * share, main:true, fx:true}); } } }
+  return out;
+}
+/* what those sales used, by ingredient; and how much of them had a recipe */
 function ktCons(a, b){
   const use = new Map(), out = {use, qty:0, qtyR:0, amt:0, amtR:0, noRec:new Map()};
-  if (!S.pos || !S.pos.ready || a > b) return out;
-  const {orders, sday} = posSrc();
-  for (const o of orders){
-    if (o.test || o.status !== "paid") continue;
-    const d = pfDayOf(o, sday); if (!d || d < a || d > b) continue;
-    /* each line and each of its add-ons (an add-on is a cashier item too, with its own recipe) */
-    for (const l of (o.lines || [])) for (const u of [l, ...(l.mods || [])]){
-      const q = n(l.qty), id = u.id || u.ref, R = ktRecipe(id), v = n(u.price) * q;
-      out.qty += q; out.amt += v;
-      if (!R.length){ if (u === l || v > 0){ const m = out.noRec.get(id) || {id, name:u.name || "", q:0, v:0}; m.q += q; m.v += v; out.noRec.set(id, m); } continue; }
-      out.qtyR += q; out.amtR += v;
-      for (const r of R) ktRawAdd(use, r.ing, q * n(r.q));
-    }
+  if (a > b) return out;
+  for (const x of ktSold(a, b)){
+    const R = ktRecipe(x.id);
+    out.qty += x.q; out.amt += x.v;
+    if (!R.length){ if (x.main || x.v > 0){ const m = out.noRec.get(x.id) || {id:x.id, name:x.name, q:0, v:0}; m.q += x.q; m.v += x.v; out.noRec.set(x.id, m); } continue; }
+    out.qtyR += x.q; out.amtR += x.v;
+    for (const r of R) ktRawAdd(use, r.ing, x.q * n(r.q));
   }
   return out;
 }

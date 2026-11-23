@@ -28,14 +28,9 @@ function poSupOf(g){
 /* use of each ingredient per business day over a..b, in one pass over the orders */
 function ktUseByDay(a, b){
   const days = new Map();
-  if (!S.pos || !S.pos.ready) return days;
-  const {orders, sday} = posSrc();
-  for (const o of orders){
-    if (o.test || o.status !== "paid") continue;
-    const d = pfDayOf(o, sday); if (!d || d < a || d > b) continue;
-    const m = days.get(d) || new Map(); days.set(d, m);
-    for (const l of (o.lines || [])) for (const u of [l, ...(l.mods || [])]) for (const r of ktRecipe(u.id || u.ref)) ktRawAdd(m, r.ing, n(l.qty) * n(r.q));
-  }
+  for (const x of ktSold(a, b)){ const R = ktRecipe(x.id); if (!R.length) continue;
+    const m = days.get(x.d) || new Map(); days.set(x.d, m);
+    for (const r of R) ktRawAdd(m, r.ing, x.q * n(r.q)); }
   return days;
 }
 /* expected use of each ingredient over the next `cover` days: for each day, the average of the same weekday over the last four weeks

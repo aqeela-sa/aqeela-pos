@@ -78,7 +78,8 @@ service cloud.firestore {
     match /acc_journal/{id}     { allow read: if isAdmin() || granted('accounting'); allow write: if isAdmin(); }
     match /acc_cfo/{id}         { allow read, create, update: if isAdmin() || granted('cfo'); allow delete: if isAdmin(); }
     match /acc_menuItems/{id}   { allow read, create, update: if isAdmin() || granted('menu'); allow delete: if isAdmin(); }
-    match /acc_itemSales/{id}   { allow read, create, update: if isAdmin() || granted('menu'); allow delete: if isAdmin(); }
+    // the Foodics «products» reports: the kitchen reads them for what was sold on days the cashier did not sell on
+    match /acc_itemSales/{id}   { allow read: if isAdmin() || isPartner() || may(['menu', 'kitchen', 'ops']); allow create, update: if isAdmin() || granted('menu'); allow delete: if isAdmin(); }
     match /acc_platforms/{id}   { allow read, create, update: if isAdmin() || granted('platforms'); allow delete: if isAdmin(); }
     // daily summaries of the cashier's older days: written by the owner's copy, read wherever cashier figures are shown
     match /acc_posDays/{id}     { allow read: if isAdmin() || isPartner() || may(['pos', 'platforms', 'kitchen', 'ops']); allow write: if isAdmin(); }

@@ -1213,7 +1213,7 @@ const STAFF_PAGES = [["guide","دليل العمل اليومي"],["ops","الت
 /* collections closed to the employee unless the page that uses them is granted */
 /* collections closed to an employee unless one of the pages that use them is granted (the rules hold the same lists).
    For a team member (الإعدادات ← الفريق) the bank lines are also page-bound; the original data-entry account keeps reading them. */
-const STAFF_COLL_PAGE = {recipes:["kitchen","ops"], ingCounts:["kitchen","ops"], purchaseOrders:["kitchen","ops","buy"], batches:["kitchen","ops"], journal:["accounting"], staff:["payroll"], advances:["payroll"], payroll:["payroll"], cfo:["cfo"], menuItems:["menu"], itemSales:["menu"]};
+const STAFF_COLL_PAGE = {recipes:["kitchen","ops"], ingCounts:["kitchen","ops"], purchaseOrders:["kitchen","ops","buy"], batches:["kitchen","ops"], journal:["accounting"], staff:["payroll"], advances:["payroll"], payroll:["payroll"], cfo:["cfo"], menuItems:["menu"], itemSales:["menu","kitchen","ops"]};
 const STOCK_PAGES = ["stock","prodcost","dashboard","daily","guide","reports","cfo","budget","accounting"];
 const MEMBER_COLL_PAGE = {...STAFF_COLL_PAGE, bankTx:["recon","accounting","reports","dashboard","daily","guide"], stockItems:STOCK_PAGES, stockCounts:STOCK_PAGES};
 const collPages = coll => (S.legacy || typeof teamMe !== "function" || !teamMe() ? STAFF_COLL_PAGE : MEMBER_COLL_PAGE)[coll];
@@ -6871,8 +6871,8 @@ async function fixAttFlags(){
 if (window.__accHost) window.__accStart = connect; else connect();
 </script>
 <script src="apps.js?v=10"></script>
-<script src="kitchen.js?v=7"></script>
-<script src="purchase.js?v=4"></script>
+<script src="kitchen.js?v=8"></script>
+<script src="purchase.js?v=5"></script>
 <script src="team.js?v=1"></script>
 <script type="module" src="acc-fb.js?v=11"></script>
 </body>
