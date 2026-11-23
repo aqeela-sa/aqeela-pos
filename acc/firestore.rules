@@ -6,11 +6,18 @@ service cloud.firestore {
     function isAdmin() { return email() == 'abuabraj@gmail.com'; }
     function isCashier() { return email() == 'cashier@aqeela-pos.app'; }
     function isStaff() { return email() == 'aqeelah.shawqi@gmail.com'; }
-    // pages the owner granted the employee (الإعدادات ← صلاحيات الموظفين)
-    function granted(page) {
-      return isStaff()
-        && get(/databases/$(database)/documents/acc_settings/main).data.get('staffPerms', {}).get('views', []).hasAny([page]);
+    function settings() { return get(/databases/$(database)/documents/acc_settings/main).data; }
+    // a team member the owner added (الإعدادات ← الفريق): {email, name, role, views, off}, kept under the e-mail with «,» for «.»
+    function me() { return settings().get('team', {}).get(email().replace('[.]', ','), {}); }
+    function isMember() { return request.auth != null && me().get('role', '') != '' && me().get('off', false) != true; }
+    function isPartner() { return isMember() && me().get('role', '') == 'partner'; }
+    // pages granted to the original data-entry account (صلاحيات الموظفين) or to a working member (not the partner, who only reads)
+    function may(pages) {
+      return (isStaff() && settings().get('staffPerms', {}).get('views', []).hasAny(pages))
+          || (isMember() && !isPartner() && me().get('views', []).hasAny(pages));
     }
+    function granted(page) { return may([page]); }
+    function anyone() { return isAdmin() || isStaff() || isMember(); }
 
     // a field the update leaves as it was
     function same(k) { return request.resource.data.get(k, null) == resource.data.get(k, null); }
@@ -21,13 +28,13 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
     match /menu/{id} {
-      allow read: if isAdmin() || isCashier() || granted('pos') || granted('platforms') || granted('kitchen');
+      allow read: if isAdmin() || isCashier() || isPartner() || may(['pos', 'platforms', 'kitchen', 'ops']);
       allow write: if isAdmin();
     }
     // the cashier device creates orders, and later may only pay, void, change the type or the preparation state:
     // what was sold, its amount, its day and its shift never change once saved
     match /orders/{id} {
-      allow read: if isAdmin() || isCashier() || granted('pos') || granted('platforms') || granted('kitchen');
+      allow read: if isAdmin() || isCashier() || isPartner() || may(['pos', 'platforms', 'kitchen', 'ops']);
       allow create: if isAdmin() || isCashier();
       allow update: if isAdmin() || (isCashier() && same('total') && same('subtotal') && same('lines') && same('discount')
                                      && same('day') && same('no') && same('shiftId') && same('test') && same('ts') && same('device'));
@@ -35,7 +42,7 @@ service cloud.firestore {
     }
     // a closed shift is final for the cashier device
     match /shifts/{id} {
-      allow read: if isAdmin() || isCashier() || granted('pos') || granted('platforms') || granted('kitchen');
+      allow read: if isAdmin() || isCashier() || isPartner() || may(['pos', 'platforms', 'kitchen', 'ops']);
       allow create: if isAdmin() || isCashier();
       allow update: if isAdmin() || (isCashier() && resource.data.status == 'open');
       allow delete: if isAdmin();
@@ -43,27 +50,28 @@ service cloud.firestore {
 
     // ---------- Accounting: the employee's everyday entry ----------
     match /acc_settings/{id} {
-      allow read: if isAdmin() || isStaff();
+      allow read: if anyone();
       allow write: if isAdmin();
     }
     match /acc_users/{uid} {
-      allow read: if isAdmin() || isStaff();
-      allow create, update: if isAdmin() || (isStaff() && request.auth.uid == uid);
+      allow read: if anyone();
+      allow create, update: if isAdmin() || ((isStaff() || isMember()) && request.auth.uid == uid);
       allow delete: if isAdmin();
     }
-    match /acc_sales/{id}        { allow read, create, update: if isAdmin() || isStaff(); allow delete: if isAdmin(); }
-    match /acc_invoices/{id}     { allow read, create, update: if isAdmin() || isStaff(); allow delete: if isAdmin(); }
-    match /acc_custody/{id}      { allow read, create, update: if isAdmin() || isStaff(); allow delete: if isAdmin(); }
-    match /acc_appTransfers/{id} { allow read, create, update: if isAdmin() || isStaff(); allow delete: if isAdmin(); }
-    match /acc_recon/{id}        { allow read, create, update: if isAdmin() || isStaff(); allow delete: if isAdmin(); }
-    match /acc_suppliers/{id}    { allow read, create, update: if isAdmin() || isStaff(); allow delete: if isAdmin(); }
-    match /acc_payments/{id}     { allow read, create, update: if isAdmin() || isStaff(); allow delete: if isAdmin(); }
-    match /acc_attachments/{id}  { allow read, create, update: if isAdmin() || isStaff(); allow delete: if isAdmin(); }
-    match /acc_bankTx/{id}       { allow read: if isAdmin() || isStaff(); allow write: if isAdmin(); }
+    // read by every account of the team; written by the original data-entry account or a member granted a page that enters them
+    match /acc_sales/{id}        { allow read: if anyone(); allow create, update: if isAdmin() || isStaff() || may(['sales', 'guide']); allow delete: if isAdmin(); }
+    match /acc_invoices/{id}     { allow read: if anyone(); allow create, update: if isAdmin() || isStaff() || may(['invoices', 'buy', 'guide']); allow delete: if isAdmin(); }
+    match /acc_custody/{id}      { allow read: if anyone(); allow create, update: if isAdmin() || isStaff() || may(['custody', 'invoices', 'buy', 'guide']); allow delete: if isAdmin(); }
+    match /acc_appTransfers/{id} { allow read: if anyone(); allow create, update: if isAdmin() || isStaff() || may(['apps', 'platforms', 'guide']); allow delete: if isAdmin(); }
+    match /acc_recon/{id}        { allow read: if anyone(); allow create, update: if isAdmin() || isStaff() || may(['recon', 'daily', 'guide']); allow delete: if isAdmin(); }
+    match /acc_suppliers/{id}    { allow read: if anyone(); allow create, update: if isAdmin() || isStaff() || may(['suppliers', 'invoices', 'buy', 'guide']); allow delete: if isAdmin(); }
+    match /acc_payments/{id}     { allow read: if anyone(); allow create, update: if isAdmin() || isStaff() || may(['suppliers', 'guide']); allow delete: if isAdmin(); }
+    match /acc_attachments/{id}  { allow read: if anyone(); allow create, update: if isAdmin() || isStaff() || may(['invoices', 'buy', 'custody', 'sales', 'suppliers', 'guide']); allow delete: if isAdmin(); }
+    match /acc_bankTx/{id}       { allow read: if isAdmin() || isStaff() || isPartner() || may(['recon', 'accounting', 'reports', 'dashboard', 'daily', 'guide']); allow write: if isAdmin(); }
 
     // ---------- Accounting: pages the owner grants ----------
-    match /acc_stockItems/{id}  { allow read: if isAdmin() || isStaff(); allow create, update: if isAdmin() || granted('stock'); allow delete: if isAdmin(); }
-    match /acc_stockCounts/{id} { allow read: if isAdmin() || isStaff(); allow create, update: if isAdmin() || granted('stock'); allow delete: if isAdmin(); }
+    match /acc_stockItems/{id}  { allow read: if anyone(); allow create, update: if isAdmin() || granted('stock'); allow delete: if isAdmin(); }
+    match /acc_stockCounts/{id} { allow read: if anyone(); allow create, update: if isAdmin() || granted('stock'); allow delete: if isAdmin(); }
     match /acc_staff/{id}       { allow read, create, update: if isAdmin() || granted('payroll'); allow delete: if isAdmin(); }
     match /acc_advances/{id}    { allow read, create, update: if isAdmin() || granted('payroll'); allow delete: if isAdmin(); }
     match /acc_payroll/{id}     { allow read, create, update: if isAdmin() || granted('payroll'); allow delete: if isAdmin(); }
@@ -73,23 +81,28 @@ service cloud.firestore {
     match /acc_itemSales/{id}   { allow read, create, update: if isAdmin() || granted('menu'); allow delete: if isAdmin(); }
     match /acc_platforms/{id}   { allow read, create, update: if isAdmin() || granted('platforms'); allow delete: if isAdmin(); }
     // daily summaries of the cashier's older days: written by the owner's copy, read wherever cashier figures are shown
-    match /acc_posDays/{id}     { allow read: if isAdmin() || granted('pos') || granted('platforms') || granted('kitchen'); allow write: if isAdmin(); }
-    // kitchen: ingredients (read by every invoice entry), recipes and ingredient counts
-    match /acc_ingredients/{id} { allow read: if isAdmin() || isStaff(); allow create, update: if isAdmin() || granted('kitchen'); allow delete: if isAdmin(); }
-    match /acc_recipes/{id}     { allow read, create, update: if isAdmin() || granted('kitchen'); allow delete: if isAdmin(); }
-    match /acc_ingCounts/{id}   { allow read, create, update: if isAdmin() || granted('kitchen'); allow delete: if isAdmin(); }
-    match /acc_batches/{id}     { allow read, create, update: if isAdmin() || granted('kitchen'); allow delete: if isAdmin(); }
-    // purchase requests: the employee may raise and update them, but approval (approvedBy) is the owner's only
+    match /acc_posDays/{id}     { allow read: if isAdmin() || isPartner() || may(['pos', 'platforms', 'kitchen', 'ops']); allow write: if isAdmin(); }
+    // kitchen: ingredients (read by every invoice entry), recipes, ingredient counts and preparation batches
+    match /acc_ingredients/{id} { allow read: if anyone(); allow create, update: if isAdmin() || granted('kitchen'); allow delete: if isAdmin(); }
+    match /acc_recipes/{id}     { allow read: if isAdmin() || isPartner() || may(['kitchen', 'ops']); allow create, update: if isAdmin() || granted('kitchen'); allow delete: if isAdmin(); }
+    match /acc_ingCounts/{id}   { allow read, create, update: if isAdmin() || may(['kitchen', 'ops']); allow delete: if isAdmin(); }
+    match /acc_batches/{id}     { allow read, create, update: if isAdmin() || may(['kitchen', 'ops']); allow delete: if isAdmin(); }
+    // purchase requests: the kitchen raises them, the buyer sends and invoices them, the kitchen confirms what arrived.
+    // The owner's approval (approvedBy) is the owner's only; the partner may only add the partner's agreement (partnerOk).
     match /acc_purchaseOrders/{id} {
-      allow read: if isAdmin() || granted('kitchen');
-      allow create: if isAdmin() || (granted('kitchen') && request.resource.data.get('approvedBy', '') == '');
-      allow update: if isAdmin() || (granted('kitchen') && (same('approvedBy') || request.resource.data.get('approvedBy', '') == ''));
+      allow read: if isAdmin() || isPartner() || may(['kitchen', 'ops', 'buy']);
+      allow create: if isAdmin() || (may(['kitchen', 'ops', 'buy']) && request.resource.data.get('approvedBy', '') == '' && request.resource.data.get('partnerOk', '') == '');
+      allow update: if isAdmin()
+        || (may(['kitchen', 'ops', 'buy']) && (same('approvedBy') || request.resource.data.get('approvedBy', '') == '')
+                                            && (same('partnerOk') || request.resource.data.get('partnerOk', '') == ''))
+        || (isPartner() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['partnerOk', 'partnerAt', 'by', 'updatedAt', 'history']));
       allow delete: if isAdmin();
     }
 
-    // anything else: the owner only
+    // anything else: the owner only (the partner may read everything, and change nothing beyond the above)
     match /{document=**} {
-      allow read, write: if isAdmin();
+      allow read: if isAdmin() || isPartner();
+      allow write: if isAdmin();
     }
   }
 }

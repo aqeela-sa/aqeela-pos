@@ -8,11 +8,13 @@
 const poLim = () => { const L = S.settings.poLimits || {}; return {l1: has(L.l1) ? n(L.l1) : 500, l2: has(L.l2) ? n(L.l2) : 2000, cover: has(L.cover) ? Math.max(1, n(L.cover)) : 2}; };
 const poAll = () => [...(S.purchaseOrders || [])].sort((a, b) => (b.date || "").localeCompare(a.date || "") || n(b.no) - n(a.no));
 const poNeeds = p => n(p.est) > poLim().l1;                         // needs approval before buying
-const poOk = p => !poNeeds(p) || !!p.approvedBy;                     // may be bought now
+/* above the second limit, with a partner on the team, the partner's agreement follows the owner's approval (two signatures) */
+const poNeedsPartner = p => n(p.est) > poLim().l2 && typeof hasPartner === "function" && hasPartner();
+const poOk = p => !poNeeds(p) || (!!p.approvedBy && (!poNeedsPartner(p) || !!p.partnerOk));   // may be bought now
 const poOpen = p => p && !p.deleted && (p.status === "pending" || p.status === "ordered");
 const PO_ST = {pending:["طلب مفتوح","info"], ordered:["أُرسل للمورد","info"], received:["مستلم","ok"], cancelled:["ملغي","bad"]};
 function poChip(p){
-  if (p.status === "pending" && !poOk(p)) return `<span class="pill warn">بانتظار ${n(p.est) > poLim().l2 ? "قرار الشريكين" : "اعتماد المدير"}</span>`;
+  if (p.status === "pending" && !poOk(p)) return `<span class="pill warn">بانتظار ${p.approvedBy ? "موافقة الشريك" : n(p.est) > poLim().l2 ? "قرار الشريكين" : "اعتماد المدير"}</span>`;
   const s = PO_ST[p.status] || PO_ST.pending; return `<span class="pill ${s[1]}">${s[0]}${p.status === "pending" && poNeeds(p) ? " · معتمد" : ""}</span>`;
 }
 const poEst = lines => r2(sumBy(lines, l => n(l.q) * n(l.p)));
@@ -40,9 +42,11 @@ function ktUseByDay(a, b){
    (a Thursday is not a Sunday); when there is no history for that weekday, the daily average of the last 14 days */
 function poForecast(cover){
   const t = today(), past = ktUseByDay(addDays(t, -28), addDays(t, -1)), out = new Map(), wd = d => new Date(d + "T12:00:00").getDay();
-  const avg14 = new Map(); for (let i = 1; i <= 14; i++){ const m = past.get(addDays(t, -i)); if (m) for (const [k, v] of m) avg14.set(k, (avg14.get(k) || 0) + v / 14); }
+  /* only days since selling began count: a business two weeks old is not averaged with four weeks of zeros */
+  const first = [...past.keys()].sort()[0] || t, d14 = Math.max(1, Math.min(14, daysBetween(first, t) - 1));
+  const avg14 = new Map(); for (let i = 1; i <= 14; i++){ const m = past.get(addDays(t, -i)); if (m) for (const [k, v] of m) avg14.set(k, (avg14.get(k) || 0) + v / d14); }
   for (let i = 1; i <= cover; i++){
-    const d = addDays(t, i), same = [7, 14, 21, 28].map(k => addDays(d, -k)).filter(x => x < t && x >= addDays(t, -28));
+    const d = addDays(t, i), same = [7, 14, 21, 28].map(k => addDays(d, -k)).filter(x => x < t && x >= addDays(t, -28) && x >= first);
     const seen = same.filter(x => past.has(x));
     for (const g of ktRaws()){
       const v = seen.length ? sumBy(seen, x => past.get(x).get(g.id) || 0) / same.length : (avg14.get(g.id) || 0);
@@ -67,7 +71,7 @@ function ktPO(el){
   if (!G.length){ el.innerHTML = `<div class="empty card">أضف المكونات ووصفاتها وسجّل جرداً، ثم يقترح البرنامج قائمة الشراء.</div>`; return; }
   const t = today(); if (ktNeedOld(addDays(t, -28), el, renderKitchen)) return;
   const sug = poSuggest(), pick = S.poPick = S.poPick || {};
-  sug.forEach(r => { if (!pick[r.g.id]) pick[r.g.id] = {q: r.q, sup: r.sup, on: r.q > 0}; });
+  sug.forEach(r => { const k = pick[r.g.id]; if (!k) pick[r.g.id] = {q: r.q, sup: r.sup, on: r.q > 0}; else if (!k.ed){ k.q = r.q; k.on = r.q > 0; } });
   const all = poAll(), open = all.filter(poOpen), wait = open.filter(p => p.status === "pending" && !poOk(p));
   el.innerHTML = `${wait.length && S.canEdit ? `<div class="note warn" style="margin-bottom:12px"><b>${wait.length} طلب شراء بانتظار اعتمادك</b> بإجمالي <span class="num">${fmt(sumBy(wait, p => n(p.est)))}</span>. افتحه من القائمة أدناه.</div>` : ""}
     <div class="card" style="margin-bottom:14px"><div class="actions" style="justify-content:space-between;flex-wrap:wrap"><h3 style="margin:0">قائمة الشراء المقترحة</h3>
@@ -85,8 +89,8 @@ function ktPO(el){
     ${all.slice(0, 60).map(p => { const inv = p.invId ? (S.invoices || []).find(v => v.id === p.invId) : null;
       return `<tr class="click" data-po="${esc(p.id)}"><td class="num"><b>${esc(String(p.no || ""))}</b></td><td class="num">${dmy(p.date)}</td><td>${esc(p.supplier || "—")}</td><td>${esc(p.buyer || "")}</td><td class="n num">${(p.lines || []).length}</td><td class="n">${money(p.est)}</td><td>${poChip(p)}</td>
         <td>${inv ? `<span class="num">${money(invTotal(inv))}</span>${Math.abs(invTotal(inv) - n(p.est)) > 0.005 ? ` <small class="muted">(${invTotal(inv) > n(p.est) ? "+" : ""}${fmt(invTotal(inv) - n(p.est))})</small>` : ""}` : "—"}</td></tr>`; }).join("") || `<tr><td colspan="8" class="empty">لا توجد طلبات شراء بعد</td></tr>`}</tbody></table></div>`;
-  el.querySelectorAll("[data-pon]").forEach(c => c.onchange = () => { pick[c.dataset.pon].on = c.checked; });
-  el.querySelectorAll("[data-poq]").forEach(c => c.onchange = () => { pick[c.dataset.poq].q = c.value; pick[c.dataset.poq].on = n(c.value) > 0; ktPO(el); });
+  el.querySelectorAll("[data-pon]").forEach(c => c.onchange = () => { pick[c.dataset.pon].on = c.checked; pick[c.dataset.pon].ed = true; });
+  el.querySelectorAll("[data-poq]").forEach(c => c.onchange = () => { pick[c.dataset.poq].q = c.value; pick[c.dataset.poq].on = n(c.value) > 0; pick[c.dataset.poq].ed = true; ktPO(el); });
   el.querySelectorAll("[data-pos]").forEach(c => c.onchange = () => { pick[c.dataset.pos].sup = c.value.trim(); });
   el.querySelectorAll("[data-po]").forEach(tr => tr.onclick = () => poOpenOrder(tr.dataset.po));
   if ($("#po_set")) $("#po_set").onclick = e => { e.preventDefault(); poSettings(); };
@@ -97,7 +101,7 @@ function ktPO(el){
     const by = new Map(); for (const r of chosen){ const s = supKey(pick[r.g.id].sup || "") ; (by.get(s) || by.set(s, []).get(s)).push({ing:r.g.id, q:Math.round(n(pick[r.g.id].q) * 1000) / 1000, p:Math.round(r.p * 1000) / 1000}); }
     $("#po_make").disabled = true; let k = 0, no = Math.max(0, ...(S.raw.purchaseOrders || []).map(p => n(p.no)));
     for (const [sup, lines] of by){ const est = poEst(lines);
-      if (await recWrite("purchaseOrders", null, {no: ++no, date: t, supplier: sup === "بدون مورد" ? "" : sup, buyer: buyerCanon(S.poBuyer), lines, est, notes:"", status:"pending", approvedBy:"", invId:""}, "create", "")) k++; }
+      if (await recWrite("purchaseOrders", null, {no: ++no, date: t, supplier: sup === "بدون مورد" ? "" : sup, buyer: buyerCanon(S.poBuyer), lines, est, notes:"", status:"pending", approvedBy:"", partnerOk:"", invId:"", raisedBy: typeof teamName === "function" ? teamName() : ""}, "create", "")) k++; }
     S.poPick = {}; toast(`أُنشئ ${k} طلب شراء`);
   };
 }
@@ -128,8 +132,9 @@ function poOpenOrder(id){
   const p = (S.purchaseOrders || []).find(x => x.id === id); if (!p) return;
   const G = S.ingredients || [], edit = p.status === "pending" && S.canWrite, L = (p.lines || []).map(l => ({...l}));
   const inv = p.invId ? (S.invoices || []).find(v => v.id === p.invId) : null, sp = supplierOf(p.supplier || ""), phone = sp && sp.phone ? String(sp.phone).replace(/\D/g, "").replace(/^0/, "966") : "";
+  const kr = p.recv && p.recv.at ? p.recv : null, kq = ing => kr ? sumBy((kr.lines || []).filter(r => r.ing === ing), r => n(r.q)) : null;
   const cmp = inv ? L.map(l => { const g = ktIng(l.ing), got = (inv.items || []).filter(it => it.ing === l.ing), gq = sumBy(got, it => n(it.q)), ga = sumBy(got, it => n(it.a));
-      return {g, l, gq, gp: gq ? ga / gq : null}; }) : [];
+      return {g, l, gq, gp: gq ? ga / gq : null, kq: kq(l.ing)}; }) : [];
   const extra = inv ? (inv.items || []).filter(it => !L.some(l => l.ing === it.ing)) : [];
   const draw = () => {
     $("#po_rows").innerHTML = L.map((l, i) => { const g = ktIng(l.ing);
@@ -142,21 +147,31 @@ function poOpenOrder(id){
     document.querySelectorAll("[data-pld]").forEach(b => b.onclick = () => { L.splice(+b.dataset.pld, 1); draw(); });
   };
   const canApprove = S.canEdit && p.status === "pending" && poNeeds(p) && !p.approvedBy;
+  const canPartner = typeof isPartnerU === "function" && isPartnerU() && p.status === "pending" && p.approvedBy && poNeedsPartner(p) && !p.partnerOk;
+  const canRecv = S.canWrite && !(p.recv && p.recv.at) && (p.status === "ordered" || p.status === "received") && typeof poReceive === "function";
   $("#sheet").innerHTML = `<div class="entry"><div class="actions" style="justify-content:space-between"><h3 style="margin:0">طلب شراء رقم <span class="num">${esc(String(p.no))}</span></h3>${poChip(p)}</div>
     <p class="small muted" style="margin:0"><span class="num">${dmy(p.date)}</span> · المورد: <b>${esc(p.supplier || "—")}</b>${p.buyer ? ` · المشتري: <b>${esc(p.buyer)}</b>` : ""}${p.approvedBy ? ` · اعتُمد <span class="num">${dmy((p.approvedAt || "").slice(0, 10))}</span>` : ""}</p>
+    ${p.status === "pending" && p.approvedBy && poNeedsPartner(p) && !p.partnerOk ? `<div class="note warn">اعتمده المالك، وينتظر موافقة الشريك لأن التقدير فوق حد قرار الشريكين (<span class="num">${fmt(poLim().l2)}</span>).</div>` : ""}
+    ${p.partnerOk ? `<p class="small muted" style="margin:0">وافق الشريك <span class="num">${dmy((p.partnerAt || "").slice(0, 10))}</span></p>` : ""}
     ${poNeeds(p) && !p.approvedBy && p.status === "pending" ? `<div class="note warn">التقدير <b class="num">${fmt(p.est)}</b> فوق حد الشراء بدون اعتماد (<span class="num">${fmt(poLim().l1)}</span>)${n(p.est) > poLim().l2 ? "، وفوق حد قرار الشريكين" : ""}: لا يُشترى قبل الاعتماد.</div>` : ""}
     <div class="tw"><table><thead><tr><th>المكوّن</th><th>الكمية</th><th class="n">سعر تقديري</th><th class="n">المبلغ</th>${edit ? "<th></th>" : ""}</tr></thead><tbody id="po_rows"></tbody>
       <tfoot><tr><td colspan="3"><b>التقدير</b></td><td class="n"><b class="num" id="po_est"></b></td>${edit ? "<td></td>" : ""}</tr></tfoot></table></div>
     ${edit ? `<div class="actions"><button type="button" class="btn ghost sm" id="po_addl">+ مكوّن</button></div>` : ""}
-    ${inv ? `<h4 style="margin:10px 0 4px">المستلم بالفاتورة <span class="num">${esc(inv.no || "")}</span> · <span class="num">${money(invTotal(inv))}</span></h4>
-      <div class="tw"><table><thead><tr><th>المكوّن</th><th class="n">المطلوب</th><th class="n">المستلم</th><th class="n">السعر التقديري</th><th class="n">السعر الفعلي</th></tr></thead><tbody>
-      ${cmp.map(c => `<tr><td>${esc(c.g ? c.g.name : "—")}</td><td class="n num">${ktQ(c.l.q)}</td><td class="n"><b class="num" style="color:${Math.abs(c.gq - n(c.l.q)) > 1e-6 ? "#B26A00" : "inherit"}">${ktQ(c.gq)}</b></td>
+    ${inv ? `<h4 style="margin:10px 0 4px">المطلوب · المستلم في المطبخ · المفوتر <span class="small muted">فاتورة <span class="num">${esc(inv.no || "")}</span> · <span class="num">${money(invTotal(inv))}</span></span></h4>
+      <div class="tw"><table><thead><tr><th>المكوّن</th><th class="n">المطلوب</th><th class="n">استلمه المطبخ</th><th class="n">في الفاتورة</th><th class="n">السعر التقديري</th><th class="n">السعر الفعلي</th></tr></thead><tbody>
+      ${cmp.map(c => `<tr><td>${esc(c.g ? c.g.name : "—")}</td><td class="n num">${ktQ(c.l.q)}</td>
+        <td class="n">${c.kq == null ? `<span class="muted">لم يؤكد</span>` : `<b class="num" style="color:${Math.abs(c.kq - n(c.l.q)) > 1e-6 ? "#B26A00" : "inherit"}">${ktQ(c.kq)}</b>`}</td>
+        <td class="n"><b class="num" style="color:${c.kq != null && c.gq - c.kq > 1e-6 ? "var(--bad,#C62828)" : Math.abs(c.gq - n(c.l.q)) > 1e-6 ? "#B26A00" : "inherit"}">${ktQ(c.gq)}</b></td>
         <td class="n">${money(c.l.p)}</td><td class="n">${c.gp == null ? "—" : `<b class="num" style="color:${c.gp > n(c.l.p) * 1.1 ? "var(--bad,#C62828)" : "inherit"}">${fmt(c.gp)}</b>`}</td></tr>`).join("")}
-      ${extra.map(it => { const g = ktIng(it.ing); return `<tr><td>${esc(g ? g.name : "—")} <small class="muted">(غير مطلوب)</small></td><td class="n">—</td><td class="n num">${ktQ(it.q)}</td><td class="n">—</td><td class="n num">${n(it.q) ? fmt(n(it.a) / n(it.q)) : "—"}</td></tr>`; }).join("")}</tbody></table></div>
+      ${extra.map(it => { const g = ktIng(it.ing); return `<tr><td>${esc(g ? g.name : "—")} <small class="muted">(غير مطلوب)</small></td><td class="n">—</td><td class="n num">${kq(it.ing) == null ? "—" : ktQ(kq(it.ing))}</td><td class="n num">${ktQ(it.q)}</td><td class="n">—</td><td class="n num">${n(it.q) ? fmt(n(it.a) / n(it.q)) : "—"}</td></tr>`; }).join("")}</tbody></table></div>
+      ${cmp.some(c => c.kq != null && c.gq - c.kq > 1e-6) ? `<div class="note bad" style="margin-top:6px">الفاتورة فيها كمية أكبر مما استلمه المطبخ: راجعها مع المشتري والمورد قبل السداد.</div>` : ""}
       ${(inv.items || []).length ? "" : `<p class="small muted">الفاتورة بلا أصناف مخزون، فلا مقارنة بالكميات. أضفها من نموذج الفاتورة.</p>`}` : ""}
+    ${kr ? `<p class="small" style="margin:4px 0">استلمه المطبخ${kr.name ? " (" + esc(kr.name) + ")" : ""} <span class="num">${dmy(kr.at.slice(0, 10))}</span>${inv ? "" : ": " + (kr.lines || []).map(r => { const g = ktIng(r.ing); return `${esc(g ? g.name : "—")} <span class="num">${ktQ(r.q)}</span>`; }).join(" · ")}${kr.notes ? ` · <span class="muted">${esc(kr.notes)}</span>` : ""}</p>` : ""}
     <div class="actions" style="flex-wrap:wrap">
       ${edit ? `<button class="btn" type="button" id="po_save">حفظ التعديل</button>` : ""}
       ${canApprove ? `<button class="btn" type="button" id="po_ok" style="background:#1B7A57">اعتماد الطلب</button>` : ""}
+      ${canPartner ? `<button class="btn" type="button" id="po_pok" style="background:#1B7A57">موافقة الشريك</button>` : ""}
+      ${canRecv ? `<button class="btn ghost" type="button" id="po_rv">تأكيد الاستلام في المطبخ</button>` : ""}
       ${poOpen(p) && poOk(p) && S.canWrite ? `<button class="btn ghost" type="button" id="po_wa">${phone ? "إرسال للمورد واتساب" : "نسخ رسالة المورد"}</button>` : ""}
       ${poOpen(p) && S.canWrite ? `<button class="btn danger sm" type="button" id="po_cancel">إلغاء الطلب</button>` : ""}
       ${p.status === "cancelled" && S.canWrite ? `<button class="btn ghost sm" type="button" id="po_reopen">إعادة فتح</button>` : ""}
@@ -167,10 +182,12 @@ function poOpenOrder(id){
   if ($("#po_addl")) $("#po_addl").onclick = () => { const g = G.find(z => !L.some(l => l.ing === z.id)) || G[0]; L.push({ing:g.id, q:1, p:Math.round(ktPrice(g) * 1000) / 1000}); draw(); };
   if ($("#po_save")) $("#po_save").onclick = async () => { const lines = L.filter(l => l.ing && n(l.q) > 0); if (!lines.length){ toast("الطلب بلا أصناف؛ ألغِه بدلاً من ذلك"); return; }
     const est = poEst(lines), keepOk = p.approvedBy && est <= n(p.est) + 0.005;   // an approved request that grows needs approval again
-    if (await save({lines, est, approvedBy: keepOk ? p.approvedBy : "", approvedAt: keepOk ? p.approvedAt || "" : ""}, "تم حفظ الطلب")) closeModal(); };
+    if (await save({lines, est, approvedBy: keepOk ? p.approvedBy : "", approvedAt: keepOk ? p.approvedAt || "" : "", partnerOk: keepOk ? p.partnerOk || "" : "", partnerAt: keepOk ? p.partnerAt || "" : ""}, "تم حفظ الطلب")) closeModal(); };
+  if ($("#po_pok")) $("#po_pok").onclick = async () => { if (await save({partnerOk:S.uid || "partner", partnerAt:new Date().toISOString()}, "تمت موافقة الشريك")) closeModal(); };
+  if ($("#po_rv")) $("#po_rv").onclick = () => poReceive(id);
   if ($("#po_ok")) $("#po_ok").onclick = async () => { if (await save({approvedBy:S.uid || "owner", approvedAt:new Date().toISOString()}, "تم اعتماد الطلب")) closeModal(); };
   if ($("#po_cancel")) armDelete($("#po_cancel"), async () => { if (await save({status:"cancelled"}, "أُلغي الطلب")) closeModal(); });
-  if ($("#po_reopen")) $("#po_reopen").onclick = async () => { if (await save({status:"pending", approvedBy:"", approvedAt:""}, "أُعيد فتح الطلب")) closeModal(); };
+  if ($("#po_reopen")) $("#po_reopen").onclick = async () => { if (await save({status:"pending", approvedBy:"", approvedAt:"", partnerOk:"", partnerAt:""}, "أُعيد فتح الطلب")) closeModal(); };
   if ($("#po_wa")) $("#po_wa").onclick = async () => { const txt = poText(p);
     if (phone) window.open("https://wa.me/" + phone + "?text=" + encodeURIComponent(txt), "_blank");
     else { try { await navigator.clipboard.writeText(txt); toast("نُسخت رسالة الطلب؛ الصقها للمورد"); } catch(e){ toast("لم يُنسخ النص"); } }

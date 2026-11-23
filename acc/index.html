@@ -157,6 +157,8 @@ form.entry{display:grid;gap:14px}
 .editing{border-color:var(--warn);box-shadow:0 0 0 3px color-mix(in srgb,var(--warn) 22%,transparent)}
 .note{padding:11px 14px;border-radius:11px;background:var(--bank-bg);color:var(--ink);font-size:13.5px;border:1px solid color-mix(in srgb,var(--bank) 15%,transparent)}
 .note.warn{background:var(--bad-bg);border-color:color-mix(in srgb,var(--bad) 18%,transparent)}
+.note.bad{background:var(--bad-bg);border-color:color-mix(in srgb,var(--bad) 45%,transparent);color:var(--bad)}
+.note.ok{background:var(--good-bg);border-color:color-mix(in srgb,var(--good) 25%,transparent)}
 .seg{display:inline-flex;border:1px solid var(--line);border-radius:11px;overflow:hidden;background:var(--card);padding:3px;gap:3px}
 .seg button{border:0;background:transparent;padding:6px 16px;font-weight:800;cursor:pointer;border-radius:8px;color:var(--muted)}
 .seg button.on{background:var(--ink);color:var(--paper)}
@@ -960,6 +962,8 @@ nav.tabs a[hidden],.nav-more[hidden]{display:none!important}
     <a href="#menu" data-v="menu" class="more">تكلفة الوجبات</a>
     <a href="#budget" data-v="budget" class="more">الميزانية الشهرية</a>
     <a href="#kitchen" data-v="kitchen">الوصفات والمخزون</a>
+    <a href="#ops" data-v="ops" class="more">التشغيل اليومي</a>
+    <a href="#buy" data-v="buy" class="more">المشتريات</a>
     <a href="#stock" data-v="stock" class="more">مخزون التغليف</a>
     <a href="#apps" data-v="apps" class="more">تحويلات التطبيقات</a>
     <a href="#recon" data-v="recon">المطابقة اليومية</a>
@@ -1198,21 +1202,28 @@ const findRaw = (coll, id) => id ? S.raw[KEY[coll]].find(x => x.id === id) : nul
    Every page can be granted; the daily guide is always open as her home page. The database rules read the same list, so a granted
    page's data opens to her account and a removed one closes. Owner-only controls inside pages (settings, journal edits, bank
    statement import, month locks, these permissions) stay with the owner. */
-const STAFF_PAGES = [["guide","دليل العمل اليومي"],["dashboard","لوحة التحكم"],["sales","المبيعات"],["invoices","الفواتير"],["prodcost","تكاليف الإنتاج"],["suppliers","الموردون"],
+const STAFF_PAGES = [["guide","دليل العمل اليومي"],["ops","التشغيل اليومي"],["buy","المشتريات"],["dashboard","لوحة التحكم"],["sales","المبيعات"],["invoices","الفواتير"],["prodcost","تكاليف الإنتاج"],["suppliers","الموردون"],
   ["custody","العهد"],["pos","مبيعات الكاشير"],["platforms","التطبيقات"],["payroll","الموظفين والرواتب"],["daily","الملخص اليومي"],["menu","تكلفة الوجبات"],
   ["budget","الميزانية الشهرية"],["kitchen","الوصفات والمخزون"],["stock","مخزون التغليف"],["apps","تحويلات التطبيقات"],["recon","المطابقة اليومية"],["accounting","المحاسبة"],["reports","التقارير"],
   ["cfo","المدير المالي"],["history","السجل والأرشيف"],["setup","الإعدادات"]];
 /* collections closed to the employee unless the page that uses them is granted */
-const STAFF_COLL_PAGE = {recipes:"kitchen", ingCounts:"kitchen", purchaseOrders:"kitchen", batches:"kitchen", journal:"accounting", staff:"payroll", advances:"payroll", payroll:"payroll", cfo:"cfo", menuItems:"menu", itemSales:"menu"};
+/* collections closed to an employee unless one of the pages that use them is granted (the rules hold the same lists).
+   For a team member (الإعدادات ← الفريق) the bank lines are also page-bound; the original data-entry account keeps reading them. */
+const STAFF_COLL_PAGE = {recipes:["kitchen","ops"], ingCounts:["kitchen","ops"], purchaseOrders:["kitchen","ops","buy"], batches:["kitchen","ops"], journal:["accounting"], staff:["payroll"], advances:["payroll"], payroll:["payroll"], cfo:["cfo"], menuItems:["menu"], itemSales:["menu"]};
+const MEMBER_COLL_PAGE = {...STAFF_COLL_PAGE, bankTx:["recon","accounting","reports","dashboard","daily","guide"]};
+const collPages = coll => (S.legacy || typeof teamMe !== "function" || !teamMe() ? STAFF_COLL_PAGE : MEMBER_COLL_PAGE)[coll];
+const collWanted = coll => { if (!isStaff() || (typeof isPartnerU === "function" && isPartnerU())) return true; const P = collPages(coll); return !P || P.some(k => staffSees(k)); };
 const staffSees = k => !isStaff() || staffPerms().views.has(k);
 const STAFF_DEFAULT = ["guide","daily","sales","invoices","suppliers","custody","recon"], STAFF_HOME = "guide";
-const staffPerms = () => { const P = (S.settings && S.settings.staffPerms) || {}; const v = Array.isArray(P.views) ? P.views : STAFF_DEFAULT;
+const staffPerms = () => { const M = typeof teamMe === "function" ? teamMe() : null;
+  if (M){ const h = memberHome(M); return {views: new Set([h, ...memberViews(M).filter(k => STAFF_PAGES.some(p => p[0] === k))]), month: M.role === "partner" || !!M.month}; }
+  const P = (S.settings && S.settings.staffPerms) || {}; const v = Array.isArray(P.views) ? P.views : STAFF_DEFAULT;
   return {views: new Set(["guide", ...v.filter(k => STAFF_PAGES.some(p => p[0] === k))]), month: !!P.month}; };
 const STAFF_VIEWS = {has: k => staffPerms().views.has(k)};
 const staffMonth = () => !isStaff() || staffPerms().month;   // month totals and production cost in the daily summary
-const homeView = () => isStaff() ? STAFF_HOME : "dashboard";
+const homeView = () => !isStaff() ? "dashboard" : typeof teamMe === "function" && teamMe() ? memberHome(teamMe()) : STAFF_HOME;
 const STAFF_REPORTS = new Set(["summary","sales","expenses","production","recon","custody","apps","supplier","payables","buyer","prices","daily"]);
-const STAFF_HIDDEN = Object.keys(STAFF_COLL_PAGE);   // opened per granted page, by the app and by the database rules
+const STAFF_HIDDEN = Object.keys(MEMBER_COLL_PAGE);   // opened per granted page, by the app and by the database rules
 const isStaff = () => S.role === "staff";
 /* when a record was first entered (its «create» history entry; the oldest kept entry or the last save otherwise), and that local day */
 const enteredAt = x => { const h = (x && x.history) || []; const c = h.find(e => e.action === "create") || h[h.length - 1]; return (c && c.at) || (x && x.updatedAt) || ""; };
@@ -1220,16 +1231,21 @@ const enteredDay = x => { const t = enteredAt(x); return t ? iso(new Date(t)) : 
 const creatorOf = x => { const h = (x && x.history) || []; const c = h.find(e => e.action === "create"); return (c && c.by) || (h.length ? h[h.length - 1].by : "") || (x && x.by) || ""; };
 function applyRole(){
   document.documentElement.dataset.role = S.role || "admin";
-  document.querySelectorAll("#tabs a").forEach(a => { a.hidden = isStaff() && !STAFF_VIEWS.has(a.dataset.v); });
-  /* with only «الموردون» left in the menu for an employee, show it as a normal tab */
-  const sup = document.querySelector('#tabs a[data-v="suppliers"]'); if (sup) sup.classList.toggle("more", !isStaff());
+  if (typeof teamWatch === "function") teamWatch();
+  const tabs = [...document.querySelectorAll("#tabs a")];
+  tabs.forEach(a => { if (a.dataset.more0 === undefined) a.dataset.more0 = a.classList.contains("more") ? "1" : ""; a.hidden = isStaff() && !STAFF_VIEWS.has(a.dataset.v); });
+  /* an employee with a short list of pages sees them all as tabs, nothing folded into «المزيد» */
+  const few = isStaff() && tabs.filter(a => !a.hidden).length <= 8;
+  /* the member's own page leads the bar */
+  if (isStaff()){ const h = tabs.find(a => a.dataset.v === homeView()), nav = $("#tabs"); if (h && nav && nav.firstElementChild !== h) nav.insertBefore(h, nav.firstElementChild); }
+  tabs.forEach(a => a.classList.toggle("more", !few && a.dataset.more0 === "1"));
   const menu = $("#nav_menu"); if (menu){ delete menu.dataset.built; menu.innerHTML = ""; }
-  if (isStaff() && !STAFF_VIEWS.has(S.view)){ S.view = STAFF_HOME; if (location.hash !== "#" + STAFF_HOME) history.replaceState(null, "", "#" + STAFF_HOME); }
+  if (isStaff() && !STAFF_VIEWS.has(S.view)){ S.view = homeView(); if (location.hash !== "#" + S.view) history.replaceState(null, "", "#" + S.view); }
 }
 function recWrite(coll, id, data, action, msg){
   const ex = findRaw(coll, id);
   /* a data-entry employee may change or delete only what she entered herself */
-  if (isStaff() && ex && creatorOf(ex) !== (S.uid || "-")){ toast("هذه الحركة سجّلها شخص آخر، لا يمكنك تعديلها أو حذفها. اطلب من المدير تعديلها."); return Promise.resolve(false); }
+  if (isStaff() && coll !== "purchaseOrders" && ex && creatorOf(ex) !== (S.uid || "-")){ toast("هذه الحركة سجّلها شخص آخر، لا يمكنك تعديلها أو حذفها. اطلب من المدير تعديلها."); return Promise.resolve(false); }
   const act = action || (ex && !ex.deleted ? "edit" : "create");
   const lr = lockReason(coll, id, ex, data, act);
   if (lr){ toast(`${lr}، لا يمكن الإضافة أو التعديل أو الحذف فيه.${S.canEdit ? " افتحه من الإعدادات ← إقفال الأشهر إذا احتجت." : " اطلب من المدير فتحه."}`); return Promise.resolve(false); }
@@ -1327,7 +1343,7 @@ function viewDashboard(){
 function renderDash(){
   const el = $("#dash"); if (!el) return;
   const rows = ledger(), b = balances(rows), st = monthStats(S.y,S.m);
-  let top = needStart();
+  let top = (typeof teamInbox === "function" ? teamInbox() : "") + needStart();
   if (b){
     const tr = b.todayRow, CUc = reconCum(rows, true), CUb = reconCum(rows, false);
     /* after an approved reconciliation the card shows the running difference since it (timing of withdrawals cancels out); before any, the last day's difference */
@@ -1677,6 +1693,12 @@ function bindInvoices(){
   };
   armDelete($("#i_del"), async () => { if (S.editInv && await archive("invoices", S.editInv)) reset(); });
   reset();
+  /* «اشتريت · سجّل الفاتورة» from the purchasing page: the form opens on the request, its items copied, paid from the buyer's custody */
+  if (S.invPreset){ const P = S.invPreset, p = (S.purchaseOrders || []).find(x => x.id === P.po); S.invPreset = null;
+    if (p){ $("#i_sup").value = p.supplier || ""; $("#i_sup").dispatchEvent(new Event("change")); poDraw(p.id); $("#i_po_copy").click();
+      if (P.buyer) $("#i_buy").value = P.buyer;
+      if (P.pay){ $("#i_pay").value = P.pay; $("#i_pay").dispatchEvent(new Event("change")); }
+      setTimeout(() => { const f2 = $("#fi"); if (f2) f2.scrollIntoView({block:"start"}); }, 50); } }
 }
 /* when an invoice was typed into the app (its first history entry), as opposed to the date printed on it */
 const invEntAt = x => { const h = (x.history || []).filter(e => e && e.action === "create" && e.at); return (h.length ? h[h.length - 1].at : "") || x.updatedAt || ""; };
@@ -2055,6 +2077,7 @@ function viewSetup(){
 
   ${brandIsAqeela() ? `<div class="card" style="display:flex;align-items:center;gap:14px;flex-wrap:wrap"><div style="flex:1;min-width:220px"><h3 style="margin:0 0 4px">📘 دليل المستخدم</h3><p class="small muted" style="margin:0">كتاب PDF من 51 صفحة يشرح فكرة البرنامج وطريقة استخدام كل صفحاته، مناسب لتدريب أي موظف جديد.</p></div><button class="btn" type="button" id="set_book">تنزيل الدليل</button></div>` : ""}
   ${brandCard()}
+  ${typeof teamCard === "function" ? teamCard() : ""}
   ${staffPermCard()}
   ${S.isOwner ? `<div class="card" id="rs_card"><h3 style="margin:0 0 4px">استعادة الإعدادات</h3>
     <p class="small muted" style="margin:0 0 10px">لاستعادة نسخة من الإعدادات يعطيك إياها Claude. يعرض ما سيتغير قبل التطبيق، ويُبقي ما أُضيف بعد النسخة (مثل صلاحيات الموظفين).</p>
@@ -2146,7 +2169,7 @@ async function importMigration(file, st){
   };
 }
 function bindSetup(){
-  bindLockCard(); bindBrandCard(); bindStaffPermCard(); bindPosClean(); bindRestoreSettings(); if ($("#set_book")) $("#set_book").onclick = () => downloadBook($("#set_book"));
+  bindLockCard(); bindBrandCard(); bindStaffPermCard(); if (typeof bindTeamCard === "function") bindTeamCard(); bindPosClean(); bindRestoreSettings(); if ($("#set_book")) $("#set_book").onclick = () => downloadBook($("#set_book"));
   document.querySelectorAll(".skin-opt").forEach(b => b.onclick = () => { const v = ["teal", "rose"].includes(b.dataset.sk) ? b.dataset.sk : "classic";
     document.documentElement.dataset.skin = v; try { localStorage.setItem("skin", v); } catch(e){}
     document.querySelectorAll(".skin-opt").forEach(x => { x.classList.toggle("on", x === b); x.setAttribute("aria-checked", x === b); }); });
@@ -6639,7 +6662,7 @@ const VIEWS = {
   setup:{v:viewSetup, bind:bindSetup, list:() => { const el = $("#lock_card"); if (!el || el.contains(document.activeElement)) return; const w = document.createElement("div"); w.innerHTML = lockCard(); const nw = w.firstElementChild; if (nw && nw.outerHTML !== el.outerHTML){ el.replaceWith(nw); bindLockCard(); } }}
 };
 function render(){
-  if (isStaff() && !STAFF_VIEWS.has(S.view)) S.view = STAFF_HOME;
+  if (isStaff() && !STAFF_VIEWS.has(S.view)) S.view = homeView();
   const V = VIEWS[S.view];
   document.querySelectorAll("#tabs a, #nav_menu a").forEach(a => a.classList.toggle("on", a.dataset.v === S.view));
   navMoreSync();
@@ -6708,6 +6731,7 @@ async function connect(){
     try { const w = await user.can("data.write"); S.canWrite = w !== false; } catch(e){}
     try { S.isOwner = !!(await user.isOwner()); } catch(e){}
     try { S.canEdit = !!(await user.canEdit()) || S.isOwner; } catch(e){ S.canEdit = true; }
+    try { S.email = user.email ? await user.email() : ""; S.member0 = user.member ? user.member() : null; S.legacy = user.legacy ? !!user.legacy() : !S.member0; } catch(e){}
     S.role = S.canEdit ? "admin" : "staff";
   }
   applyRole();
@@ -6721,7 +6745,7 @@ async function connect(){
   const open = (coll, key, apply) => db.collection(coll).onSnapshot(q => { const all = q.docs.map(d => ({id:d.id, ...d.data()})); S.raw[key] = all; apply(all.filter(x => !x.deleted)); loadedOne(key, q.metadata.fromCache); changed(); }, fail(key));
   /* the employee's page-bound collections open when the page is granted and close when it is removed (see staffFeeds) */
   const sub = (coll, key, apply) => { plan.set(coll, [key, apply]);
-    if (isStaff() && STAFF_HIDDEN.includes(coll) && !staffSees(STAFF_COLL_PAGE[coll])){ S.loaded.add(key); return null; }
+    if (isStaff() && STAFF_HIDDEN.includes(coll) && !collWanted(coll)){ S.loaded.add(key); return null; }
     const u = open(coll, key, apply); live.set(coll, u); return u; };
   S.openSub = open;
   sub("sales","sales", a => S.sales = new Map(a.map(x => [x.id, x])));
@@ -6756,11 +6780,11 @@ function staffFeeds(){
   if (!S.db) return;
   if (isStaff() && S.liveSubs && S.subPlan){
     for (const [coll, [key, apply]] of S.subPlan){ if (!STAFF_HIDDEN.includes(coll)) continue;
-      const want = staffSees(STAFF_COLL_PAGE[coll]), u = S.liveSubs.get(coll);
+      const want = collWanted(coll), u = S.liveSubs.get(coll);
       if (want && !u) S.liveSubs.set(coll, S.openSub(coll, key, apply));
       else if (!want && u){ try { u(); } catch(e){} S.liveSubs.delete(coll); } }
   }
-  const wantPf = S.isOwner || staffSees("platforms"), wantPos = S.isOwner || staffSees("pos") || staffSees("platforms") || staffSees("kitchen");
+  const wantPf = S.isOwner || staffSees("platforms"), wantPos = S.isOwner || staffSees("pos") || staffSees("platforms") || staffSees("kitchen") || staffSees("ops");
   if (wantPf && typeof startPlatforms === "function") startPlatforms();
   if (!wantPf && typeof pfUnsub !== "undefined" && pfUnsub){ try { pfUnsub(); } catch(e){} pfUnsub = null; }
   if (wantPos && !S.posUnsub && window.__accFb && window.__accFb.pos){
@@ -6791,7 +6815,8 @@ if (window.__accHost) window.__accStart = connect; else connect();
 </script>
 <script src="apps.js?v=10"></script>
 <script src="kitchen.js?v=5"></script>
-<script src="purchase.js?v=3"></script>
-<script type="module" src="acc-fb.js?v=9"></script>
+<script src="purchase.js?v=4"></script>
+<script src="team.js?v=1"></script>
+<script type="module" src="acc-fb.js?v=10"></script>
 </body>
 </html>

@@ -13,7 +13,24 @@ const auth = F.getAuth(app);
 const fs = F.initializeFirestore(app, { ignoreUndefinedProperties: true });
 F.setPersistence(auth, F.indexedDBLocalPersistence).catch(() => {});
 
-const roleOf = u => !u ? null : u.email === ADMIN_EMAIL ? "admin" : STAFF_EMAILS.includes(u.email) ? "staff" : "other";
+const roleOf = u => !u ? null : u.email === ADMIN_EMAIL ? "admin" : STAFF_EMAILS.includes(u.email) ? "staff" : member ? "member" : "other";
+/* a team member (الإعدادات ← الفريق): read from the settings at sign-in; the rules let only listed, active members read it */
+let member = null;
+async function memberOf(u){
+  try { const s = await F.getDoc(F.doc(fs, P + "settings", "main")); const T = s.exists() ? (s.data().team || {}) : {}, m = T[(u.email || "").toLowerCase().replace(/\./g, ",")];
+    return m && m.role && !m.off ? { ...m, email: (u.email || "").toLowerCase() } : null; } catch(e){ return null; }
+}
+/* login accounts for the team, through Firebase Authentication's public interface (the owner stays signed in) */
+const idt = async (op, body) => {
+  try { const r = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:${op}?key=${encodeURIComponent(firebaseConfig.apiKey)}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    const j = await r.json().catch(() => ({})); return r.ok ? { ok: true } : { ok: false, code: (j.error && j.error.message) || ("HTTP " + r.status) }; }
+  catch(e){ return { ok: false, code: "NETWORK" }; }
+};
+const login = {
+  create: (email, password) => idt("signUp", { email, password, returnSecureToken: false }),
+  reset: email => idt("sendOobCode", { requestType: "PASSWORD_RESET", email })
+};
+const reserved = em => em === ADMIN_EMAIL || STAFF_EMAILS.includes(em) || em === "cashier@aqeela-pos.app";
 
 /* ---------- the database interface the app was written against ---------- */
 const split = path => { const i = path.indexOf("/"); return [path.slice(0, i), path.slice(i + 1)]; };
@@ -59,7 +76,10 @@ let current = null;
 const names = {};
 const userApi = {
   id: async () => current ? current.uid : "",
-  can: async () => !!current && ["admin", "staff"].includes(roleOf(current)),
+  can: async () => !!current && (["admin", "staff"].includes(roleOf(current)) || (roleOf(current) === "member" && member.role !== "partner")),
+  email: async () => current ? (current.email || "").toLowerCase() : "",
+  member: () => member,
+  legacy: () => roleOf(current) === "staff",
   isOwner: async () => roleOf(current) === "admin",
   canEdit: async () => roleOf(current) === "admin",
   email: () => current ? current.email : "",
@@ -166,7 +186,7 @@ const pos = {
     return ids.length;
   }
 };
-window.__accFb = { db, user: userApi, roleOf, ADMIN_EMAIL, pos, backup };
+window.__accFb = { db, user: userApi, roleOf, ADMIN_EMAIL, pos, backup, login, reserved };
 
 /* ---------- sign-in screen ---------- */
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -203,13 +223,15 @@ let started = false;
 F.onAuthStateChanged(auth, async u => {
   current = u;
   if (!u){ loginScreen(); return; }
-  if (roleOf(u) === "other"){ await F.signOut(auth); loginScreen("هذا الحساب غير مصرّح له ببرنامج المحاسبة."); return; }
+  member = null;
+  if (roleOf(u) === "other") member = await memberOf(u);
+  if (roleOf(u) === "other"){ await F.signOut(auth); loginScreen("هذا الحساب غير مصرّح له ببرنامج المحاسبة. اطلب من المالك إضافتك إلى الفريق."); return; }
   const el = document.getElementById("acc_login"); if (el) el.hidden = true;
   /* keep a readable name for this account, shown next to every entry it makes */
   try {
-    const name = roleOf(u) === "admin" ? "عاطف" : "عقيلة";
+    const name = roleOf(u) === "admin" ? "عاطف" : member ? member.name || u.email : "عقيلة";
     names[u.uid] = name;
-    await F.setDoc(F.doc(fs, P + "users", u.uid), { name, email: u.email, role: roleOf(u), lastSeen: new Date().toISOString() }, { merge: true });
+    await F.setDoc(F.doc(fs, P + "users", u.uid), { name, email: u.email, role: member ? "member:" + member.role : roleOf(u), lastSeen: new Date().toISOString() }, { merge: true });
   } catch(e){}
   if (!started){ started = true; (window.__accStart || (() => {}))(); }
 });
