@@ -1049,7 +1049,7 @@ function setStatus(msg, ok){ const el = $("#status"); el.textContent = msg; el.c
 /* ---------- state ---------- */
 const now = new Date();
 const S = { db:null, user:null, uid:null, canWrite:true, canEdit:true,
-  settings:{...DEF}, sales:new Map(), invoices:[], custody:[], recon:new Map(), apps:[], bankTx:[], editApp:null, isOwner:false, menuItems:[], itemSales:[], ingredients:[], recipes:new Map(), ingCounts:[], raw:{ingredients:[],recipes:[],ingCounts:[],bankTx:[],menuItems:[],itemSales:[],sales:[],invoices:[],custody:[],apps:[],recon:[],journal:[],suppliers:[],payments:[],staff:[],advances:[],payroll:[],stockItems:[],stockCounts:[]}, stockItems:[], stockCounts:[], journal:[], suppliers:[], payments:[], staff:[], advances:[], payroll:[], ver:0,
+  settings:{...DEF}, sales:new Map(), invoices:[], custody:[], recon:new Map(), apps:[], bankTx:[], editApp:null, isOwner:false, menuItems:[], itemSales:[], ingredients:[], recipes:new Map(), ingCounts:[], purchaseOrders:[], raw:{ingredients:[],recipes:[],ingCounts:[],purchaseOrders:[],bankTx:[],menuItems:[],itemSales:[],sales:[],invoices:[],custody:[],apps:[],recon:[],journal:[],suppliers:[],payments:[],staff:[],advances:[],payroll:[],stockItems:[],stockCounts:[]}, stockItems:[], stockCounts:[], journal:[], suppliers:[], payments:[], staff:[], advances:[], payroll:[], ver:0,
   loaded:new Set(), names:{}, y:now.getFullYear(), m:now.getMonth()+1,
   view:"dashboard", reconMode:"cash", editInv:null, editCus:null };
 try { const saved = JSON.parse(localStorage.getItem("aqeela-ui")||"{}"); if (saved.reconMode) S.reconMode = saved.reconMode; } catch(e) {}
@@ -1188,8 +1188,8 @@ async function write(fn, okMsg){
 }
 const stamp = () => ({ by: S.uid || "", updatedAt: new Date().toISOString() });
 const clean = o => Object.fromEntries(Object.entries(o).filter(([,v]) => v !== undefined));
-const KEY = {sales:"sales",invoices:"invoices",custody:"custody",appTransfers:"apps",recon:"recon",journal:"journal",suppliers:"suppliers",payments:"payments",staff:"staff",advances:"advances",payroll:"payroll",stockItems:"stockItems",stockCounts:"stockCounts",ingredients:"ingredients",recipes:"recipes",ingCounts:"ingCounts"};
-const COLL_LABEL = {sales:"مبيعات",invoices:"فاتورة",custody:"عهدة",appTransfers:"تحويل تطبيقات",recon:"مطابقة",journal:"قيد يومية",suppliers:"مورد",payments:"سداد مورد",staff:"موظف",advances:"سلفة",payroll:"مسير رواتب",stockItems:"صنف تغليف",stockCounts:"جرد تغليف",ingredients:"مكوّن",recipes:"وصفة",ingCounts:"جرد المكونات"};
+const KEY = {sales:"sales",invoices:"invoices",custody:"custody",appTransfers:"apps",recon:"recon",journal:"journal",suppliers:"suppliers",payments:"payments",staff:"staff",advances:"advances",payroll:"payroll",stockItems:"stockItems",stockCounts:"stockCounts",ingredients:"ingredients",recipes:"recipes",ingCounts:"ingCounts",purchaseOrders:"purchaseOrders"};
+const COLL_LABEL = {sales:"مبيعات",invoices:"فاتورة",custody:"عهدة",appTransfers:"تحويل تطبيقات",recon:"مطابقة",journal:"قيد يومية",suppliers:"مورد",payments:"سداد مورد",staff:"موظف",advances:"سلفة",payroll:"مسير رواتب",stockItems:"صنف تغليف",stockCounts:"جرد تغليف",ingredients:"مكوّن",recipes:"وصفة",ingCounts:"جرد المكونات",purchaseOrders:"طلب شراء"};
 const ACT = {create:["إضافة","ok"],edit:["تعديل","info"],delete:["حذف (أرشفة)","bad"],restore:["استعادة","ok"]};
 const strip = x => { if (!x) return {}; const {id, history, ...r} = x; return r; };
 const findRaw = (coll, id) => id ? S.raw[KEY[coll]].find(x => x.id === id) : null;
@@ -1203,7 +1203,7 @@ const STAFF_PAGES = [["guide","دليل العمل اليومي"],["dashboard","
   ["budget","الميزانية الشهرية"],["kitchen","الوصفات والمخزون"],["stock","مخزون التغليف"],["apps","تحويلات التطبيقات"],["recon","المطابقة اليومية"],["accounting","المحاسبة"],["reports","التقارير"],
   ["cfo","المدير المالي"],["history","السجل والأرشيف"],["setup","الإعدادات"]];
 /* collections closed to the employee unless the page that uses them is granted */
-const STAFF_COLL_PAGE = {recipes:"kitchen", ingCounts:"kitchen", journal:"accounting", staff:"payroll", advances:"payroll", payroll:"payroll", cfo:"cfo", menuItems:"menu", itemSales:"menu"};
+const STAFF_COLL_PAGE = {recipes:"kitchen", ingCounts:"kitchen", purchaseOrders:"kitchen", journal:"accounting", staff:"payroll", advances:"payroll", payroll:"payroll", cfo:"cfo", menuItems:"menu", itemSales:"menu"};
 const staffSees = k => !isStaff() || staffPerms().views.has(k);
 const STAFF_DEFAULT = ["guide","daily","sales","invoices","suppliers","custody","recon"], STAFF_HOME = "guide";
 const staffPerms = () => { const P = (S.settings && S.settings.staffPerms) || {}; const v = Array.isArray(P.views) ? P.views : STAFF_DEFAULT;
@@ -1242,8 +1242,8 @@ function recWrite(coll, id, data, action, msg){
   return write(() => ref.set(clean(body)), msg);
 }
 const archive = async (coll, id, msg) => { const ex = findRaw(coll, id); if (!ex) return true;
-  const ok = await recWrite(coll, id, ex, "delete", msg || "تم الحذف، ويمكن استعادته من «السجل والأرشيف»"); if (ok && coll === "invoices") await syncInvCus(id, null); return ok; };
-const restoreRec = async (coll, id) => { const ok = await recWrite(coll, id, findRaw(coll, id), "restore", "تمت الاستعادة"); if (ok && coll === "invoices") await syncInvCus(id, {...findRaw(coll, id), deleted:false}); return ok; };
+  const ok = await recWrite(coll, id, ex, "delete", msg || "تم الحذف، ويمكن استعادته من «السجل والأرشيف»"); if (ok && coll === "invoices"){ await syncInvCus(id, null); if (ex.po && typeof poLinkInvoice === "function") await poLinkInvoice(id, null, ex.po); } return ok; };
+const restoreRec = async (coll, id) => { const ok = await recWrite(coll, id, findRaw(coll, id), "restore", "تمت الاستعادة"); if (ok && coll === "invoices"){ const x = findRaw(coll, id); await syncInvCus(id, {...x, deleted:false}); if (x && x.po && typeof poLinkInvoice === "function") await poLinkInvoice(id, x.po, null); } return ok; };
 /* an invoice paid «من العهدة» takes the money out of the buyer's custody: it keeps one linked custody spend (id «inv_<invoice>»),
    created, updated or removed together with the invoice. The invoice stays the purchase record (supplier, production cost);
    the spend is what lowers the custody balance and books the expense, as when it was entered by hand. */
@@ -1498,6 +1498,7 @@ function viewInvoices(){
       <div class="f wide sp-box" id="i_sp" hidden><div class="sp-head"><b>توزيع الفاتورة على أقسام الإنتاج</b><span class="small muted">أدخل مبلغ كل قسم شاملاً الضريبة، ويجب أن يساوي المجموع إجمالي الفاتورة</span></div>
         <div id="i_sp_rows"></div>
         <div class="actions"><button type="button" class="btn ghost sm" id="i_sp_add">+ إضافة قسم</button><button type="button" class="btn ghost sm" id="i_sp_off">إلغاء التقسيم</button><span id="i_sp_sum" class="sp-sum"></span></div></div>
+      <div class="f" id="i_pow" hidden><label for="i_po">طلب الشراء</label><select id="i_po"></select><button type="button" class="btn ghost sm" id="i_po_copy" style="margin-top:6px" hidden>نسخ أصناف الطلب</button></div>
       <div class="f wide sp-box" id="i_it" ${(S.ingredients || []).length ? "" : "hidden"}><div class="sp-head"><b>أصناف المخزون في الفاتورة</b><span class="small muted">اختياري: ما دخل المطبخ من المكونات بالكمية والمبلغ، ليُحسب المخزون الحي وسعر كل مكوّن</span></div>
         <div id="i_it_rows"></div><div class="actions"><button type="button" class="btn ghost sm" id="i_it_add">+ صنف</button><span id="i_it_sum" class="sp-sum"></span></div></div>
       <div class="f wide"><label for="i_notes">ملاحظات</label><input id="i_notes" type="text"></div>
@@ -1550,6 +1551,15 @@ function bindInvoices(){
     document.querySelectorAll("[data-ita]").forEach(inp => inp.oninput = () => { L[+inp.dataset.ita].a = inp.value; });
     document.querySelectorAll("[data-ita]").forEach(inp => inp.onchange = itDraw);
     document.querySelectorAll("[data-itd]").forEach(b => b.onclick = () => { L.splice(+b.dataset.itd, 1); itDraw(); }); };
+  /* the purchase request this invoice fulfils (its supplier's open requests first) */
+  const poDraw = keep => { const w = $("#i_pow"); if (!w || typeof poChoices !== "function") return; const L = poChoices($("#i_sup").value, keep);
+    w.hidden = !L.length && !keep; const v = keep !== undefined ? keep : $("#i_po").value;
+    $("#i_po").innerHTML = `<option value="">— بدون —</option>` + L.map(p => `<option value="${esc(p.id)}">رقم ${esc(String(p.no))} · ${esc(p.supplier || "بدون مورد")} · ${dmy(p.date)} · ${fmt(n(p.est))}</option>`).join("");
+    $("#i_po").value = L.some(p => p.id === v) ? v : ""; $("#i_po_copy").hidden = !$("#i_po").value; };
+  if ($("#i_po")){ $("#i_po").onchange = () => { $("#i_po_copy").hidden = !$("#i_po").value; };
+    $("#i_po_copy").onclick = () => { const p = (S.purchaseOrders || []).find(x => x.id === $("#i_po").value); if (!p) return;
+      S.invItems = (p.lines || []).map(l => ({ing:l.ing, q:l.q, a:r2(n(l.q) * n(l.p))})); itDraw(); toast("نُسخت أصناف الطلب؛ عدّل الكميات والمبالغ حسب الفاتورة"); }; }
+  $("#i_sup").addEventListener("change", () => poDraw()); poDraw("");
   if ($("#i_it_add")) $("#i_it_add").onclick = () => { S.invItems = [...(S.invItems || []), {ing:"", q:"", a:""}]; itDraw(); };
   S.invItems = null; itDraw();
   $("#i_sp_on").onclick = () => { const auto = PG_BY[$("#i_pg").value] ? $("#i_pg").value : pgOfCat($("#i_cat").value); S.invSplit = [{k:auto, a:""}, {k: auto === "food" ? "pack" : "food", a:""}]; spDraw(); $("#i_sp [data-spa]").focus(); };
@@ -1569,12 +1579,12 @@ function bindInvoices(){
     if (!S.editInv){ if (s.category && !$("#i_cat").value){ ensureOpt($("#i_cat"), s.category); $("#i_cat").value = s.category; autoProd(); pgUi(); } if (s.terms === "آجل"){ $("#i_st").value = "غير مدفوعة"; payVis(); } } };
   $("#i_sup").addEventListener("change", supHint); $("#i_sup").addEventListener("blur", supHint);
   const reset = () => { S.editInv = null; S.cdAns = null; if ($("#i_cdask")) $("#i_cdask").hidden = true; f.reset(); S.prodTouched = false; $("#i_prod").checked = false; $("#i_date").value = today(); $("#i_pay").value = "كاش"; $("#i_st").value = "مدفوعة";
-    $("#fiTitle").textContent = "فاتورة جديدة"; $("#i_save").textContent = "إضافة الفاتورة"; $("#i_cancel").hidden = $("#i_del").hidden = true; disarm($("#i_del")); f.classList.remove("editing"); att.reset(); $("#i_suphint").textContent = ""; S.invSplit = null; S.invItems = null; itDraw(); payVis(); pgUi(""); calc(); };
+    $("#fiTitle").textContent = "فاتورة جديدة"; $("#i_save").textContent = "إضافة الفاتورة"; $("#i_cancel").hidden = $("#i_del").hidden = true; disarm($("#i_del")); f.classList.remove("editing"); att.reset(); $("#i_suphint").textContent = ""; S.invSplit = null; S.invItems = null; itDraw(); poDraw(""); payVis(); pgUi(""); calc(); };
   S.loadInv = id => { const x = S.invoices.find(v => v.id === id); if (!x) return; S.editInv = id; S.cdAns = null; if ($("#i_cdask")) $("#i_cdask").hidden = true;
     $("#i_date").value = x.date||""; $("#i_no").value = x.no||""; $("#i_sup").value = x.supplier||""; ensureOpt($("#i_cat"), x.category); $("#i_cat").value = x.category||"";
     $("#i_bt").value = has(x.beforeTax)?x.beforeTax:""; $("#i_vat").value = has(x.vat)?x.vat:""; if ($("#i_vatWrap")) $("#i_vatWrap").hidden = !vatReg() && !(n(x.vat) > 0); $("#i_pay").value = x.pay||"كاش"; $("#i_st").value = x.status||"مدفوعة"; $("#i_notes").value = x.notes||""; $("#i_buy").value = x.buyer||""; $("#i_cdate").value = x.cashDate||""; $("#i_qty").value = x.qty ?? ""; $("#i_unit").value = x.unit || ""; $("#i_prod").checked = isProd(x); S.prodTouched = true; S.invSplit = Array.isArray(x.split) && x.split.length > 1 ? x.split.map(l => ({k:l.k, a:n(l.amount)})) : null; pgUi(x.pgroup || "");
     $("#fiTitle").textContent = "تعديل فاتورة"; $("#i_save").textContent = "حفظ التعديل"; $("#i_cancel").hidden = false; $("#i_del").hidden = !S.canWrite; disarm($("#i_del"));
-    S.invItems = Array.isArray(x.items) && x.items.length ? x.items.map(l => ({ing:l.ing, q:l.q, a:l.a})) : null; itDraw();
+    S.invItems = Array.isArray(x.items) && x.items.length ? x.items.map(l => ({ing:l.ing, q:l.q, a:l.a})) : null; itDraw(); poDraw(x.po || "");
     f.classList.add("editing"); att.load("invoices/" + id); supHint(); payVis(); calc(); f.scrollIntoView({behavior:"smooth",block:"start"}); };
   /* «لصق من Claude»: a photo of an invoice read by Claude into a short text, filled into this form for the user to check and save */
   const fill = J => {
@@ -1602,6 +1612,7 @@ function bindInvoices(){
       for (const l of itIn){ const g = ktFind(l.name); if (!g){ itMiss.push(l.name); continue; } const e = S.invItems.find(z => z.ing === g.id);
         if (e){ e.q = Math.round((n(e.q) + n(l.q)) * 1000) / 1000; e.a = r2(n(e.a) + n(l.a)); } else S.invItems.push({ing:g.id, q:n(l.q), a:r2(n(l.a))}); }
       itDraw(); if (itMiss.length) errs.push(`أصناف غير مسجّلة كمكونات (${itMiss.join("، ")})`); }
+    if (typeof poChoices === "function" && J.supplier){ const k = supKey(J.supplier), L = poChoices(J.supplier).filter(p => supKey(p.supplier || "") === k); poDraw(L.length === 1 ? L[0].id : ""); }
     const dup = J.no && (S.invoices || []).find(v => !v.deleted && v.no && v.no.trim() === String(J.no).trim() && normName(v.supplier || "") === normName(J.supplier || ""));
     const miss = [!$("#i_cat").value && "التصنيف", ...errs].filter(Boolean);
     $("#i_cdask").hidden = false;
@@ -1625,6 +1636,7 @@ function bindInvoices(){
       if ((S.invItems || []).some(l => l.ing && !(n(l.q) > 0))){ toast("أدخل كمية كل صنف من أصناف المخزون أو احذف سطره"); return; }
       if (r2(sumBy(L, l => l.a)) > r2(n(data.beforeTax) + n(data.vat)) + 0.005){ toast("مبالغ أصناف المخزون أكبر من إجمالي الفاتورة"); return; }
       data.items = L.length ? L : null; }
+    data.po = $("#i_po") && $("#i_po").value ? $("#i_po").value : null;
     { const cd = $("#i_cdate").value;
       if (cd && data.status !== "غير مدفوعة" && data.pay !== "من العهدة"){
         if (cd < data.date){ toast("تاريخ الصرف من الخزنة لا يكون قبل تاريخ الفاتورة"); $("#i_cdate").focus(); return; }
@@ -1660,7 +1672,7 @@ function bindInvoices(){
     try {
       const up = await att.flush("invoices/" + iid);
       data.att = Math.max(0, (old && old.att ? old.att : 0) - att.removed.length) + up;
-      if (await recWrite("invoices", iid, data, null, S.editInv ? "تم حفظ التعديل" : "تمت إضافة الفاتورة")) { await syncInvCus(iid, data); const keepDate = data.date, keepBuy = data.buyer; reset(); $("#i_date").value = keepDate; $("#i_buy").value = keepBuy || ""; }
+      if (await recWrite("invoices", iid, data, null, S.editInv ? "تم حفظ التعديل" : "تمت إضافة الفاتورة")) { await syncInvCus(iid, data); if (typeof poLinkInvoice === "function" && (data.po || (old && old.po))) await poLinkInvoice(iid, data.po, old && old.po); const keepDate = data.date, keepBuy = data.buyer; reset(); $("#i_date").value = keepDate; $("#i_buy").value = keepBuy || ""; }
     } finally { sv.disabled = !S.canWrite; }
   };
   armDelete($("#i_del"), async () => { if (S.editInv && await archive("invoices", S.editInv)) reset(); });
@@ -5849,6 +5861,9 @@ function gdSteps(){
     ...(S.isOwner ? [{k:"bk", t:"تنزيل نسخة احتياطية كاملة", go:"#setup", btn:"النسخ الاحتياطي",
       how:"من الإعدادات ← «تنزيل نسخة احتياطية كاملة»، ثم احفظ الملف في Google Drive أو أرسله لبريدك. ملف واحد فيه كل بيانات المحاسبة والكاشير.",
       st: bkAge() > 7 ? ["warn", S.settings.lastBackupAt ? `آخر نسخة قبل ${bkAge()} يوماً` : "لم تُنزَّل نسخة بعد"] : ["ok", `آخر نسخة ${dmy(S.settings.lastBackupAt.slice(0, 10))}`]}] : []),
+    ...(S.isOwner && typeof poOpen === "function" && (S.purchaseOrders || []).length ? [(() => { const w = S.purchaseOrders.filter(p => poOpen(p) && p.status === "pending" && !poOk(p));
+      return {k:"po", t:"اعتماد طلبات الشراء", go:"#kitchen", btn:"طلبات الشراء", pre:() => { S.ktTab = "po"; },
+        how:"الطلب فوق حد الشراء بدون اعتماد لا يُشترى قبل اعتمادك (دستور الحوكمة، المادة 13).", st: w.length ? ["warn", `${w.length} طلب بانتظار اعتمادك`] : ["ok", "لا طلبات بانتظار الاعتماد"]}; })()] : []),
     {k:"px", t:"مراجعة أسعار الشراء", go:"#suppliers", btn:"أسعار الشراء", pre:() => { S.supTab = "prices"; },
       how:"قارن آخر سعر بالمتوسط، وتأكد أنك تشتري من أرخص مورد لنفس الجودة.", st: px.length ? ["warn", `${px.length} صنف ارتفع سعره 10% أو أكثر`] : ["ok", "لا ارتفاعات ملحوظة"]},
     {k:"ap", t:"سداد الموردين الآجلين", go:"#suppliers", btn:"الموردون", pre:() => { S.supTab = "sup"; },
@@ -5922,7 +5937,7 @@ function gdDashChip(){
 
 /* ---------- FULL BACKUP & RESTORE (owner) ---------- */
 const bkAge = () => S.settings.lastBackupAt ? Math.floor((Date.now() - new Date(S.settings.lastBackupAt).getTime()) / 864e5) : 999;
-const BK_NAMES = {ingredients:"المكونات", recipes:"الوصفات", ingCounts:"جرد المكونات", settings:"الإعدادات", sales:"المبيعات", invoices:"الفواتير", custody:"العهد", appTransfers:"تحويلات التطبيقات", recon:"المطابقة اليومية", journal:"القيود اليدوية", suppliers:"الموردون", payments:"سداد الموردين", staff:"الموظفون", advances:"السلف", payroll:"مسيرات الرواتب", stockItems:"أصناف المخزون", stockCounts:"جرد المخزون", cfo:"المدير المالي", bankTx:"كشف البنك", menuItems:"تكلفة الوجبات", itemSales:"تقارير الأصناف", attachments:"الصور والمرفقات", platforms:"التطبيقات والعقود", users:"المستخدمون", posDays:"ملخصات أيام الكاشير", orders:"طلبات الكاشير", shifts:"ورديات الكاشير", menu:"منيو الكاشير", config:"إعدادات الكاشير"};
+const BK_NAMES = {purchaseOrders:"طلبات الشراء", ingredients:"المكونات", recipes:"الوصفات", ingCounts:"جرد المكونات", settings:"الإعدادات", sales:"المبيعات", invoices:"الفواتير", custody:"العهد", appTransfers:"تحويلات التطبيقات", recon:"المطابقة اليومية", journal:"القيود اليدوية", suppliers:"الموردون", payments:"سداد الموردين", staff:"الموظفون", advances:"السلف", payroll:"مسيرات الرواتب", stockItems:"أصناف المخزون", stockCounts:"جرد المخزون", cfo:"المدير المالي", bankTx:"كشف البنك", menuItems:"تكلفة الوجبات", itemSales:"تقارير الأصناف", attachments:"الصور والمرفقات", platforms:"التطبيقات والعقود", users:"المستخدمون", posDays:"ملخصات أيام الكاشير", orders:"طلبات الكاشير", shifts:"ورديات الكاشير", menu:"منيو الكاشير", config:"إعدادات الكاشير"};
 function bindBackup(){
   const B = window.__accFb && window.__accFb.backup, dlb = $("#bk_dl"); if (!B || !dlb) return;
   const st = h => { S.bkMsg = h; const e = $("#bk_st"); if (e) e.innerHTML = h; };
@@ -6729,6 +6744,7 @@ async function connect(){
   sub("ingredients","ingredients", a => S.ingredients = a.sort((x,y) => (x.name < y.name ? -1 : 1)));
   sub("recipes","recipes", a => S.recipes = new Map(a.map(x => [x.id, x])));
   sub("ingCounts","ingCounts", a => S.ingCounts = a);
+  sub("purchaseOrders","purchaseOrders", a => S.purchaseOrders = a);
   render();
   if (S.isOwner) setTimeout(fixAttFlags, 8000);
   staffFeeds();
@@ -6773,7 +6789,8 @@ async function fixAttFlags(){
 if (window.__accHost) window.__accStart = connect; else connect();
 </script>
 <script src="apps.js?v=10"></script>
-<script src="kitchen.js?v=2"></script>
-<script type="module" src="acc-fb.js?v=7"></script>
+<script src="kitchen.js?v=4"></script>
+<script src="purchase.js?v=2"></script>
+<script type="module" src="acc-fb.js?v=8"></script>
 </body>
 </html>

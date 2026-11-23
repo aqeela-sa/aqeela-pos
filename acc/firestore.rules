@@ -78,6 +78,13 @@ service cloud.firestore {
     match /acc_ingredients/{id} { allow read: if isAdmin() || isStaff(); allow create, update: if isAdmin() || granted('kitchen'); allow delete: if isAdmin(); }
     match /acc_recipes/{id}     { allow read, create, update: if isAdmin() || granted('kitchen'); allow delete: if isAdmin(); }
     match /acc_ingCounts/{id}   { allow read, create, update: if isAdmin() || granted('kitchen'); allow delete: if isAdmin(); }
+    // purchase requests: the employee may raise and update them, but approval (approvedBy) is the owner's only
+    match /acc_purchaseOrders/{id} {
+      allow read: if isAdmin() || granted('kitchen');
+      allow create: if isAdmin() || (granted('kitchen') && request.resource.data.get('approvedBy', '') == '');
+      allow update: if isAdmin() || (granted('kitchen') && (same('approvedBy') || request.resource.data.get('approvedBy', '') == ''));
+      allow delete: if isAdmin();
+    }
 
     // anything else: the owner only
     match /{document=**} {

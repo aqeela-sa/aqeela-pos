@@ -76,7 +76,7 @@ const userApi = {
 };
 
 /* ---------- full backup and restore (owner): every accounting collection and the cashier's orders, shifts, menu and settings ---------- */
-const ACC_COLLS = ["settings","sales","invoices","custody","appTransfers","recon","journal","suppliers","payments","staff","advances","payroll","stockItems","stockCounts","cfo","bankTx","menuItems","itemSales","attachments","platforms","users","posDays","ingredients","recipes","ingCounts"];
+const ACC_COLLS = ["settings","sales","invoices","custody","appTransfers","recon","journal","suppliers","payments","staff","advances","payroll","stockItems","stockCounts","cfo","bankTx","menuItems","itemSales","attachments","platforms","users","posDays","ingredients","recipes","ingCounts","purchaseOrders"];
 const POS_COLLS = ["orders","shifts","menu","config"];
 /* Firestore timestamps become plain milliseconds, so the file is ordinary JSON and can be written back as it is */
 const plain = v => v && typeof v === "object" ? (typeof v.toMillis === "function" ? v.toMillis() : Array.isArray(v) ? v.map(plain) : Object.fromEntries(Object.entries(v).map(([k, x]) => [k, plain(x)]))) : v;

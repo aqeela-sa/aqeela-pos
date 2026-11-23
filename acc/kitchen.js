@@ -80,7 +80,7 @@ function viewKitchen(){
   const t = S.ktTab || "live";
   return `<div class="bar"><h2>الوصفات والمخزون</h2></div>${readonlyNote()}
     <div class="actions" style="justify-content:space-between;flex-wrap:wrap;gap:8px"><div class="seg" role="tablist" aria-label="القسم">
-      ${[["live","المخزون الحي"],["recipes","الوصفات"],["var","الفرق: النظري والفعلي"],["ings","المكونات"]].map(([k, l]) => `<button type="button" data-ktt="${k}" class="${t === k ? "on" : ""}">${l}</button>`).join("")}</div>
+      ${[["live","المخزون الحي"],["po","طلبات الشراء"],["recipes","الوصفات"],["var","الفرق: النظري والفعلي"],["ings","المكونات"]].map(([k, l]) => `<button type="button" data-ktt="${k}" class="${t === k ? "on" : ""}">${l}</button>`).join("")}</div>
       <div class="actions">${S.canWrite ? `<button class="btn" type="button" id="kt_count">تسجيل جرد</button><button class="btn ghost" type="button" id="kt_ing">مكوّن جديد</button>` : ""}${S.canEdit ? `<button class="btn ghost" type="button" id="kt_paste">لصق من Claude</button>` : ""}</div></div>
     <div id="list"></div>`;
 }
@@ -97,6 +97,7 @@ function renderKitchen(){
   if (t === "ings") return ktIngs(el);
   if (t === "recipes") return ktRecipes(el);
   if (t === "var") return ktVar(el);
+  if (t === "po") return ktPO(el);
   return ktLive(el);
 }
 
@@ -197,6 +198,7 @@ function ktOpenIng(id){
       <div class="f"><label for="kg_u">الوحدة</label><input id="kg_u" list="kg_ul" required value="${esc(x ? x.unit : "كجم")}"><datalist id="kg_ul">${KT_UNITS.map(u => `<option value="${u}">`).join("")}</datalist></div>
       <div class="f"><label for="kg_p">سعر الوحدة (عند عدم وجود فاتورة)</label><input id="kg_p" type="number" step="0.001" min="0" inputmode="decimal" value="${x && has(x.price) ? x.price : ""}"></div>
       <div class="f"><label for="kg_m">الحد الأدنى للطلب</label><input id="kg_m" type="number" step="0.001" min="0" inputmode="decimal" value="${x && n(x.min) ? x.min : ""}"></div>
+      <div class="f"><label for="kg_s">المورد المعتاد</label><input id="kg_s" list="kg_sl" value="${esc(x ? x.supplier || "" : "")}"><datalist id="kg_sl">${(S.suppliers || []).map(s => `<option value="${esc(s.name)}">`).join("")}</datalist></div>
       <div class="f wide"><label for="kg_a">أسماء أخرى (يُعرف بها في الفواتير، مفصولة بفاصلة)</label><input id="kg_a" value="${esc(x ? (x.aliases || []).join("، ") : "")}" placeholder="دجاج مبرد، صدور"></div></div>
     ${x ? `<p class="small muted" style="margin:0">سعر الوحدة الآن: <b class="num">${fmt(ktPrice(x, d))}</b> ر.س ${ktInItems("0000-00-00", d).some(it => it.ing === x.id && n(it.a) > 0) ? "(من آخر فاتورة)" : ""}</p>` : ""}
     <div class="actions"><button class="btn" type="submit">حفظ</button><button class="btn ghost" type="button" id="kg_x">إغلاق</button>${x && S.canEdit ? `<button class="btn danger sm" type="button" id="kg_del">حذف</button>` : ""}</div></form>`;
@@ -205,7 +207,7 @@ function ktOpenIng(id){
   $("#fkg").onsubmit = async e => { e.preventDefault();
     const name = normName($("#kg_n").value); if (!name) return;
     const dup = (S.ingredients || []).find(g => g.id !== id && ktKey(g.name) === ktKey(name)); if (dup){ toast(`المكوّن «${dup.name}» موجود`); return; }
-    const data = {...(x ? strip(x) : {}), name, unit:$("#kg_u").value.trim() || "كجم", price: $("#kg_p").value === "" ? null : n($("#kg_p").value), min: n($("#kg_m").value) || null,
+    const data = {...(x ? strip(x) : {}), name, unit:$("#kg_u").value.trim() || "كجم", price: $("#kg_p").value === "" ? null : n($("#kg_p").value), min: n($("#kg_m").value) || null, supplier: $("#kg_s").value.trim() ? supKey($("#kg_s").value) : "",
       aliases:[...new Set($("#kg_a").value.split(/[،,]/).map(s => normName(s)).filter(Boolean))]};
     if (await recWrite("ingredients", id || null, data, null, "تم حفظ المكوّن")) closeModal(); };
 }
