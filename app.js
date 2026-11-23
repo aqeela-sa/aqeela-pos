@@ -4,7 +4,7 @@
 import * as F from "./fb.js";
 import { firebaseConfig } from "./firebase-config.js";
 
-const VERSION = "2.9.0";
+const VERSION = "2.9.1";
 const ADMIN_EMAIL = "abuabraj@gmail.com";
 const DEVICE_EMAIL = "cashier@aqeela-pos.app";
 const APP_NAME = `<span dir="ltr">Cashier AQ</span>`;
@@ -667,10 +667,10 @@ function openSplit(ord, first) {
       <div class="cp-r due"><span>إجمالي الطلب</span><b class="num">${m2(T)}</b></div>
       <div id="spl"></div><div class="cp-r" id="slr"></div><div id="sgv"></div></div>
     <div class="cp-pad"><div class="seg2" id="sm">${M.map(k => `<button data-sm="${k}">${ic(k === "cash" ? "cash" : "card")}${METHODS[k]}</button>`).join("")}</div>
-      <div class="cp-r" style="margin:10px 0 6px"><span id="sal">مبلغ الجزء</span><b class="num" id="sa">0.00</b></div>
+      <div class="cp-r" style="margin:10px 0 6px;gap:10px"><span id="sal">مبلغ الجزء</span><b class="num" id="sa" style="margin-inline-start:auto">0.00</b><button class="btn sm" id="sadd" style="min-height:40px">${ic("add")}إضافة</button></div>
       <div class="quick"><button data-sq="left" class="ex">كامل المتبقي</button><button data-sq="half">النصف</button></div>
       <div class="kp">${["7", "8", "9", "4", "5", "6", "1", "2", "3", ".", "0", "b"].map(k => `<button data-kp="${k}" class="${k === "b" ? "fn" : ""}" aria-label="${k === "b" ? "حذف رقم" : k}">${k === "b" ? ic("back") : k}</button>`).join("")}</div>
-      <button class="btn block" id="sadd" style="margin-top:10px">${ic("add")}إضافة الجزء</button></div></div>
+      <p class="small muted" style="margin:8px 0 0;line-height:1.6">اكتب مبلغ الجزء الأول، ثم اضغط طريقة الدفع الأخرى، ثم «تأكيد الدفع» فيُسجَّل الباقي عليها.</p></div></div>
     <div class="mdl-f"><button class="btn ghost" id="sbk">رجوع</button><button class="btn ok wide" id="sok">${ic("check")}تأكيد الدفع</button></div>`, { mid: true });
   bindTypeBar();
   const draw = () => {
@@ -679,7 +679,7 @@ function openSplit(ord, first) {
     $("#slr").innerHTML = `<span>${L > 0.005 ? "المتبقي" : "مكتمل ✓"}</span><b class="num" style="color:${L > 0.005 ? "var(--bad)" : "var(--ok)"}">${m2(L)}</b>`;
     $("#sgv").innerHTML = cashPart > 0 && L <= 0.005 ? `<div class="f" style="margin-top:8px"><label for="sgi">المستلم كاش من العميل (اختياري، لحساب الباقي)</label><input id="sgi" type="number" inputmode="decimal" min="0" step="0.5" dir="ltr" value="${given}"></div><div id="sch"></div>` : "";
     if ($("#sgi")) { const ch = () => { given = $("#sgi").value; const g = r2(given), c = r2(g - cashPart); $("#sch").innerHTML = given !== "" ? `<div class="chg ${c < 0 ? "neg" : ""}"><span>${c < 0 ? "المستلم أقل من جزء الكاش" : "الباقي للعميل"}</span><span class="num">${m2(Math.abs(c))}</span></div>` : ""; $("#sok").disabled = given !== "" && c < 0; }; $("#sgi").oninput = ch; ch(); }
-    else $("#sok").disabled = L > 0.005;
+    else $("#sok").disabled = L > 0.005 && !parts.length && amt === "";
     $$("#ov [data-sm]").forEach(b => b.classList.toggle("on", b.dataset.sm === m));
     $("#sa").textContent = amt === "" ? m2(L) : amt; $("#sal").textContent = `مبلغ الجزء (${METHODS[m]})`;
     $("#sadd").disabled = L <= 0.005;
@@ -688,15 +688,18 @@ function openSplit(ord, first) {
   const key = k => { if (k === "b") amt = amt.slice(0, -1); else if (k === ".") { if (!amt.includes(".")) amt = (amt || "0") + "."; }
     else if (/^\d$/.test(k)) { if (amt.includes(".") && amt.split(".")[1].length >= 2) return; if (amt.replace(".", "").length >= 6) return; amt = amt === "0" ? k : amt + k; } draw(); };
   $$("#ov [data-kp]").forEach(b => b.onclick = () => key(b.dataset.kp));
-  $$("#ov [data-sm]").forEach(b => b.onclick = () => { m = b.dataset.sm; draw(); });
+  /* the typed amount goes to the method on screen; returns false if it is not valid */
+  const commit = () => { if (amt === "") return true; const L = left(), a = r2(amt);
+    if (!(a > 0)) { toast("اكتب مبلغ الجزء", true); return false; }
+    if (a - L > 0.005) { toast(`المبلغ أكبر من المتبقي (${m2(L)})`, true); return false; }
+    const ex = parts.find(p => p.m === m); if (ex) ex.a = r2(ex.a + a); else parts.push({ m, a }); amt = ""; return true; };
+  /* choosing another method with an amount typed: that amount is recorded first, the rest goes to the new method */
+  $$("#ov [data-sm]").forEach(b => b.onclick = () => { if (b.dataset.sm !== m && !commit()) return; m = b.dataset.sm; draw(); });
   $$("#ov [data-sq]").forEach(b => b.onclick = () => { amt = String(b.dataset.sq === "half" ? r2(left() / 2) : left()); draw(); });
-  $("#sadd").onclick = () => { const L = left(), a = amt === "" ? L : r2(amt);
-    if (!(a > 0)) return toast("اكتب مبلغ الجزء", true);
-    if (a - L > 0.005) return toast(`المبلغ أكبر من المتبقي (${m2(L)})`, true);
-    const ex = parts.find(p => p.m === m); if (ex) ex.a = r2(ex.a + a); else parts.push({ m, a });
-    amt = ""; if (left() > 0.005) m = m === "cash" ? "mada" : "cash"; draw(); };
+  $("#sadd").onclick = () => { if (amt === "") amt = String(left()); if (!commit()) return; if (left() > 0.005) m = m === "cash" ? "mada" : "cash"; draw(); };
   $("#sbk").onclick = () => ord ? payOpen(ord) : openPay(first || "cash");
-  $("#sok").onclick = () => { if (left() > 0.005) return;
+  $("#sok").onclick = () => { if (!commit()) return draw();
+    if (left() > 0.005) { if (!parts.length) return; const ex = parts.find(p => p.m === m), L = left(); if (ex) ex.a = r2(ex.a + L); else parts.push({ m, a: L }); draw(); }
     const P = parts.filter(p => p.a > 0), cashPart = r2(P.filter(p => p.m === "cash").reduce((s, p) => s + p.a, 0));
     const g = given !== "" ? r2(given) : cashPart; if (cashPart && g < cashPart) return;
     $("#sok").disabled = true;
