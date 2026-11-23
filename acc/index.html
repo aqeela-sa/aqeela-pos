@@ -528,7 +528,9 @@ select:disabled{opacity:.55}
 .pg-sups{display:flex;flex-wrap:wrap;gap:6px}.pg-sups span{background:var(--paper);border:1px solid var(--line);border-radius:999px;padding:3px 10px;font-size:13px}
 .sp-box{background:var(--paper);border:1px dashed var(--line);border-radius:12px;padding:12px;display:grid;gap:8px}
 .sp-head{display:flex;flex-wrap:wrap;gap:4px 12px;align-items:baseline}
-.sp-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.sp-row select{flex:1 1 160px;min-width:140px}.sp-row input{flex:1 1 120px;max-width:180px}
+.sp-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.sp-row select{flex:1 1 140px;min-width:130px}.sp-row input{flex:1 1 110px;max-width:160px}
+.sp-row input.sp-d{flex:3 1 200px;max-width:none}.sp-row input.sp-q{flex:1 1 80px;max-width:100px}.sp-row input.sp-u{flex:1 1 80px;max-width:100px}
+.sp-row + .sp-row{border-top:1px dashed var(--line);padding-top:8px}
 .sp-sum{font-size:14px;padding:4px 10px;border-radius:999px}.sp-sum.ok{background:#E8F5E9;color:#1B5E20}.sp-sum.bad{background:#FFF3E0;color:#B23C00}
 /* employees (HR) */
 .hr-tabs{margin:0 0 14px;align-items:center}
@@ -1511,10 +1513,10 @@ function viewInvoices(){
       <div class="f" id="i_cdw"><label for="i_cdate">تاريخ الصرف من الخزنة <span class="muted" style="font-weight:400">(اختياري)</span></label><input id="i_cdate" type="date"><span class="by">إذا خرج المبلغ من الدرج أو البنك بعد تاريخ الفاتورة، مثلاً تعويض المشتري بعد الجرد</span></div>
       <div class="f"><label for="i_st">الدفع</label><select id="i_st"><option value="مدفوعة">مدفوعة الآن</option><option value="غير مدفوعة">آجلة (تُسدد لاحقاً)</option></select></div>
       <div class="f"><span class="small muted" style="font-weight:700">الوسم</span><label class="tag" for="i_prod"><input id="i_prod" type="checkbox"> مصاريف إنتاج</label></div>
-      <div class="f" id="i_pgw" hidden><label for="i_pg">قسم تكلفة الإنتاج</label><select id="i_pg"></select><button type="button" class="btn ghost sm" id="i_sp_on" style="margin-top:6px">تقسيم على أكثر من قسم</button></div>
-      <div class="f wide sp-box" id="i_sp" hidden><div class="sp-head"><b>توزيع الفاتورة على أقسام الإنتاج</b><span class="small muted">أدخل مبلغ كل قسم شاملاً الضريبة، ويجب أن يساوي المجموع إجمالي الفاتورة</span></div>
+      <div class="f" id="i_pgw" hidden><label for="i_pg">قسم تكلفة الإنتاج</label><select id="i_pg"></select><button type="button" class="btn ghost sm" id="i_sp_on" style="margin-top:6px">تفصيل الأصناف والأقسام</button></div>
+      <div class="f wide sp-box" id="i_sp" hidden><div class="sp-head"><b>أصناف الفاتورة وأقسامها</b><span class="small muted">لكل صنف: الاسم والكمية والوحدة والقسم والمبلغ شاملاً الضريبة. يجب أن يساوي المجموع إجمالي الفاتورة، والكمية والوحدة تتابع سعر كل صنف في «أسعار الشراء»</span></div>
         <div id="i_sp_rows"></div>
-        <div class="actions"><button type="button" class="btn ghost sm" id="i_sp_add">+ إضافة قسم</button><button type="button" class="btn ghost sm" id="i_sp_off">إلغاء التقسيم</button><span id="i_sp_sum" class="sp-sum"></span></div></div>
+        <div class="actions"><button type="button" class="btn ghost sm" id="i_sp_add">+ صنف</button><button type="button" class="btn ghost sm" id="i_sp_off">إلغاء التفصيل</button><span id="i_sp_sum" class="sp-sum"></span></div></div>
       <div class="f" id="i_pow" hidden><label for="i_po">طلب الشراء</label><select id="i_po"></select><button type="button" class="btn ghost sm" id="i_po_copy" style="margin-top:6px" hidden>نسخ أصناف الطلب</button></div>
       <div class="f wide sp-box" id="i_it" ${(S.ingredients || []).length ? "" : "hidden"}><div class="sp-head"><b>أصناف المخزون في الفاتورة</b><span class="small muted">اختياري: ما دخل المطبخ من المكونات بالكمية والمبلغ، ليُحسب المخزون الحي وسعر كل مكوّن</span></div>
         <div id="i_it_rows"></div><div class="actions"><button type="button" class="btn ghost sm" id="i_it_add">+ صنف</button><span id="i_it_sum" class="sp-sum"></span></div></div>
@@ -1543,9 +1545,15 @@ function bindInvoices(){
     el.innerHTML = `الموزّع <b class="num">${fmt(d)}</b> من <b class="num">${fmt(t)}</b> · ${Math.abs(left) < 0.005 ? "مطابق ✓" : left > 0 ? `المتبقي <b class="num">${fmt(left)}</b>` : `زيادة <b class="num">${fmt(-left)}</b>`}`; };
   const spDraw = () => { const box = $("#i_sp"), on = !!S.invSplit && $("#i_prod").checked; box.hidden = !on; $("#i_pg").disabled = on; $("#i_sp_on").hidden = on;
     if (!on) return;
-    $("#i_sp_rows").innerHTML = S.invSplit.map((l, i) => `<div class="sp-row"><select data-spk="${i}" aria-label="القسم">${PG.map(g => `<option value="${g.k}" ${g.k === l.k ? "selected" : ""}>${esc(g.name)}</option>`).join("")}</select>
+    $("#i_sp_rows").innerHTML = S.invSplit.map((l, i) => `<div class="sp-row"><input data-spd="${i}" class="sp-d" placeholder="الصنف (مثل بطاطس الجوف)" aria-label="الصنف" value="${esc(l.d || "")}">
+      <input data-spq="${i}" class="sp-q" type="number" step="0.001" min="0" inputmode="decimal" placeholder="الكمية" aria-label="الكمية" value="${l.q === "" || l.q == null ? "" : l.q}">
+      <input data-spu="${i}" class="sp-u" list="units" placeholder="الوحدة" aria-label="الوحدة" value="${esc(l.u || "")}">
+      <select data-spk="${i}" aria-label="القسم">${PG.map(g => `<option value="${g.k}" ${g.k === l.k ? "selected" : ""}>${esc(g.name)}</option>`).join("")}</select>
       <input data-spa="${i}" type="number" step="0.01" min="0" inputmode="decimal" placeholder="المبلغ" aria-label="المبلغ" value="${l.a === "" || l.a == null ? "" : l.a}">
-      <button type="button" class="btn ghost sm" data-sprest="${i}" title="ضع المتبقي في هذا السطر">الباقي</button>${S.invSplit.length > 2 ? `<button type="button" class="btn danger sm" data-spdel="${i}" aria-label="حذف السطر">×</button>` : ""}</div>`).join("");
+      <button type="button" class="btn ghost sm" data-sprest="${i}" title="ضع المتبقي في هذا السطر">الباقي</button>${S.invSplit.length > 1 ? `<button type="button" class="btn danger sm" data-spdel="${i}" aria-label="حذف السطر">×</button>` : ""}</div>`).join("");
+    document.querySelectorAll("[data-spd]").forEach(inp => inp.oninput = () => { S.invSplit[+inp.dataset.spd].d = inp.value; });
+    document.querySelectorAll("[data-spq]").forEach(inp => inp.oninput = () => { S.invSplit[+inp.dataset.spq].q = inp.value; });
+    document.querySelectorAll("[data-spu]").forEach(inp => inp.oninput = () => { S.invSplit[+inp.dataset.spu].u = inp.value; });
     document.querySelectorAll("[data-spk]").forEach(se => se.onchange = () => { S.invSplit[+se.dataset.spk].k = se.value; });
     document.querySelectorAll("[data-spa]").forEach(inp => inp.oninput = () => { S.invSplit[+inp.dataset.spa].a = inp.value; spSum(); });
     document.querySelectorAll("[data-sprest]").forEach(b => b.onclick = () => { const i = +b.dataset.sprest, other = r2(sumBy(S.invSplit.filter((_, j) => j !== i), l => n(l.a))), v = r2(spTot() - other);
@@ -1579,9 +1587,9 @@ function bindInvoices(){
   $("#i_sup").addEventListener("change", () => poDraw()); poDraw("");
   if ($("#i_it_add")) $("#i_it_add").onclick = () => { S.invItems = [...(S.invItems || []), {ing:"", q:"", a:""}]; itDraw(); };
   S.invItems = null; itDraw();
-  $("#i_sp_on").onclick = () => { const auto = PG_BY[$("#i_pg").value] ? $("#i_pg").value : pgOfCat($("#i_cat").value); S.invSplit = [{k:auto, a:""}, {k: auto === "food" ? "pack" : "food", a:""}]; spDraw(); $("#i_sp [data-spa]").focus(); };
+  $("#i_sp_on").onclick = () => { const auto = PG_BY[$("#i_pg").value] ? $("#i_pg").value : pgOfCat($("#i_cat").value); S.invSplit = [{k:auto, a:"", d:"", q:"", u:""}]; spDraw(); $("#i_sp [data-spd]").focus(); };
   $("#i_sp_off").onclick = () => { S.invSplit = null; spDraw(); };
-  $("#i_sp_add").onclick = () => { const used = new Set(S.invSplit.map(l => l.k)); S.invSplit.push({k:(PG.find(g => !used.has(g.k)) || PG[6]).k, a:""}); spDraw(); };
+  $("#i_sp_add").onclick = () => { const last = S.invSplit[S.invSplit.length - 1]; S.invSplit.push({k: last ? last.k : pgOfCat($("#i_cat").value), a:"", d:"", q:"", u:""}); spDraw(); const L = document.querySelectorAll("#i_sp [data-spd]"); if (L.length) L[L.length - 1].focus(); };
   const pgUi = keep => { const on = $("#i_prod").checked; $("#i_pgw").hidden = !on; spDraw(); const se = $("#i_pg"), v = keep === undefined ? se.value : keep;
     se.innerHTML = `<option value="">تلقائي (${esc(PG_BY[pgOfCat($("#i_cat").value)].name)})</option>` + PG.map(g => `<option value="${g.k}">${esc(g.name)}</option>`).join(""); se.value = PG_BY[v] ? v : ""; };
   $("#i_cat").addEventListener("change", () => { autoProd(); pgUi(); if (!$("#i_unit").value) $("#i_unit").value = unitGuess($("#i_cat").value, $("#i_sup").value); calc(); }); $("#i_prod").addEventListener("change", () => { S.prodTouched = true; pgUi(); });
@@ -1599,7 +1607,7 @@ function bindInvoices(){
     $("#fiTitle").textContent = "فاتورة جديدة"; $("#i_save").textContent = "إضافة الفاتورة"; $("#i_cancel").hidden = $("#i_del").hidden = true; disarm($("#i_del")); f.classList.remove("editing"); att.reset(); $("#i_suphint").textContent = ""; S.invSplit = null; S.invItems = null; itDraw(); poDraw(""); payVis(); pgUi(""); calc(); };
   S.loadInv = id => { const x = S.invoices.find(v => v.id === id); if (!x) return; S.editInv = id; S.cdAns = null; if ($("#i_cdask")) $("#i_cdask").hidden = true;
     $("#i_date").value = x.date||""; $("#i_no").value = x.no||""; $("#i_sup").value = x.supplier||""; ensureOpt($("#i_cat"), x.category); $("#i_cat").value = x.category||"";
-    $("#i_bt").value = has(x.beforeTax)?x.beforeTax:""; $("#i_vat").value = has(x.vat)?x.vat:""; if ($("#i_vatWrap")) $("#i_vatWrap").hidden = !vatReg() && !(n(x.vat) > 0); $("#i_pay").value = x.pay||"كاش"; $("#i_st").value = x.status||"مدفوعة"; $("#i_notes").value = x.notes||""; $("#i_buy").value = x.buyer||""; $("#i_cdate").value = x.cashDate||""; $("#i_qty").value = x.qty ?? ""; $("#i_unit").value = x.unit || ""; $("#i_prod").checked = isProd(x); S.prodTouched = true; S.invSplit = Array.isArray(x.split) && x.split.length > 1 ? x.split.map(l => ({k:l.k, a:n(l.amount)})) : null; pgUi(x.pgroup || "");
+    $("#i_bt").value = has(x.beforeTax)?x.beforeTax:""; $("#i_vat").value = has(x.vat)?x.vat:""; if ($("#i_vatWrap")) $("#i_vatWrap").hidden = !vatReg() && !(n(x.vat) > 0); $("#i_pay").value = x.pay||"كاش"; $("#i_st").value = x.status||"مدفوعة"; $("#i_notes").value = x.notes||""; $("#i_buy").value = x.buyer||""; $("#i_cdate").value = x.cashDate||""; $("#i_qty").value = x.qty ?? ""; $("#i_unit").value = x.unit || ""; $("#i_prod").checked = isProd(x); S.prodTouched = true; S.invSplit = Array.isArray(x.lines) && x.lines.length ? x.lines.map(l => ({d:l.d || "", q: has(l.q) ? l.q : "", u:l.u || "", k: PG_BY[l.k] ? l.k : "food", a:n(l.a)})) : Array.isArray(x.split) && x.split.length > 1 ? x.split.map(l => ({k:l.k, a:n(l.amount), d:"", q:"", u:""})) : null; pgUi(x.pgroup || "");
     $("#fiTitle").textContent = "تعديل فاتورة"; $("#i_save").textContent = "حفظ التعديل"; $("#i_cancel").hidden = false; $("#i_del").hidden = !S.canWrite; disarm($("#i_del"));
     S.invItems = Array.isArray(x.items) && x.items.length ? x.items.map(l => ({ing:l.ing, q:l.q, a:l.a})) : null; itDraw(); poDraw(x.po || "");
     f.classList.add("editing"); att.load("invoices/" + id); supHint(); payVis(); calc(); f.scrollIntoView({behavior:"smooth",block:"start"}); };
@@ -1619,9 +1627,10 @@ function bindInvoices(){
     supHint(); if (J.category && cats.includes(J.category)) $("#i_cat").value = J.category;
     const tot = r2(n(J.beforeTax) + n(J.vat));
     if (J.total != null && Math.abs(tot - r2(n(J.total))) > 0.005) errs.push(`المجموع (${fmt(tot)} لا يساوي ${fmt(n(J.total))})`);
-    const sp = Array.isArray(J.split) ? J.split.filter(l => PG_BY[l.k] && n(l.a) > 0).map(l => ({k:l.k, a:r2(n(l.a))})) : [];
+    const SPL = Array.isArray(J.lines) ? J.lines : J.split;
+    const sp = Array.isArray(SPL) ? SPL.filter(l => l && PG_BY[l.k] && n(l.a) > 0).map(l => ({k:l.k, a:r2(n(l.a)), d:normName(l.d || l.name || ""), q: n(l.q) > 0 ? n(l.q) : "", u:String(l.u || l.unit || "").trim()})) : [];
     if (J.production || sp.length){ $("#i_prod").checked = true; S.prodTouched = true; }
-    if (sp.length > 1){ S.invSplit = sp; if (Math.abs(r2(sumBy(sp, l => l.a)) - tot) > 0.005) errs.push("توزيع الأقسام لا يساوي الإجمالي"); }
+    if (sp.length > 1 || sp.some(l => l.d || l.q)){ S.invSplit = sp; if (Math.abs(r2(sumBy(sp, l => l.a)) - tot) > 0.005) errs.push("توزيع الأقسام لا يساوي الإجمالي"); }
     pgUi(sp.length === 1 ? sp[0].k : ""); payVis(); calc(); spSum();
     /* stock lines Claude read off the invoice, matched to the kitchen ingredients by name */
     const itIn = Array.isArray(J.items) ? J.items.filter(l => l && l.name && n(l.q) > 0) : [], itMiss = [];
@@ -1675,13 +1684,19 @@ function bindInvoices(){
         }
       }
       box.hidden = true; }
-    data.split = null;
+    data.split = null; data.lines = null;
+    /* the items of the invoice: name, quantity, unit, section, amount. The sections are summed into the split (one section: its group) */
     if (data.production && S.invSplit){
-      const m = new Map(); S.invSplit.forEach(l => { const a = r2(n(l.a)); if (a > 0 && PG_BY[l.k]) m.set(l.k, r2((m.get(l.k) || 0) + a)); });
+      const rows = S.invSplit.filter(l => r2(n(l.a)) > 0 && PG_BY[l.k]);
+      if (!rows.length){ toast("أدخل مبلغ صنف واحد على الأقل، أو ألغِ التفصيل"); return; }
+      const half = rows.find(l => (n(l.q) > 0) !== !!String(l.u || "").trim());
+      if (half){ toast(`«${normName(half.d || "") || "صنف"}»: اكتب الكمية والوحدة معاً، أو اتركهما فارغين`); $("#i_sp").scrollIntoView({behavior:"smooth", block:"center"}); return; }
+      const m = new Map(); rows.forEach(l => m.set(l.k, r2((m.get(l.k) || 0) + r2(n(l.a)))));
       const lines = [...m].map(([k, amount]) => ({k, amount})), t = r2(invTotal(data)), d = r2(sumBy(lines, l => l.amount));
-      if (lines.length < 2){ toast("التقسيم يحتاج قسمين مختلفين على الأقل، أو ألغِ التقسيم"); return; }
-      if (Math.abs(d - t) > 0.005){ toast(`مجموع التقسيم ${fmt(d)} لا يساوي إجمالي الفاتورة ${fmt(t)}`); $("#i_sp").scrollIntoView({behavior:"smooth", block:"center"}); return; }
-      data.split = lines; data.pgroup = null;
+      if (Math.abs(d - t) > 0.005){ toast(`مجموع الأصناف ${fmt(d)} لا يساوي إجمالي الفاتورة ${fmt(t)}`); $("#i_sp").scrollIntoView({behavior:"smooth", block:"center"}); return; }
+      if (lines.length > 1){ data.split = lines; data.pgroup = null; } else data.pgroup = lines[0].k;
+      if (rows.some(l => normName(l.d || "") || n(l.q) > 0))
+        data.lines = rows.map(l => ({d:normName(l.d || ""), q: n(l.q) > 0 ? Math.round(n(l.q) * 1000) / 1000 : null, u:String(l.u || "").trim(), k:l.k, a:r2(n(l.a))}));
     }
     const iid = S.editInv || S.db.collection("invoices").doc().id, old = S.editInv ? S.invoices.find(v => v.id === S.editInv) : null;
     if (data.status === "غير مدفوعة") data.pay = "";
@@ -1701,6 +1716,10 @@ function bindInvoices(){
       if (P.pay){ $("#i_pay").value = P.pay; $("#i_pay").dispatchEvent(new Event("change")); }
       setTimeout(() => { const f2 = $("#fi"); if (f2) f2.scrollIntoView({block:"start"}); }, 50); } }
 }
+/* a short line of the invoice's items under its supplier */
+const invLinesTxt = x => { const L = Array.isArray(x.lines) ? x.lines.filter(l => l && normName(l.d || "")) : []; if (!L.length) return "";
+  const t = L.slice(0, 4).map(l => `${esc(normName(l.d))}${n(l.q) > 0 ? ` <span class="num">${fmtQ(n(l.q))}</span> ${esc(l.u || "")}` : ""}`).join(" · ");
+  return `<div class="by">${t}${L.length > 4 ? ` · +${L.length - 4}` : ""}</div>`; };
 /* when an invoice was typed into the app (its first history entry), as opposed to the date printed on it */
 const invEntAt = x => { const h = (x.history || []).filter(e => e && e.action === "create" && e.at); return (h.length ? h[h.length - 1].at : "") || x.updatedAt || ""; };
 const invEntDay = x => { const a = invEntAt(x), d = a ? new Date(a) : null; return d && !isNaN(d) ? iso(d) : ""; };
@@ -1728,7 +1747,7 @@ function renderInvList(){
   /* not VAT-registered: the amount typed is the full paid amount, so the VAT columns are left out */
   const nv = !vatReg() && !rows.some(x => n(x.vat) > 0);
   el.innerHTML = fbar + `<div class="tw stick"><table><thead><tr><th>التاريخ</th><th>رقم الفاتورة</th><th>المورد / الجهة</th><th>التصنيف</th>${nv ? "" : '<th class="n">قبل الضريبة</th><th class="n">الضريبة</th>'}<th class="n">${nv ? "المبلغ" : "الإجمالي"}</th><th>طريقة الدفع</th><th>الحالة</th><th>الوسم</th><th>مرفق</th><th>ملاحظات</th></tr></thead><tbody>
-    ${rows.length ? rows.map(x=>{ const stt = invStatus(x); return `<tr class="click ${stt[1]==="bad"?"unpaid":""}" data-id="${esc(x.id)}"><td class="num">${dmy(x.date)}${who(x.by)}${F.today ? `<div class="by">أُدخلت ${invEntTime(x)}</div>` : ""}</td><td>${esc(x.no)}</td><td>${esc(x.supplier)}${supplierOf(x.supplier) && supplierOf(x.supplier).name !== normName(x.supplier) ? `<div class="by">${esc(supplierOf(x.supplier).name)}</div>` : ""}${x.buyer ? `<div class="by">المشتري: ${esc(x.buyer)}</div>` : ""}</td><td>${esc(x.category)}</td>${nv ? "" : `<td class="n">${money(n(x.beforeTax))}</td><td class="n">${money(n(x.vat))}</td>`}<td class="n"><b>${money(invTotal(x))}</b></td><td>${isCredit(x) ? "آجل" : esc(x.pay)}${invCashDate(x) !== x.date ? `<div class="by">صُرفت ${dmy(invCashDate(x))}</div>` : ""}</td><td><span class="chip ${stt[1]}">${esc(stt[0])}</span>${stt[1]==="bad" && S.canWrite ? ` <button type="button" class="btn sm" data-payinv="${esc(x.id)}">سداد</button>` : ""}</td><td>${isProd(x)?`<span class="chip prod">إنتاج · ${pgIsSplit(x) ? `مقسّمة على ${pgParts(x).length} أقسام` : esc(PG_BY[pgOf(x)].name)}</span>`:""}</td><td>${x.att ? `<span class="chip info">${x.att} ${x.att > 1 ? "مرفقات" : "مرفق"}</span>` : ""}</td><td>${esc(x.notes)}</td></tr>`; }).join("")
+    ${rows.length ? rows.map(x=>{ const stt = invStatus(x); return `<tr class="click ${stt[1]==="bad"?"unpaid":""}" data-id="${esc(x.id)}"><td class="num">${dmy(x.date)}${who(x.by)}${F.today ? `<div class="by">أُدخلت ${invEntTime(x)}</div>` : ""}</td><td>${esc(x.no)}</td><td>${esc(x.supplier)}${supplierOf(x.supplier) && supplierOf(x.supplier).name !== normName(x.supplier) ? `<div class="by">${esc(supplierOf(x.supplier).name)}</div>` : ""}${x.buyer ? `<div class="by">المشتري: ${esc(x.buyer)}</div>` : ""}${invLinesTxt(x)}</td><td>${esc(x.category)}</td>${nv ? "" : `<td class="n">${money(n(x.beforeTax))}</td><td class="n">${money(n(x.vat))}</td>`}<td class="n"><b>${money(invTotal(x))}</b></td><td>${isCredit(x) ? "آجل" : esc(x.pay)}${invCashDate(x) !== x.date ? `<div class="by">صُرفت ${dmy(invCashDate(x))}</div>` : ""}</td><td><span class="chip ${stt[1]}">${esc(stt[0])}</span>${stt[1]==="bad" && S.canWrite ? ` <button type="button" class="btn sm" data-payinv="${esc(x.id)}">سداد</button>` : ""}</td><td>${isProd(x)?`<span class="chip prod">إنتاج · ${pgIsSplit(x) ? `مقسّمة على ${pgParts(x).length} أقسام` : esc(PG_BY[pgOf(x)].name)}</span>`:""}</td><td>${x.att ? `<span class="chip info">${x.att} ${x.att > 1 ? "مرفقات" : "مرفق"}</span>` : ""}</td><td>${esc(x.notes)}</td></tr>`; }).join("")
       : `<tr><td colspan="${nv ? 10 : 12}" class="empty">${F.today ? "لم تُدخل أي فاتورة اليوم" : `لا توجد فواتير في ${rgShort()}`}${(F.pay || F.buyer) ? " بهذه الفلاتر" : ""}</td></tr>`}
     <tr class="tot"><td colspan="4">${F.today ? "إجمالي ما أُدخل اليوم" : fOn ? "إجمالي النتائج" : "إجمالي الفترة"} (${rows.length} فاتورة)</td>${nv ? "" : `<td class="n">${money(sum("beforeTax"))}</td><td class="n">${money(sum("vat"))}</td>`}<td class="n">${money(rows.reduce((t,x)=>t+invTotal(x),0))}</td><td colspan="5" class="small">منها مصاريف إنتاج: <span class="num">${fmt(rows.filter(isProd).reduce((t,x)=>t+invTotal(x),0))}</span></td></tr>
   </tbody></table></div><p class="small muted">اضغط على أي فاتورة لتعديلها أو حذفها.</p>`;
@@ -1915,7 +1934,7 @@ async function exportXlsx(){
     {"البند":"مصاريف الإنتاج","القيمة":r2(st.prod)},
     {"البند":"نسبة الإنتاج","القيمة":st.netSales ? r2(st.prodPct*100) + "%" : "—"}]);
   add("المبيعات", [...S.sales.values()].sort(sortD).map(s => ({"التاريخ":s.date,"اليوم":dayName(s.date),"كاش":n(s.cash),"مدى":n(s.mada),"فيزا / ماستركارد":n(s.visa),"تطبيقات التوصيل":n(s.delivery),"تحويل بنكي":n(s.transfer),"آجل":n(s.credit),"الإجمالي":r2(saleTotal(s)),"الفعلي بعد العمولة":r2(netSale(s)),"عدد الفواتير":has(s.count)?n(s.count):"","ملاحظات":s.notes||"","أدخلها":nm(s.by)})));
-  add("الفواتير", [...S.invoices].sort(sortD).map(x => ({"التاريخ":x.date,"رقم الفاتورة":x.no||"","المورد / الجهة":x.supplier||"","التصنيف":x.category||"","قبل الضريبة":n(x.beforeTax),"الضريبة":n(x.vat),"الإجمالي":r2(invTotal(x)),"طريقة الدفع":isCredit(x)?"آجل":(x.pay||""),"الحالة":invStatus(x)[0],"المتبقي":r2(apState().byInv.get(x.id)?.remain||0),"المشتري":x.buyer||"","الكمية":hasQty(x)?n(x.qty):"","الوحدة":hasQty(x)?x.unit:"","سعر الوحدة":hasQty(x)?r2(unitPrice(x)):"","مصاريف إنتاج":isProd(x)?"نعم":"","قسم الإنتاج":isProd(x)?pgLabel(x):"","ملاحظات":x.notes||"","أدخلها":nm(x.by)})));
+  add("الفواتير", [...S.invoices].sort(sortD).map(x => ({"التاريخ":x.date,"رقم الفاتورة":x.no||"","المورد / الجهة":x.supplier||"","التصنيف":x.category||"","قبل الضريبة":n(x.beforeTax),"الضريبة":n(x.vat),"الإجمالي":r2(invTotal(x)),"طريقة الدفع":isCredit(x)?"آجل":(x.pay||""),"الحالة":invStatus(x)[0],"المتبقي":r2(apState().byInv.get(x.id)?.remain||0),"المشتري":x.buyer||"","الأصناف":(Array.isArray(x.lines) ? x.lines.map(l => `${normName(l.d || "")}${n(l.q) > 0 ? " " + n(l.q) + " " + (l.u || "") : ""} = ${r2(n(l.a))}`).join(" | ") : ""),"الكمية":hasQty(x)?n(x.qty):"","الوحدة":hasQty(x)?x.unit:"","سعر الوحدة":hasQty(x)?r2(unitPrice(x)):"","مصاريف إنتاج":isProd(x)?"نعم":"","قسم الإنتاج":isProd(x)?pgLabel(x):"","ملاحظات":x.notes||"","أدخلها":nm(x.by)})));
   add("العهد", [...S.custody].sort(sortD).map(x => ({"التاريخ":x.date,"الموظف":x.employee||"","نوع الحركة":x.type||"","المبلغ":n(x.amount),"المصدر":x.source||"","البيان":x.desc||"","التصنيف":x.category||"","المرجع":x.ref||"","ملاحظات":x.notes||"","أدخلها":nm(x.by)})));
   add("أرصدة العهد", custodyBalances().map(x => ({"الموظف":x.name,"المستلم":r2(x.rec),"المصروف":r2(x.spent),"المُرجَع":r2(x.ret),"المتبقي":r2(x.left)})));
   add("تحويلات التطبيقات", [...S.apps].sort(sortD).map(x => ({"تاريخ الوصول":x.date,"التطبيق":x.app||"","المبلغ":n(x.amount),"من":x.from||"","إلى":x.to||"","ملاحظات":x.notes||"","أدخلها":nm(x.by)})));
@@ -5494,8 +5513,17 @@ Object.assign(REPORTS, {
 const UNITS = ["كجم","جرام","كرتون","حبة","كيس","علبة","لتر","جالون","ربطة","صندوق","أسطوانة"];
 const UNIT_DEF = {"دجاج":"كجم","لحم":"كجم","شحم":"كجم","لحم وشحم":"كجم","مواد خام (لحوم ودجاج)":"كجم","بطاطس":"كجم","خضار وفواكه":"كجم","غاز":"أسطوانة","زيت":"لتر"};
 const hasQty = x => n(x.qty) > 0 && !!x.unit;
+/* items of an invoice that carry a quantity and a unit (أصناف الفاتورة) */
+const invLines = x => Array.isArray(x.lines) ? x.lines.filter(l => l && n(l.q) > 0 && String(l.u || "").trim() && normName(l.d || "")) : [];
+const hasQtyInv = x => hasQty(x) || invLines(x).length > 0;
+/* what the purchase prices follow: each such item as its own record (name + unit), else the invoice with its own quantity and unit */
+function pxRecs(){ const out = [];
+  for (const x of S.invoices){ const L = invLines(x);
+    if (L.length) L.forEach((l, i) => out.push({id:x.id + "#" + i, date:x.date, supplier:x.supplier, category:normName(l.d), unit:String(l.u).trim(), qty:n(l.q), _amt:n(l.a), inv:x}));
+    else if (hasQty(x)) out.push(x); }
+  return out; }
 /* the amount the quantity belongs to: the whole invoice, or for a split invoice only the share of its own category's section */
-const pxAmt = x => { const P = pgParts(x); if (P.length < 2) return invTotal(x); const k = pgOfCat(x.category), hit = P.find(l => l.k === k); return hit ? hit.v : invTotal(x); };
+const pxAmt = x => { if (x._amt != null) return x._amt; const P = pgParts(x); if (P.length < 2) return invTotal(x); const k = pgOfCat(x.category), hit = P.find(l => l.k === k); return hit ? hit.v : invTotal(x); };
 const unitPrice = x => hasQty(x) ? pxAmt(x) / n(x.qty) : null;
 const itemKey = x => `${x.category || "—"}|${x.unit}`;
 /* the unit last used for this category (and supplier, when known) */
@@ -5507,7 +5535,7 @@ function unitGuess(cat, sup){
 }
 /* stats per item over [a,b], with a look-back to judge the latest price */
 function priceStats(a, b){
-  const all = S.invoices.filter(hasQty).sort((x, y) => x.date < y.date ? -1 : x.date > y.date ? 1 : 0);
+  const all = pxRecs().sort((x, y) => x.date < y.date ? -1 : x.date > y.date ? 1 : 0);
   const items = new Map();
   all.forEach(x => { if (x.date > b) return; const k = itemKey(x); const it = items.get(k) || {key:k, cat:x.category || "—", unit:x.unit, hist:[], inR:[]}; it.hist.push(x); if (x.date >= a) it.inR.push(x); items.set(k, it); });
   const out = [];
@@ -5523,7 +5551,7 @@ function priceStats(a, b){
 const chgChip = c => c == null ? '<span class="muted">—</span>' : Math.abs(c) < 0.02 ? '<span class="chip info">ثابت</span>' : `<span class="chip ${c > 0 ? "bad" : "ok"}">${c > 0 ? "▲" : "▼"} ${(Math.abs(c) * 100).toFixed(1)}%</span>`;
 function renderPrices(el){
   const R = monthRange(S.y, S.m), a = S.pxAll ? (S.settings.startDate || R[0]) : R[0], b = R[1] > today() ? today() : R[1];
-  const L = priceStats(a, b), withQ = S.invoices.filter(x => isProd(x) && x.date >= a && x.date <= b), noQ = withQ.filter(x => !hasQty(x));
+  const L = priceStats(a, b), withQ = S.invoices.filter(x => isProd(x) && x.date >= a && x.date <= b), noQ = withQ.filter(x => !hasQtyInv(x));
   const up = L.filter(x => x.chg != null && x.chg >= 0.1);
   el.innerHTML = `<div class="actions" style="align-items:center"><div class="seg" role="group" aria-label="الفترة"><button type="button" data-pxa="0" class="${S.pxAll ? "" : "on"}">الشهر المحدد</button><button type="button" data-pxa="1" class="${S.pxAll ? "on" : ""}">منذ بداية البرنامج</button></div>
       <span class="small muted">الفترة <span class="num">${dmy(a)}</span> – <span class="num">${dmy(b)}</span></span></div>
@@ -5539,7 +5567,7 @@ function renderPrices(el){
 }
 const fmtQ = q => (Math.round(q * 100) / 100).toLocaleString("en-US", {maximumFractionDigits:2});
 function openPriceItem(key){
-  const xs = S.invoices.filter(x => hasQty(x) && itemKey(x) === key).sort((a, b) => a.date < b.date ? -1 : 1); if (!xs.length) return;
+  const xs = pxRecs().filter(x => itemKey(x) === key).sort((a, b) => a.date < b.date ? -1 : 1); if (!xs.length) return;
   const [cat, unit] = key.split("|"), ps = xs.map(unitPrice), mx = Math.max(...ps), mn = Math.min(...ps);
   const W = 560, H = 120, pad = 8, X = i => xs.length < 2 ? W / 2 : pad + i * (W - pad * 2) / (xs.length - 1), Y = v => mx === mn ? H / 2 : H - pad - (v - mn) / (mx - mn) * (H - pad * 2);
   const path = ps.map((v, i) => `${i ? "L" : "M"}${X(i).toFixed(1)} ${Y(v).toFixed(1)}`).join(" ");
@@ -5853,7 +5881,7 @@ function gdSteps(){
   const rc = S.recon.get(t) || {}, counted = has(rc.actualCash) && has(rc.actualBank), half = has(rc.actualCash) || has(rc.actualBank);
   const ySale = S.sales.get(y), ySaved = ySale && saleTotal(ySale) > 0, preStart = st && y < st;
   const invT = S.invoices.filter(x => x.date === t), cusT = S.custody.filter(x => x.date === t);
-  const noQty = S.invoices.filter(x => x.date >= addDays(t, -7) && isProd(x) && !hasQty(x) && /دجاج|لحم|شحم|بطاطس/.test(x.category || ""));
+  const noQty = S.invoices.filter(x => x.date >= addDays(t, -7) && isProd(x) && !hasQtyInv(x) && /دجاج|لحم|شحم|بطاطس/.test(x.category || ""));
   const row = ledger().find(r => r.date === t), dd = row ? [row.cDiff, row.bDiff].filter(v => v != null && Math.abs(v) > 0.5) : [];
   const daily = [
     {k:"count", t:"جرد الخزنة والبنك", when:"العصر، قبل إدخال مبيعات أمس", go:"#recon", btn:"المطابقة اليومية",
