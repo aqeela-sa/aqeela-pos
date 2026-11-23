@@ -1628,7 +1628,9 @@ function bindInvoices(){
     const tot = r2(n(J.beforeTax) + n(J.vat));
     if (J.total != null && Math.abs(tot - r2(n(J.total))) > 0.005) errs.push(`المجموع (${fmt(tot)} لا يساوي ${fmt(n(J.total))})`);
     const SPL = Array.isArray(J.lines) ? J.lines : J.split;
-    const sp = Array.isArray(SPL) ? SPL.filter(l => l && PG_BY[l.k] && n(l.a) > 0).map(l => ({k:l.k, a:r2(n(l.a)), d:normName(l.d || l.name || ""), q: n(l.q) > 0 ? n(l.q) : "", u:String(l.u || l.unit || "").trim()})) : [];
+    /* a section may come by its key or by its name as shown in the app (a section the owner added has its own key) */
+    const pgK = v => { if (PG_BY[v]) return v; const t = normName(String(v || "")).replace(/^ال/, ""); const g = t && PG.find(g => normName(g.name).replace(/^ال/, "") === t); return g ? g.k : ""; };
+    const sp = Array.isArray(SPL) ? SPL.filter(l => l && pgK(l.k) && n(l.a) > 0).map(l => ({k:pgK(l.k), a:r2(n(l.a)), d:normName(l.d || l.name || ""), q: n(l.q) > 0 ? n(l.q) : "", u:String(l.u || l.unit || "").trim()})) : [];
     if (J.production || sp.length){ $("#i_prod").checked = true; S.prodTouched = true; }
     if (sp.length > 1 || sp.some(l => l.d || l.q)){ S.invSplit = sp; if (Math.abs(r2(sumBy(sp, l => l.a)) - tot) > 0.005) errs.push("توزيع الأقسام لا يساوي الإجمالي"); }
     pgUi(sp.length === 1 ? sp[0].k : ""); payVis(); calc(); spSum();
