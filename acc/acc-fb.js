@@ -189,7 +189,19 @@ const pos = {
     return ids.length;
   }
 };
-window.__accFb = { db, user: userApi, roleOf, ADMIN_EMAIL, pos, backup, login, reserved };
+/* the cashier's manager approvals (owner only): pending requests to decide, the secret behind the one-time code, and the log */
+const mgr = {
+  async secret(){
+    const r = F.doc(fs, "config", "main"), s = await F.getDoc(r); if (!s.exists()) return null;
+    let k = s.data().mgrSecret;
+    if (!k){ k = [...crypto.getRandomValues(new Uint8Array(20))].map(x => x.toString(16).padStart(2, "0")).join(""); await F.setDoc(r, { mgrSecret: k }, { merge: true }); }
+    return k;
+  },
+  watch(cb, onErr){ return F.onSnapshot(F.query(F.collection(fs, "approvals"), F.where("status", "==", "pending")), q => cb(q.docs.map(d => ({ id: d.id, ...d.data() }))), e => onErr && onErr(e)); },
+  decide: (id, status, note) => F.updateDoc(F.doc(fs, "approvals", id), { status, note: note || "", decidedAt: Date.now(), decidedBy: "owner" }),
+  async log(fromDay){ const q = await F.getDocs(F.query(F.collection(fs, "approvals"), F.where("day", ">=", fromDay))); return q.docs.map(d => ({ id: d.id, ...d.data() })); }
+};
+window.__accFb = { db, user: userApi, roleOf, ADMIN_EMAIL, pos, backup, login, reserved, mgr };
 
 /* ---------- sign-in screen ---------- */
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));

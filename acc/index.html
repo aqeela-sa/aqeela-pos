@@ -157,6 +157,8 @@ form.entry{display:grid;gap:14px}
 .editing{border-color:var(--warn);box-shadow:0 0 0 3px color-mix(in srgb,var(--warn) 22%,transparent)}
 .note{padding:11px 14px;border-radius:11px;background:var(--bank-bg);color:var(--ink);font-size:13.5px;border:1px solid color-mix(in srgb,var(--bank) 15%,transparent)}
 .note.warn{background:var(--bad-bg);border-color:color-mix(in srgb,var(--bad) 18%,transparent)}
+#mgrbar{position:fixed;inset-inline:0;bottom:0;z-index:900;background:#fff;border-top:3px solid #B26A00;box-shadow:0 -6px 24px rgba(0,0,0,.18);padding:10px 14px calc(10px + env(safe-area-inset-bottom));display:grid;gap:8px;max-height:60vh;overflow:auto}
+#mgrbar .mg-row{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}#mgrbar .mg-t{display:grid;gap:2px}#mgrbar .mg-t span{font-weight:700}#mgrbar .mg-t small{color:var(--muted,#71717A)}#mgrbar .mg-a{display:flex;gap:8px}
 .note.bad{background:var(--bad-bg);border-color:color-mix(in srgb,var(--bad) 45%,transparent);color:var(--bad)}
 .note.ok{background:var(--good-bg);border-color:color-mix(in srgb,var(--good) 25%,transparent)}
 .seg{display:inline-flex;border:1px solid var(--line);border-radius:11px;overflow:hidden;background:var(--card);padding:3px;gap:3px}
@@ -1348,7 +1350,7 @@ function viewDashboard(){
 function renderDash(){
   const el = $("#dash"); if (!el) return;
   const rows = ledger(), b = balances(rows), st = monthStats(S.y,S.m);
-  let top = (typeof teamInbox === "function" ? teamInbox() : "") + needStart();
+  let top = (typeof teamInbox === "function" ? teamInbox() : "") + (typeof mgrCard === "function" ? mgrCard() : "") + needStart();
   if (b){
     const tr = b.todayRow, CUc = reconCum(rows, true), CUb = reconCum(rows, false);
     /* after an approved reconciliation the card shows the running difference since it (timing of withdrawals cancels out); before any, the last day's difference */
@@ -6874,6 +6876,7 @@ if (window.__accHost) window.__accStart = connect; else connect();
 <script src="kitchen.js?v=8"></script>
 <script src="purchase.js?v=5"></script>
 <script src="team.js?v=1"></script>
-<script type="module" src="acc-fb.js?v=11"></script>
+<script src="mgr.js?v=1"></script>
+<script type="module" src="acc-fb.js?v=12"></script>
 </body>
 </html>

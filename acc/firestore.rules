@@ -40,6 +40,15 @@ service cloud.firestore {
                                      && same('day') && same('no') && same('shiftId') && same('test') && same('ts') && same('device'));
       allow delete: if isAdmin();
     }
+    // manager approvals: the cashier device asks (or logs a PIN / one-time code approval); only the owner decides,
+    // the device may only withdraw its own pending request
+    match /approvals/{id} {
+      allow read: if isAdmin() || isCashier();
+      allow create: if isAdmin() || (isCashier() && (request.resource.data.status == 'pending'
+                                     || (request.resource.data.status == 'approved' && request.resource.data.via in ['pin', 'code'])));
+      allow update: if isAdmin() || (isCashier() && resource.data.status == 'pending' && request.resource.data.status == 'cancelled');
+      allow delete: if isAdmin();
+    }
     // a closed shift is final for the cashier device
     match /shifts/{id} {
       allow read: if isAdmin() || isCashier() || isPartner() || may(['pos', 'platforms', 'kitchen', 'ops']);

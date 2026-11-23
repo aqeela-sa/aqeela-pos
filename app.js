@@ -4,7 +4,7 @@
 import * as F from "./fb.js";
 import { firebaseConfig } from "./firebase-config.js";
 
-const VERSION = "2.7.2";
+const VERSION = "2.8.0";
 const ADMIN_EMAIL = "abuabraj@gmail.com";
 const DEVICE_EMAIL = "cashier@aqeela-pos.app";
 const APP_NAME = `<span dir="ltr">Cashier AQ</span>`;
@@ -438,7 +438,7 @@ function drawCart() {
   $("#clr").onclick = () => { if (confirm("تفريغ الطلب الحالي؟")) resetCart(); };
   $("#pkl").onclick = openParked; $("#park").onclick = parkCart;
   $("#cback").onclick = () => toggleCart(false);
-  $("#disc").onclick = () => askManager("الخصم يحتاج رمز المدير", openDiscount);
+  $("#disc").onclick = () => askManager(`خصم على طلب بقيمة ${m2(total())} ر.س`, openDiscount);
   $("#last").onclick = () => { const P = S.today.filter(x => x.status === "paid" && !!x.test === !!S.device.test), o = P.find(x => x.device === S.dev) || P[0]; if (!o) return toast("لا توجد طلبات اليوم"); printJob(o, { receipt: true }, true); };
   $$("[data-pay]").forEach(b => b.onclick = () => openPay(b.dataset.pay));
   $("#sendk") && ($("#sendk").onclick = sendKitchen);
@@ -492,19 +492,67 @@ function modal(html, { wide, mid } = {}) {
 function closeModal() { $("#ov")?.remove(); clearTimeout(S.doneTimer); closePop(); if (S.kh) { removeEventListener("keydown", S.kh); S.kh = null; } }
 const mh = (t, extra = "") => `<div class="mdl-h"><h3>${t}</h3><div style="display:flex;gap:8px;align-items:center">${extra}<button class="x" data-close aria-label="إغلاق">${ic("close")}</button></div></div>`;
 
-/* manager PIN prompt → onOk() */
+/* ---------- manager approval → onOk() ----------
+   Three ways: the manager's PIN typed here; a remote approval the owner gives from the accounting program on his phone;
+   or a one-time code shown there (6 digits, changes every 5 minutes, computed from a secret both sides hold, so it works
+   with no internet in the shop, and is accepted once on this device). Every approval is logged in «approvals». */
+const MGR_STEP = 300000;
+async function mgrCode(secret, step) {
+  const k = await crypto.subtle.importKey("raw", new TextEncoder().encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const b = new Uint8Array(await crypto.subtle.sign("HMAC", k, new TextEncoder().encode("aq-mgr:" + step)));
+  const off = b[b.length - 1] & 15, v = (((b[off] & 0x7f) << 24) | (b[off + 1] << 16) | (b[off + 2] << 8) | b[off + 3]) >>> 0;
+  return String(v % 1e6).padStart(6, "0");
+}
+async function mgrCodeOk(code) {
+  const sec = S.config?.mgrSecret; if (!sec || !/^\d{6}$/.test(code)) return false;
+  const now = Math.floor(Date.now() / MGR_STEP), used = ls.get("mgrUsed", []);
+  for (const st of [now, now - 1]) if (await mgrCode(sec, st) === code) {
+    const key = st + ":" + code; if (used.includes(key)) return "used";
+    ls.set("mgrUsed", [...used.filter(x => +x.split(":")[0] >= now - 2), key]); return true; }
+  return false;
+}
+function mgrLog(title, via, extra = {}) {
+  const id = `${bizDay()}-${S.dev}-${Date.now().toString(36)}-${rid(3)}`;
+  const d = { id, title, via, status: "approved", at: Date.now(), decidedAt: Date.now(), day: bizDay(), cashierId: S.cashier?.id || "", cashierName: S.cashier?.name || "", device: S.dev, test: !!S.device.test, ...extra };
+  fire(F.setDoc(D("approvals", id), d), "سجل الموافقة"); return id;
+}
 function askManager(title, onOk) {
   if (!S.config.managerPinHash) return toast("لم يُحدَّد رمز المدير بعد", true);
   let pin = "";
-  modal(`${mh("رمز المدير")}<div class="mdl-b"><p style="margin:0 0 4px;text-align:center" class="muted">${esc(title)}</p>
+  const ok = (via, id) => { S.mgrOk = { via, id: id || "", at: Date.now() }; closeModal(); onOk(); };
+  modal(`${mh("موافقة المدير")}<div class="mdl-b"><p style="margin:0 0 4px;text-align:center" class="muted">${esc(title)}</p>
+    <p class="small muted" style="margin:0 0 6px;text-align:center">رمز المدير، أو الرمز المؤقت من جوال المدير (6 أرقام)</p>
     <div class="dots" id="mdots">${"<i></i>".repeat(8)}</div>
-    <div class="pad">${[1, 2, 3, 4, 5, 6, 7, 8, 9].map(k => `<button data-k="${k}">${k}</button>`).join("")}<button class="fn" data-k="b">⌫</button><button data-k="0">0</button><button class="fn" data-k="ok" style="color:var(--red);font-weight:800">تأكيد</button></div></div>`);
+    <div class="pad">${[1, 2, 3, 4, 5, 6, 7, 8, 9].map(k => `<button data-k="${k}">${k}</button>`).join("")}<button class="fn" data-k="b">⌫</button><button data-k="0">0</button><button class="fn" data-k="ok" style="color:var(--red);font-weight:800">تأكيد</button></div>
+    <button class="btn ghost block" id="mrem" style="margin-top:12px">${ic("phone")}طلب موافقة المدير عن بُعد</button>
+    <p class="small muted" id="mremn" style="margin:6px 0 0;text-align:center">${S.online ? "يصل الطلب إلى المدير في برنامج المحاسبة، وينتظر هنا قراره" : "بدون إنترنت: اطلب من المدير الرمز المؤقت من جواله"}</p></div>`);
+  if (!S.online) $("#mrem").disabled = true;
   const dots = () => $$("#mdots i").forEach((d, i) => { d.classList.toggle("on", i < pin.length); d.style.display = i < Math.max(4, pin.length) ? "" : "none"; }); dots();
+  const bad = msg => { if (msg) toast(msg, true); $("#mdots").classList.add("shake"); setTimeout(() => { $("#mdots")?.classList.remove("shake"); pin = ""; dots(); }, 380); };
   $$("#ov [data-k]").forEach(b => b.onclick = async () => { const k = b.dataset.k;
     if (k === "b") pin = pin.slice(0, -1);
-    else if (k === "ok") { if (await sha(S.config.salt + ":" + pin) === S.config.managerPinHash) { closeModal(); onOk(); return; }
-      $("#mdots").classList.add("shake"); setTimeout(() => { $("#mdots")?.classList.remove("shake"); pin = ""; dots(); }, 380); return; }
+    else if (k === "ok") {
+      if (await sha(S.config.salt + ":" + pin) === S.config.managerPinHash) { ok("pin", mgrLog(title, "pin")); return; }
+      const c = await mgrCodeOk(pin);
+      if (c === true) { ok("code", mgrLog(title, "code")); return; }
+      return bad(c === "used" ? "هذا الرمز استُخدم من قبل، اطلب رمزاً جديداً" : ""); }
     else if (pin.length < 8) pin += k; dots(); });
+  $("#mrem").onclick = () => remoteApproval(title, ok);
+}
+function remoteApproval(title, ok) {
+  const id = `${bizDay()}-${S.dev}-${Date.now().toString(36)}-${rid(3)}`;
+  const d = { id, title, via: "remote", status: "pending", at: Date.now(), day: bizDay(), cashierId: S.cashier?.id || "", cashierName: S.cashier?.name || "", device: S.dev, test: !!S.device.test };
+  fire(F.setDoc(D("approvals", id), d), "طلب الموافقة");
+  modal(`${mh("بانتظار موافقة المدير")}<div class="mdl-b" style="text-align:center"><div class="spin" style="margin:10px auto 14px"></div>
+    <p style="margin:0 0 6px"><b>${esc(title)}</b></p><p class="small muted" style="margin:0" id="rwait">أُرسل الطلب إلى المدير. اترك هذه النافذة مفتوحة حتى يصل قراره.</p></div>
+    <div class="mdl-f"><button class="btn ghost" id="rcan">إلغاء الطلب</button></div>`, { mid: true });
+  let un = null; const stop = () => { un?.(); un = null; };
+  $("#rcan").onclick = () => { stop(); fire(F.updateDoc(D("approvals", id), { status: "cancelled", decidedAt: Date.now() }), "إلغاء الطلب"); closeModal(); };
+  un = F.onSnapshot(D("approvals", id), s => { const x = s.data(); if (!x || s.metadata.hasPendingWrites) return;
+    if (x.status === "approved") { stop(); toast("وافق المدير"); ok("remote", id); }
+    else if (x.status === "rejected") { stop(); if ($("#rwait")) { $("#rwait").innerHTML = `<b style="color:var(--bad)">رفض المدير الطلب</b>${x.note ? `<br>${esc(x.note)}` : ""}`; $(".spin")?.remove(); $("#rcan").textContent = "إغلاق"; $("#rcan").onclick = closeModal; } } },
+    e => console.error(e));
+  const obs = new MutationObserver(() => { if (!document.body.contains($("#rcan") || document.createElement("i")) || !$("#rwait")) { stop(); obs.disconnect(); } }); obs.observe(document.body, { childList: true });
 }
 
 function openDiscount() {
@@ -527,7 +575,7 @@ function openDiscount() {
     if (!(v > 0)) return toast("أدخل قيمة الخصم", true); if (kind === "pct" && v > 100) return toast("النسبة لا تتجاوز 100%", true);
     if (kind === "amt" && v > subtotal()) return toast("الخصم أكبر من المجموع", true);
     if (!reason) return toast("اكتب سبب الخصم", true);
-    S.cart.discount = { kind, value: v, reason, by: "manager", at: Date.now(), cashierId: S.cashier.id }; closeModal(); drawCart(); };
+    S.cart.discount = { kind, value: v, reason, by: "manager", via: S.mgrOk?.via || "pin", approval: S.mgrOk?.id || "", at: Date.now(), cashierId: S.cashier.id }; closeModal(); drawCart(); };
 }
 
 /* ----- payment ----- */
@@ -964,7 +1012,7 @@ function openOrder(o) {
       <p class="small muted" style="margin:0">${o.method === "cash" ? `أعِد ${m2(o.total)} ر.س للعميل من الدرج.` : isAgg(o.method) ? `تأكد من إلغاء الطلب في ${tName(o.method)} أيضاً.` : "إن كان المبلغ قد خُصم من بطاقة العميل فأعِده من جهاز الدفع."}</p></div>
       <div class="mdl-f"><button class="btn ghost" data-close>تراجع</button><button class="btn" id="vok" style="background:var(--bad)">تأكيد الإلغاء</button></div>`);
     $("#vok").onclick = () => { const r = $("#vr").value.trim(); if (!r) return toast("اكتب سبب الإلغاء", true);
-      const v = { at: Date.now(), reason: r, by: "manager", cashierId: S.cashier.id, cashierName: S.cashier.name };
+      const v = { at: Date.now(), reason: r, by: "manager", via: S.mgrOk?.via || "pin", approval: S.mgrOk?.id || "", cashierId: S.cashier.id, cashierName: S.cashier.name };
       Object.assign(o, { status: "void", void: v }); keepLocal(o);
       fire(F.updateDoc(D("orders", o.id), { status: "void", void: v }), "الإلغاء");
       toast(`تم إلغاء الطلب ${(o.no ?? "")}`); openOrders(); };
@@ -1241,7 +1289,7 @@ function openShift() {
   modal(`${mh(`الوردية <span class="muted small">منذ <span class="num">${hm(S.shift.openedAt)}</span> · فتحها ${esc(S.shift.openedBy.name)}</span>`)}<div class="mdl-b" id="shift-sum"></div>
     <div class="mdl-f"><button class="btn ghost" id="cin">${ic("add")}إيداع في الدرج</button><button class="btn ghost" id="cout">${ic("remove")}صرف من الدرج</button><span class="sp"></span><button class="btn dark" id="cls">${ic("lock")}تقفيل الوردية</button></div>`, { wide: true });
   drawShiftSum();
-  $("#cin").onclick = () => cashMove("in"); $("#cout").onclick = () => askManager("الصرف من الدرج يحتاج رمز المدير", () => cashMove("out"));
+  $("#cin").onclick = () => cashMove("in"); $("#cout").onclick = () => askManager("صرف نقد من الدرج", () => cashMove("out"));
   $("#cls").onclick = closeShiftFlow;
 }
 function drawShiftSum() {
@@ -1263,7 +1311,7 @@ function cashMove(kind) {
     <div class="mdl-f"><button class="btn ghost" id="mb">رجوع</button><button class="btn" id="mok">حفظ</button></div>`);
   $("#mb").onclick = openShift;
   $("#mok").onclick = () => { const a = r2($("#ma").value), r = $("#mr").value.trim(); if (!(a > 0)) return toast("أدخل المبلغ", true); if (!r) return toast("اكتب السبب", true);
-    S.shift.moves = [...(S.shift.moves || []), { kind, amount: a, reason: r, at: Date.now(), by: S.cashier.name, approved: kind === "out" ? "manager" : null }];
+    S.shift.moves = [...(S.shift.moves || []), { kind, amount: a, reason: r, at: Date.now(), by: S.cashier.name, approved: kind === "out" ? "manager" : null, ...(kind === "out" ? { via: S.mgrOk?.via || "pin", approval: S.mgrOk?.id || "" } : {}) }];
     saveShift(); toast(kind === "in" ? "تم تسجيل الإيداع" : "تم تسجيل الصرف"); openShift(); };
 }
 
@@ -1559,4 +1607,4 @@ function admVerify() {
 }
 
 /* expose for tests */
-window.__aq = { S, render, total, bizDay, drawReceipt, drawKitchen, raster, shiftCalc, drawShiftReport, packOf, orderCogs };
+window.__aq = { S, F, D, mgrCode, render, total, bizDay, drawReceipt, drawKitchen, raster, shiftCalc, drawShiftReport, packOf, orderCogs };
