@@ -387,7 +387,7 @@ function orderDrawer(o) {
   if (o.deliveredAt) ev.push([o.deliveredAt, "سُلّم للعميل", `${pm != null ? `بعد ${nf(pm, 0)} دقيقة` : ""}${o.deliveredBy ? " · " + esc(o.deliveredBy) : ""}`]);
   if (o.void) ev.push([o.void.at, o.void.unpaid ? `أُلغي قبل الدفع${o.void.cashierName ? " · " + esc(o.void.cashierName) : ""}` : "أُلغي الطلب بموافقة المدير", `السبب: ${esc(o.void.reason)}`]);
   ev.sort((a, b) => a[0] - b[0]);
-  drawer(`<h2>طلب <span class="num">${pad(o.no, 4)}</span></h2>${statusTag(o)}${o.test ? `<span class="cx-tag test">تجريبي</span>` : ""}`,
+  drawer(`<h2>طلب <span class="num">${(o.no ?? "")}</span></h2>${statusTag(o)}${o.test ? `<span class="cx-tag test">تجريبي</span>` : ""}`,
     `<div class="cx-sec"><div class="cx-kv"><div><span>تاريخ العمل</span><b>${dFull(o.day)}</b></div><div><span>وقت الطلب</span><b class="tm">${tm(o.ts)}</b></div>
       <div><span>النوع</span><b>${A.TYPES.find(t => t[0] === o.type)?.[1]}</b></div><div><span>طريقة الدفع</span><b>${mName(o)}</b></div>
       <div><span>الكاشير</span><b>${esc(o.cashierName)}</b></div><div><span>رمز التحقق</span><b class="num">${esc(o.code || "—")}</b></div>${o.phone ? `<div><span>جوال العميل</span><b class="num">${esc(o.phone)}${o.name ? ` · ${esc(o.name)}` : ""}</b></div>` : ""}</div></div>
@@ -508,7 +508,7 @@ function dashKitchen(L) {
     <div class="cx-grid"><div class="cx-card s3"><div class="cx-ch"><h3>متوسط مدة التحضير حسب الساعة</h3><span class="cx-sub2">بالدقائق</span></div>${chart({ kind: "bar", f: "min", labels: hrs.map(hrLab), series: [{ color: "#0EA5E9", values: hp }] }, 240)}</div></div>
     <div class="cx-tcard" style="margin-top:20px"><div class="cx-tbar"><h3>أبطأ الطلبات</h3></div><div id="kt"></div></div>
     ${open.length && done.length < ok.length / 2 ? `<p style="color:#71717A;font-size:13px;margin-top:12px">ملاحظة: مدة التحضير تُحسب فقط للطلبات التي ضغط الكاشير عليها «تم التسليم» في خانة «قيد التحضير».</p>` : ""}`;
-  table("#kt", "kitchen", [{ k: "no", t: "الطلب", f: o => `<b class="num">${pad(o.no, 4)}</b>` }, { k: "day", t: "اليوم", f: o => dLab(o.day) }, { k: "ts", t: "الوقت", f: o => `<span class="tm">${tm(o.ts)}</span>` },
+  table("#kt", "kitchen", [{ k: "no", t: "الطلب", f: o => `<b class="num">${(o.no ?? "")}</b>` }, { k: "day", t: "اليوم", f: o => dLab(o.day) }, { k: "ts", t: "الوقت", f: o => `<span class="tm">${tm(o.ts)}</span>` },
     { k: "type", t: "النوع", f: o => typeTag(o.type) }, { k: "items", t: "الأصناف", sv: qtyOf, num: 1, f: o => `<span class="num">${qtyOf(o)}</span>` }, { k: "cashierName", t: "الكاشير" },
     { k: "m", t: "مدة التحضير", num: 1, sv: prepMin, f: o => `<b class="num" style="color:${prepMin(o) > 12 ? "#C2261F" : "inherit"}">${nf(prepMin(o), 1)} د</b>` }],
     done.sort((x, y) => prepMin(y) - prepMin(x)).slice(0, 15), { onRow: orderDrawer, empty: "لا توجد طلبات مسلّمة في هذه الفترة", title: "أبطأ الطلبات" });
@@ -545,7 +545,7 @@ PAGES.orders = async () => {
       && (!q || String(o.no) === q || String(o.no).includes(q) || (o.code || "").includes(q) || (q.length >= 4 && (o.phone || "").includes(q)))).sort((x, y) => y.ts - x.ts);
     EXP = [];
     $("#ob").innerHTML = `<div class="cx-tcard"><div class="cx-tbar"><h3><span class="num">${ni(L.length)}</span> طلب</h3><span style="color:#71717A;font-size:13px">صافي <b class="num">${nf(L.filter(isOk).reduce((s, o) => s + o.total, 0))}</b> ر.س · اضغط على أي طلب لعرض تفاصيله</span></div><div id="otb"></div></div>`;
-    table("#otb", "orders", [{ k: "no", t: "الرقم", num: 0, f: o => `<b class="num">${pad(o.no, 4)}</b>` }, { k: "code", t: "رمز التحقق", f: o => `<span class="num" style="color:#71717A">${esc(o.code || "")}</span>` },
+    table("#otb", "orders", [{ k: "no", t: "الرقم", num: 0, f: o => `<b class="num">${(o.no ?? "")}</b>` }, { k: "code", t: "رمز التحقق", f: o => `<span class="num" style="color:#71717A">${esc(o.code || "")}</span>` },
       { k: "status", t: "الحالة", sv: o => o.status + (o.prep || ""), f: o => statusTag(o) + (o.discount ? ` <span class="cx-tag warn">خصم</span>` : "") + (o.test ? ` <span class="cx-tag test">تجريبي</span>` : "") },
       { k: "type", t: "النوع", f: o => typeTag(o.type) }, { k: "method", t: "الدفع", f: o => mName(o) }, { k: "cashierName", t: "الكاشير" },
       { k: "total", t: "الإجمالي", num: 1, f: o => `<b class="num" style="${isOk(o) ? "" : "text-decoration:line-through;color:#A1A1AA"}">${nf(o.total)}</b>` },
@@ -709,7 +709,7 @@ PAGES.disc = async () => {
   const topR = Object.entries(reasons).sort((a, b) => b[1] - a[1])[0];
   $("#xb").innerHTML = `<div class="cx-stats"><div class="cx-st"><span>عدد العمليات</span><b class="num">${ni(R.length)}</b></div>${k !== "type" ? `<div class="cx-st"><span>المبلغ</span><b class="num">${nf(sum)}</b><small>${net ? pct(sum / net * 100) + " من صافي المبيعات" : ""}</small></div>
     <div class="cx-st"><span>أكثر سبب</span><b style="font-size:17px">${topR ? esc(topR[0]) : "—"}</b><small>${topR ? topR[1] + " مرة" : ""}</small></div>` : ""}</div><div class="cx-tcard"><div id="xtb"></div></div>`;
-  const base = [{ k: "no", t: "الطلب", f: o => `<b class="num">${pad(o.no, 4)}</b>` }, { k: "day", t: "اليوم", f: o => `<span class="num">${o.day}</span>` }, { k: "ts", t: "الوقت", f: o => `<span class="tm">${tm(k === "void" ? o.void.at : o.ts)}</span>` }, { k: "cashierName", t: "الكاشير" }];
+  const base = [{ k: "no", t: "الطلب", f: o => `<b class="num">${(o.no ?? "")}</b>` }, { k: "day", t: "اليوم", f: o => `<span class="num">${o.day}</span>` }, { k: "ts", t: "الوقت", f: o => `<span class="tm">${tm(k === "void" ? o.void.at : o.ts)}</span>` }, { k: "cashierName", t: "الكاشير" }];
   const cols = k === "disc" ? [...base, { k: "subtotal", t: "قبل الخصم", num: 1, f: o => `<span class="num">${nf(o.subtotal)}</span>` }, { k: "amt", t: "الخصم", num: 1, sv: amt, f: o => `<b class="num" style="color:#B45309">${nf(o.discount.amount)}</b>${o.discount.kind === "pct" ? ` <small style="color:#71717A">(${o.discount.value}%)</small>` : ""}` }, { k: "total", t: "بعد الخصم", num: 1, f: o => `<span class="num">${nf(o.total)}</span>` }, { k: "reason", t: "السبب", sv: o => o.discount.reason, cls: "wrap", f: o => esc(o.discount.reason) }]
     : k === "void" ? [...base, { k: "method", t: "الدفع", f: o => mName(o) }, { k: "total", t: "المبلغ", num: 1, f: o => `<b class="num" style="color:#C2261F">${nf(o.total)}</b>` }, { k: "reason", t: "السبب", sv: o => o.void?.reason, cls: "wrap", f: o => esc(o.void?.reason) }, { k: "by", t: "ألغاه", sv: o => o.void?.cashierName, f: o => esc(o.void?.cashierName || "") + ` <small style="color:#71717A">بموافقة المدير</small>` }]
     : [...base, { k: "chg", t: "التغيير", sv: o => o.typeChanges.length, f: o => o.typeChanges.map(c => `${A.TYPES.find(t => t[0] === c.from)?.[1]} ← ${A.TYPES.find(t => t[0] === c.to)?.[1]}`).join("، ") }, { k: "by", t: "بواسطة", sv: o => o.typeChanges.at(-1).by, f: o => esc(o.typeChanges.at(-1).by) }, { k: "total", t: "المبلغ", num: 1, f: o => `<span class="num">${nf(o.total)}</span>` }];
@@ -815,7 +815,7 @@ function custDrawer(c) {
     ${top.length ? `<div class="cx-sec"><h4>أكثر ما يطلبه</h4><table class="cx-t sm"><tbody>${top.map(([n, q]) => `<tr><td>${esc(n)}</td><td class="n"><b class="num">${q}</b></td></tr>`).join("")}</tbody></table></div>` : ""}
     <div class="cx-sec"><h4>طلباته (<span class="num">${c.all.length}</span>)</h4><div id="cdo"></div></div>`,
     `<a class="cx-btn pri" href="https://wa.me/${wa}" target="_blank" rel="noopener">${ic("chat")}مراسلة واتساب</a><a class="cx-btn" href="tel:${c.phone}">${ic("call")}اتصال</a>`,
-    d => { const h = d.querySelector("#cdo"); h.innerHTML = `<div class="cx-list">${c.all.map(o => `<button class="cx-li" data-o="${esc(o.id)}"><b class="num">${pad(o.no, 4)}</b><span>${o.lines.map(l => `${l.qty}× ${esc(l.name)}`).join("، ")}<br><small><span class="num">${o.day}</span> · ${A.TYPES.find(t => t[0] === o.type)?.[1] || ""} · ${mName(o)}</small></span>${statusTag(o)}<b class="num">${nf(o.total)}</b></button>`).join("")}</div>`;
+    d => { const h = d.querySelector("#cdo"); h.innerHTML = `<div class="cx-list">${c.all.map(o => `<button class="cx-li" data-o="${esc(o.id)}"><b class="num">${(o.no ?? "")}</b><span>${o.lines.map(l => `${l.qty}× ${esc(l.name)}`).join("، ")}<br><small><span class="num">${o.day}</span> · ${A.TYPES.find(t => t[0] === o.type)?.[1] || ""} · ${mName(o)}</small></span>${statusTag(o)}<b class="num">${nf(o.total)}</b></button>`).join("")}</div>`;
       h.querySelectorAll("[data-o]").forEach(b => b.onclick = () => orderDrawer(c.all.find(o => o.id === b.dataset.o))); });
 }
 

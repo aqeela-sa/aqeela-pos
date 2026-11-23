@@ -4,7 +4,7 @@
 import * as F from "./fb.js";
 import { firebaseConfig } from "./firebase-config.js";
 
-const VERSION = "2.7.1";
+const VERSION = "2.7.2";
 const ADMIN_EMAIL = "abuabraj@gmail.com";
 const DEVICE_EMAIL = "cashier@aqeela-pos.app";
 const APP_NAME = `<span dir="ltr">Cashier AQ</span>`;
@@ -325,7 +325,7 @@ function drawTop() {
     <div class="sp"></div><div class="t-st">${net}${topBtns(np)}</div>`;
   bindTop();
 }
-const prnChip = () => S.unprinted ? `<button class="tchip pbad" id="prx" title="${esc(S.unprinted.msg || "")}">${ic("print")}لم يُطبع <span class="num">${pad(S.unprinted.o.no, 4)}</span></button>`
+const prnChip = () => S.unprinted ? `<button class="tchip pbad" id="prx" title="${esc(S.unprinted.msg || "")}">${ic("print")}لم يُطبع <span class="num">${(S.unprinted.o.no ?? "")}</span></button>`
   : S.device.printMode === "epos" && S.printer?.err ? `<button class="tchip pbad" id="prc" title="${esc(S.printer.err)}">${ic("print")}الطابعة</button>`
   : S.device.printMode === "epos" && S.printer?.near ? `<button class="tchip pwarn" id="prc" title="ركّب لفة ورق جديدة قريباً">${ic("print")}الورق قارب على الانتهاء</button>` : "";
 const topBtns = np => { const nu = unpaidList().length; return `${S.device.test ? `<span class="tchip test">تجريبي</span>` : ""}${prnChip()}
@@ -407,7 +407,7 @@ function drawCart() {
   ls.set("cart", S.cart.lines.length ? { type: S.cart.type, lines: S.cart.lines, discount: S.cart.discount, phone: S.cart.phone || null, name: S.cart.name || null, at: Date.now() } : null);
   if (cartBack && $("#cart")) { cartBack = false; setTimeout(() => toast("استُعيد الطلب الذي لم يكتمل قبل إعادة تحميل الصفحة"), 300); }
   const K = $("#cart"); if (!K) return; const L = S.cart.lines, n = L.reduce((s, l) => s + l.qty, 0), lk = isAgg(S.cart.type), pk = parked().length, dis = !L.length ? "disabled" : "";
-  K.innerHTML = `<div class="c-h"><button class="c-back" id="cback" aria-label="رجوع للأصناف">${ic("close")}</button><div class="c-t"><b>طلب جديد</b><span class="num">#${pad(peekNo(), 4)}</span></div>
+  K.innerHTML = `<div class="c-h"><button class="c-back" id="cback" aria-label="رجوع للأصناف">${ic("close")}</button><div class="c-t"><b>طلب جديد</b><span class="num">#${peekNo()}</span></div>
       <button class="c-ib ${pk ? "has" : ""}" id="pkl" title="الطلبات المعلّقة" ${pk ? "" : "disabled"}>${ic("pause")}${pk ? `<b class="num">${pk}</b>` : ""}</button>
       <button class="c-ib danger" id="clr" title="تفريغ الطلب" ${dis}>${ic("trash")}</button></div>
     <div class="c-type ${L.length && !S.cart.type ? "need" : ""}">${TYPES.map(([k, l]) => `<button data-t="${k}" class="${S.cart.type === k ? "on" : ""} ${k}">${ic(TYPE_IC[k])}${l}</button>`).join("")}</div>
@@ -671,12 +671,12 @@ async function autoPrint(o, what) {
   if (done && st && $("#ov #nw")) { clearTimeout(S.doneTimer); $("#ov .autobar")?.remove(); st.classList.add("bad"); st.textContent = r;
     if (!$("#rpx")) { const b = document.createElement("button"); b.className = "btn"; b.id = "rpx"; b.style.marginTop = "10px"; b.innerHTML = `${ic("print")}إعادة الطباعة`; st.after(b);
       b.onclick = async () => { b.disabled = true; st.classList.remove("bad"); st.textContent = "جارٍ الطباعة…"; await retryPrint(); b.disabled = false; }; } }
-  else toast(`الطلب ${pad(o.no, 4)} حُفظ ولم يُطبع: ${r}`, true);
+  else toast(`الطلب ${(o.no ?? "")} حُفظ ولم يُطبع: ${r}`, true);
 }
 async function retryPrint() {
   const u = S.unprinted; if (!u) return true;
   const r = await printJob(u.o, u.what, false, true), st = $("#prs");
-  if (r === true) { S.unprinted = null; drawTop(); if (st) { st.classList.remove("bad"); st.textContent = "✓ طُبع"; } $("#rpx")?.remove(); toast(`طُبع الطلب ${pad(u.o.no, 4)}`); return true; }
+  if (r === true) { S.unprinted = null; drawTop(); if (st) { st.classList.remove("bad"); st.textContent = "✓ طُبع"; } $("#rpx")?.remove(); toast(`طُبع الطلب ${(u.o.no ?? "")}`); return true; }
   u.msg = r; if (st) { st.classList.add("bad"); st.textContent = r; } else toast(r, true); return r;
 }
 
@@ -701,7 +701,7 @@ function sendKitchen() {
     const o = buildOrder({ status: "open", phone: ph, name: $("#knm").value.trim(), via: "phone", sentAt: Date.now() });
     fire(F.setDoc(D("orders", o.id), { ...o, savedAt: F.serverTimestamp() }), "الطلب");
     keepLocal(o); resetCart(); closeModal();
-    toast(`أُرسل الطلب ${pad(o.no, 4)} للمطبخ — بانتظار الدفع`);
+    toast(`أُرسل الطلب ${(o.no ?? "")} للمطبخ — بانتظار الدفع`);
     if (S.device.autoPrint) printJob(o, { kitchen: true });
   };
   $("#kok").onclick = go; $("#kph").onkeydown = e => { if (e.key === "Enter") { e.preventDefault(); $("#knm").focus(); } }; $("#knm").onkeydown = e => { if (e.key === "Enter") go(); };
@@ -711,7 +711,7 @@ const WA_DEFAULT = "عميلنا العزيز {الاسم}،\nطلبك رقم {�
 function waText(o, tpl = S.config?.waMsg || WA_DEFAULT) {
   /* الطلب المدفوع: لا نذكر «المبلغ المطلوب» */
   if (o.status === "paid") tpl = tpl.split("\n").filter(l => !l.includes("{المبلغ}")).join("\n");
-  return tpl.replace(/\s*\{الاسم\}/g, o.name ? " " + o.name : "").replace(/\{رقم\}/g, pad(o.no, 4)).replace(/\{المطعم\}/g, S.config?.store?.name || "")
+  return tpl.replace(/\s*\{الاسم\}/g, o.name ? " " + o.name : "").replace(/\{رقم\}/g, (o.no ?? "")).replace(/\{المطعم\}/g, S.config?.store?.name || "")
     .replace(/\{المبلغ\}/g, m2(o.total)).replace(/\{الجوال\}/g, S.config?.store?.phone || "").trim();
 }
 const waNum = ph => { const d = normPhone(ph); return /^05\d{8}$/.test(d) ? "966" + d.slice(1) : null; };
@@ -720,7 +720,7 @@ function remind(o) {
   const w = window.open(`https://wa.me/${n}?text=${encodeURIComponent(waText(o))}`, "_blank");
   if (!w) location.href = `whatsapp://send?phone=${n}&text=${encodeURIComponent(waText(o))}`;
   const u = { remindedAt: Date.now(), reminders: (o.reminders || 0) + 1, remindedBy: S.cashier?.name || "" }; Object.assign(o, u); keepLocal(o);
-  fire(F.updateDoc(D("orders", o.id), u), "التذكير"); toast(`فُتح واتساب برسالة الطلب ${pad(o.no, 4)} — اضغط إرسال`);
+  fire(F.updateDoc(D("orders", o.id), u), "التذكير"); toast(`فُتح واتساب برسالة الطلب ${(o.no ?? "")} — اضغط إرسال`);
   if ($("#unp-list")) openUnpaid(); if ($("#prep-list")) drawPrep();
 }
 const remBtn = (o, cls = "sm") => o.phone ? `<button class="btn wa ${cls}" data-wa="${esc(o.id)}">${ic("wa")}${o.reminders ? `ذكّر مرة أخرى` : "تذكير واتساب"}</button>` : "";
@@ -728,7 +728,7 @@ const remInfo = o => o.reminders ? ` · <span class="wa-t">${ic("wa")}ذُكّر
 function openUnpaid() {
   const L = unpaidList(), now = Date.now();
   modal(`${mh(`بانتظار الدفع <span class="muted small">(<span class="num">${L.length}</span>)</span>`)}<div class="mdl-b" id="unp-list">${L.length ? `<div class="list">${L.map(o => { const mn = Math.floor((now - o.ts) / 60000);
-      return `<div class="row up"><span class="no num">${pad(o.no, 4)}</span>
+      return `<div class="row up"><span class="no num">${(o.no ?? "")}</span>
       <span><b>${o.lines.map(l => `${l.qty}× ${esc(l.name)}`).join("، ")}</b><br><span class="meta"><span class="num">${esc(o.phone || "")}</span>${o.name ? ` · ${esc(o.name)}` : ""} · ${TYPES.find(t => t[0] === o.type)?.[1] || ""} · منذ <span class="num">${mn}</span> د · ${o.prep === "open" ? "قيد التحضير" : "جاهز"}${remInfo(o)}</span></span>
       <span class="up-a"><b class="num">${m2(o.total)}</b>${remBtn(o)}<button class="btn ok sm" data-up="${esc(o.id)}">${ic("cash")}استلام ودفع</button><button class="btn ghost sm" data-uv="${esc(o.id)}" style="color:var(--bad)">إلغاء</button></span></div>`; }).join("")}</div>`
     : `<div class="empty" style="padding:40px">لا توجد طلبات بانتظار الدفع</div>`}</div>`, L.length > 4 ? { wide: true } : { mid: true });
@@ -739,7 +739,7 @@ function openUnpaid() {
 }
 function payOpen(o) {
   if (!o) return;
-  modal(`${mh(`استلام الطلب <span class="num">${pad(o.no, 4)}</span>`)}<div class="mdl-b">${orderDetail(o)}
+  modal(`${mh(`استلام الطلب <span class="num">${(o.no ?? "")}</span>`)}<div class="mdl-b">${orderDetail(o)}
     <div class="cp-r due" style="margin-top:12px"><span>المطلوب</span><b class="num">${m2(o.total)}</b></div>
     <div class="pays" style="margin-top:12px"><button class="pay pay-cash" data-m="cash">${ic("cash")}<span>كاش</span></button><button class="pay pay-mada" data-m="mada">${ic("card")}<span>مدى</span></button><button class="pay pay-visa" data-m="visa">${ic("card")}<span>فيزا<small>ماستركارد</small></span></button></div></div>
     <div class="mdl-f"><button class="btn ghost" id="uv" style="margin-inline-end:auto;color:var(--bad)">إلغاء الطلب</button>${remBtn(o, "")}<button class="btn ghost" id="uk">${ic("fire")}المطبخ</button><button class="btn ghost" id="ub">رجوع</button></div>`);
@@ -749,7 +749,7 @@ function payOpen(o) {
 function voidOpen(o) {
   if (!o) return;
   const R = ["لم يحضر العميل", "ألغى العميل بالاتصال", "خطأ في الطلب"];
-  modal(`${mh(`إلغاء الطلب <span class="num">${pad(o.no, 4)}</span>`)}<div class="mdl-b">
+  modal(`${mh(`إلغاء الطلب <span class="num">${(o.no ?? "")}</span>`)}<div class="mdl-b">
     <p style="margin:0 0 12px">طلب لم يُدفع بمبلغ <b class="num">${m2(o.total)}</b> ر.س — جوال <span class="num">${esc(o.phone || "")}</span></p>
     <div class="nchips">${R.map((r, i) => `<button data-r="${r}" class="${i ? "" : "on"}">${r}</button>`).join("")}</div>
     <div class="f" style="margin-top:12px"><label for="uvr">ملاحظة (اختياري)</label><input id="uvr" maxlength="60"></div>
@@ -761,12 +761,12 @@ function voidOpen(o) {
   $("#uvok").onclick = () => { const n = $("#uvr").value.trim();
     const v = { at: Date.now(), reason: n ? `${r} — ${n}` : r, kind: r === "لم يحضر العميل" ? "noshow" : "unpaid", unpaid: true, by: "cashier", cashierId: S.cashier.id, cashierName: S.cashier.name };
     const u = { status: "void", void: v, prep: "done" }; Object.assign(o, u); keepLocal(o);
-    fire(F.updateDoc(D("orders", o.id), u), "الإلغاء"); drawTop(); toast(`أُلغي الطلب ${pad(o.no, 4)}`);
+    fire(F.updateDoc(D("orders", o.id), u), "الإلغاء"); drawTop(); toast(`أُلغي الطلب ${(o.no ?? "")}`);
     unpaidList().length ? openUnpaid() : closeModal(); };
 }
 function showDone(o) {
   const chg = o.method === "cash" && o.change > 0;
-  modal(`<div class="mdl-b"><div class="done"><div class="ck">${ic("check")}</div><div class="muted">تم تسجيل الطلب</div><div class="no num">${pad(o.no, 4)}</div>
+  modal(`<div class="mdl-b"><div class="done"><div class="ck">${ic("check")}</div><div class="muted">تم تسجيل الطلب</div><div class="no num">${(o.no ?? "")}</div>
     <div class="dmeta"><span>${ic(TYPE_IC[o.type])}${TYPES.find(t => t[0] === o.type)[1]}</span><span>${ic(o.method === "cash" ? "cash" : isAgg(o.method) ? TYPE_IC[o.method] : "card")}${METHODS[o.method]}</span><span><b class="num">${m2(o.total)}</b> ر.س</span></div>
     ${chg ? `<div class="chg big"><span>الباقي للعميل</span><span class="num">${m2(o.change)}</span></div><p class="small muted" style="margin:6px 0 0">المستلم <span class="num">${m2(o.given)}</span> ر.س</p>` : ""}
     <p id="prs" class="small muted" style="margin:10px 0 0;min-height:18px"></p></div></div>
@@ -811,11 +811,11 @@ function drawPrep() {
   const B = $("#prep-list"); if (!B) return; const L = prepOpen(), now = Date.now();
   const done = S.today.filter(o => o.prep === "done" && o.status !== "void" && !!o.test === !!S.device.test).sort((a, b) => (b.deliveredAt || 0) - (a.deliveredAt || 0)).slice(0, 5);
   B.innerHTML = (L.length ? `<div class="prepgrid">${L.map(o => { const mn = Math.floor((now - o.ts) / 60000), lv = mn >= 12 ? "bad" : mn >= 7 ? "warn" : "ok";
-      return `<div class="prep ${lv}"><div class="ph"><span class="no num">${pad(o.no, 4)}</span><span class="chip ${o.type === "hunger" ? "hg" : isAgg(o.type) ? "lk" : ""}">${TYPES.find(t => t[0] === o.type)[1]}</span>${isUnpaid(o) ? `<span class="chip warn">لم يُدفع</span>` : ""}<span class="sp"></span><span class="tm"><span class="num">${mn}</span> د</span></div>
+      return `<div class="prep ${lv}"><div class="ph"><span class="no num">${(o.no ?? "")}</span><span class="chip ${o.type === "hunger" ? "hg" : isAgg(o.type) ? "lk" : ""}">${TYPES.find(t => t[0] === o.type)[1]}</span>${isUnpaid(o) ? `<span class="chip warn">لم يُدفع</span>` : ""}<span class="sp"></span><span class="tm"><span class="num">${mn}</span> د</span></div>
         <ul>${o.lines.map(l => `<li><b>${l.qty} × ${esc(l.name)}</b>${l.mods.map(m => `<div class="pm">+ ${esc(m.name)}</div>`).join("")}${[...(l.notes || []), ...(l.note ? [l.note] : [])].map(t => `<div class="pn">● ${esc(t)}</div>`).join("")}</li>`).join("")}</ul>
         <div class="pf"><button class="btn ghost sm icon" data-pk="${esc(o.id)}" aria-label="طباعة ورقة المطبخ">${ic("print")}</button>${isUnpaid(o) ? `${o.phone ? `<button class="btn wa sm icon" data-wa="${esc(o.id)}" aria-label="تذكير واتساب">${ic("wa")}</button>` : ""}<button class="btn ok" data-pay-o="${esc(o.id)}" style="flex:1">${ic("cash")}استلام ودفع</button>` : `${o.phone ? `<button class="btn wa sm icon" data-wa="${esc(o.id)}" aria-label="تذكير واتساب">${ic("wa")}</button>` : ""}<button class="btn ok" data-dv="${esc(o.id)}" style="flex:1">${ic("check")}تم التسليم</button>`}</div></div>`; }).join("")}</div>`
     : `<div class="empty" style="padding:40px">لا توجد طلبات قيد التحضير</div>`) +
-    (done.length ? `<h4 style="margin:18px 0 8px" class="muted">آخر الطلبات المسلّمة</h4><div class="list">${done.map(o => `<div class="row" style="cursor:default"><span class="no num">${pad(o.no, 4)}</span><span class="meta">سُلّم <span class="num">${o.deliveredAt ? hm(o.deliveredAt) : ""}</span>${o.deliveredBy ? ` · ${esc(o.deliveredBy)}` : ""}</span><button class="btn ghost sm" data-un="${esc(o.id)}">إرجاع للتحضير</button></div>`).join("")}</div>` : "");
+    (done.length ? `<h4 style="margin:18px 0 8px" class="muted">آخر الطلبات المسلّمة</h4><div class="list">${done.map(o => `<div class="row" style="cursor:default"><span class="no num">${(o.no ?? "")}</span><span class="meta">سُلّم <span class="num">${o.deliveredAt ? hm(o.deliveredAt) : ""}</span>${o.deliveredBy ? ` · ${esc(o.deliveredBy)}` : ""}</span><button class="btn ghost sm" data-un="${esc(o.id)}">إرجاع للتحضير</button></div>`).join("")}</div>` : "");
   const setPrep = (id, v) => { const o = S.today.find(x => x.id === id); if (!o) return;
     const u = v === "done" ? { prep: "done", deliveredAt: Date.now(), deliveredBy: S.cashier?.name || "" } : { prep: "open", deliveredAt: null, deliveredBy: null };
     Object.assign(o, u); fire(F.updateDoc(D("orders", id), u), "حالة الطلب"); drawPrep(); drawTop(); };
@@ -918,7 +918,7 @@ async function drawOrdersList() {
     B.innerHTML = head + `<div class="rp-ob"><div class="seg2">${[["all", "الكل"], ["paid", "مكتمل"], ["unpaid", "بانتظار الدفع"], ["disc", "عليه خصم"], ["void", "ملغي"]].map(([k, l]) => `<button data-rst="${k}" class="${RP.status === k ? "on" : ""}">${l}</button>`).join("")}</div>
       <label class="srch rp-q">${ic("search")}<input id="rq" type="search" placeholder="رقم الطلب أو الجوال أو رمز التحقق" value="${esc(RP.q)}" autocomplete="off"></label></div>
       <p class="rp-sum"><b class="num">${L.length}</b> طلب · مكتمل <b class="num">${okL.length}</b> بمبلغ <b class="num">${m2(sum(okL))}</b> ر.س</p>
-      <div class="list">${L.length ? L.slice(0, RP.lim || 100).map(o => `<button class="row ${o.status === "void" ? "void" : ""}" data-o="${esc(o.id)}"><span class="no num">${pad(o.no, 4)}</span>
+      <div class="list">${L.length ? L.slice(0, RP.lim || 100).map(o => `<button class="row ${o.status === "void" ? "void" : ""}" data-o="${esc(o.id)}"><span class="no num">${(o.no ?? "")}</span>
       <span><b>${o.lines.map(l => `${l.qty}× ${esc(l.name)}`).join("، ")}</b><br><span class="meta"><span class="num">${hm(o.ts)}</span> · ${esc(o.cashierName)} · ${TYPES.find(t => t[0] === o.type)?.[1] || ""} · ${o.method ? METHODS[o.method] : "لم يُدفع"}
       ${o.status === "void" ? ` <span class="chip bad">${o.void?.unpaid ? "ملغي — لم يُدفع" : "ملغي"}</span>` : ""}${isUnpaid(o) ? ` <span class="chip warn">بانتظار الدفع · <span class="num">${esc(o.phone || "")}</span></span>` : ""}${o.discount ? ` <span class="chip warn">خصم</span>` : ""}${o.test ? ` <span class="chip test">تجريبي</span>` : ""}${o._pending ? ` <span class="chip warn">لم يُرسل بعد</span>` : ""}</span></span>
       <span class="money" style="font-weight:800;font-size:18px">${m2(o.total)}</span></button>`).join("") : `<div class="empty" style="padding:40px">لا توجد طلبات مطابقة</div>`}</div>
@@ -952,14 +952,14 @@ function orderDetail(o) {
 }
 function openOrder(o) {
   if (!o) return; if (isUnpaid(o)) return payOpen(o);
-  modal(`${mh(`طلب رقم <span class="num">${pad(o.no, 4)}</span>`)}<div class="mdl-b">${orderDetail(o)}</div>
+  modal(`${mh(`طلب رقم <span class="num">${(o.no ?? "")}</span>`)}<div class="mdl-b">${orderDetail(o)}</div>
     <div class="mdl-f">${o.status !== "void" && (!o.shiftId || o.shiftId === S.shift?.id) ? `<button class="btn ghost" id="vd" style="margin-inline-end:auto;color:var(--bad)">إلغاء الطلب</button>` : o.status !== "void" ? `<span class="small muted" style="margin-inline-end:auto;align-self:center">لا يُلغى: الطلب من وردية أخرى${o.device !== S.dev ? " أو جهاز آخر" : " مقفلة"}</span>` : ""}${o.status !== "void" && !isAgg(o.type) ? `<button class="btn ghost" id="ct">${ic("swap")}تغيير النوع</button>` : ""}<button class="btn ghost" id="bk">رجوع</button><button class="btn ghost" id="rk">${ic("fire")}المطبخ</button><button class="btn" id="rp">${ic("print")}الإيصال</button></div>`, { mid: true });
   $("#bk").onclick = openOrders; $("#rp").onclick = () => printJob(o, { receipt: true }, true); $("#rk").onclick = () => printJob(o, { kitchen: true }, true);
-  $("#ct") && ($("#ct").onclick = () => popMenu($("#ct"), `<div class="pm-h"><b>تغيير نوع الطلب <span class="num">${pad(o.no, 4)}</span></b><small>الحالي: ${tName(o.type)}</small></div>${TYPES.filter(t => !isAgg(t[0]) && t[0] !== o.type).map(([k, l]) => `<button id="ct_${k}">${ic(TYPE_IC[k])}<span>${l}</span></button>`).join("")}`,
+  $("#ct") && ($("#ct").onclick = () => popMenu($("#ct"), `<div class="pm-h"><b>تغيير نوع الطلب <span class="num">${(o.no ?? "")}</span></b><small>الحالي: ${tName(o.type)}</small></div>${TYPES.filter(t => !isAgg(t[0]) && t[0] !== o.type).map(([k, l]) => `<button id="ct_${k}">${ic(TYPE_IC[k])}<span>${l}</span></button>`).join("")}`,
     Object.fromEntries(TYPES.filter(t => !isAgg(t[0]) && t[0] !== o.type).map(([to]) => ["ct_" + to, () => { const ch = { from: o.type, to, at: Date.now(), by: S.cashier?.name || "" };
       const u = { type: to, typeChanges: [...(o.typeChanges || []), ch] }; Object.assign(o, u); keepLocal(o); fire(F.updateDoc(D("orders", o.id), u), "نوع الطلب");
-      toast(`صار الطلب ${pad(o.no, 4)} ${tName(to)}`); if (o.prep === "open") printJob(o, { kitchen: true }, true); openOrder(o); }]))));
-  $("#vd") && ($("#vd").onclick = () => askManager(`إلغاء الطلب ${pad(o.no, 4)} بمبلغ ${m2(o.total)}`, () => {
+      toast(`صار الطلب ${(o.no ?? "")} ${tName(to)}`); if (o.prep === "open") printJob(o, { kitchen: true }, true); openOrder(o); }]))));
+  $("#vd") && ($("#vd").onclick = () => askManager(`إلغاء الطلب ${(o.no ?? "")} بمبلغ ${m2(o.total)}`, () => {
     modal(`${mh("سبب الإلغاء")}<div class="mdl-b"><div class="f"><label for="vr">السبب (يظهر في التقرير)</label><input id="vr" placeholder="مثال: خطأ في الطلب، العميل ألغى"></div>
       <p class="small muted" style="margin:0">${o.method === "cash" ? `أعِد ${m2(o.total)} ر.س للعميل من الدرج.` : isAgg(o.method) ? `تأكد من إلغاء الطلب في ${tName(o.method)} أيضاً.` : "إن كان المبلغ قد خُصم من بطاقة العميل فأعِده من جهاز الدفع."}</p></div>
       <div class="mdl-f"><button class="btn ghost" data-close>تراجع</button><button class="btn" id="vok" style="background:var(--bad)">تأكيد الإلغاء</button></div>`);
@@ -967,7 +967,7 @@ function openOrder(o) {
       const v = { at: Date.now(), reason: r, by: "manager", cashierId: S.cashier.id, cashierName: S.cashier.name };
       Object.assign(o, { status: "void", void: v }); keepLocal(o);
       fire(F.updateDoc(D("orders", o.id), { status: "void", void: v }), "الإلغاء");
-      toast(`تم إلغاء الطلب ${pad(o.no, 4)}`); openOrders(); };
+      toast(`تم إلغاء الطلب ${(o.no ?? "")}`); openOrders(); };
   }));
 }
 
@@ -1046,7 +1046,7 @@ async function drawReceipt(o) {
   const d = new Date(o.ts);
   /* the order number in its own box, large, so the customer can read it from across the counter */
   { const bw = 380, bh = 142, top = y + 6; g.lineWidth = 4; g.strokeRect((W - bw) / 2, top, bw, bh);
-    y = top + 4; ctr("رقم الطلب", 24, 600); ctr(pad(o.no, 4), 72, 900); y = top + bh + 6; }
+    y = top + 4; ctr("رقم الطلب", 24, 600); ctr((o.no ?? ""), 72, 900); y = top + bh + 6; }
   ctr(TYPES.find(t => t[0] === o.type)[1], 32, 800);
   lr(`${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()}  ${hm(o.ts)}`, `الكاشير: ${o.cashierName}`, 22, 500);
   hr();
@@ -1153,7 +1153,7 @@ async function drawKitchen(o) {
   const rt = (t, px, w, indent = 0) => { font(px, w); g.direction = "rtl"; g.textAlign = "right"; y += px * 1.25; g.fillText(t, W - M - indent, y); y += px * .25; };
   const hr = () => { y += 8; g.fillRect(M, y, W - 2 * M, 3); y += 12; };
   const typ = TYPES.find(t => t[0] === o.type)?.[1] || "";
-  g.fillRect(0, y, W, 120); g.fillStyle = "#fff"; y -= 4; ctr(`طلب ${pad(o.no, 4)}`, 64, 900); g.fillStyle = "#000"; y = 140;
+  g.fillRect(0, y, W, 120); g.fillStyle = "#fff"; y -= 4; ctr(`طلب ${(o.no ?? "")}`, 64, 900); g.fillStyle = "#000"; y = 140;
   ctr(`${typ}${o.test ? " · تجريبي" : ""}`, 44, 900);
   const d = new Date(o.ts); ctr(`${hm(o.ts)} · ${pad(d.getDate())}/${pad(d.getMonth() + 1)} · ${o.cashierName}`, 24, 500);
   if (o.via === "phone") { ctr(`طلب اتصال · ${o.name ? o.name + " · " : ""}${o.phone}`, 28, 800); if (o.status === "open") ctr("الدفع عند الاستلام", 26, 700); }
@@ -1271,7 +1271,7 @@ function cashMove(kind) {
 function closeShiftFlow() {
   if (!S.shift) return;
   const up = unpaidList().filter(o => o.shiftId === S.shift.id);
-  if (up.length) { modal(`${mh("لا يمكن تقفيل الوردية")}<div class="mdl-b"><p style="margin:0;line-height:1.8">يوجد <b class="num">${up.length}</b> ${up.length === 1 ? "طلب" : "طلبات"} أُرسلت للمطبخ ولم تُدفع (${up.map(o => `<span class="num">${pad(o.no, 4)}</span>`).join("، ")}). ادفعها عند حضور العميل أو ألغها إن لم يحضر، ثم قفّل الوردية.</p></div>
+  if (up.length) { modal(`${mh("لا يمكن تقفيل الوردية")}<div class="mdl-b"><p style="margin:0;line-height:1.8">يوجد <b class="num">${up.length}</b> ${up.length === 1 ? "طلب" : "طلبات"} أُرسلت للمطبخ ولم تُدفع (${up.map(o => `<span class="num">${(o.no ?? "")}</span>`).join("، ")}). ادفعها عند حضور العميل أو ألغها إن لم يحضر، ثم قفّل الوردية.</p></div>
       <div class="mdl-f"><button class="btn ghost" data-close>إغلاق</button><button class="btn" id="gou">${ic("clock")}عرض بانتظار الدفع</button></div>`); $("#gou").onclick = openUnpaid; return; } const q = {}; DENOMS.forEach(d => q[d] = "");
   modal(`${mh("تقفيل الوردية — عدّ الدرج")}<div class="mdl-b">
     <p class="small muted" style="margin:0 0 12px">عُدّ كل فئة في الدرج واكتب عددها. لا تكتب المبلغ المتوقع، اكتب الموجود فعلاً.</p>
