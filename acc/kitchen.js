@@ -103,7 +103,7 @@ function viewKitchen(){
   const t = S.ktTab || "live";
   return `<div class="bar"><h2>الوصفات والمخزون</h2></div>${readonlyNote()}
     <div class="actions" style="justify-content:space-between;flex-wrap:wrap;gap:8px"><div class="seg" role="tablist" aria-label="القسم">
-      ${[["live","المخزون الحي"],["po","طلبات الشراء"],["recipes","الوصفات"],["prep","التحضير"],["var","الفرق: النظري والفعلي"],["ings","المكونات"]].map(([k, l]) => `<button type="button" data-ktt="${k}" class="${t === k ? "on" : ""}">${l}</button>`).join("")}</div>
+      ${[["live","المخزون الحي"],["po","طلبات الشراء"],["recipes","الوصفات"],["prep","التحضير"],["var","النظري والفعلي"],["ings","المكونات"]].map(([k, l]) => `<button type="button" data-ktt="${k}" class="${t === k ? "on" : ""}">${l}</button>`).join("")}</div>
       <div class="actions">${S.canWrite ? `<button class="btn" type="button" id="kt_count">تسجيل جرد</button><button class="btn ghost" type="button" id="kt_ing">مكوّن جديد</button>` : ""}${S.canEdit ? `<button class="btn ghost" type="button" id="kt_paste">لصق من Claude</button>` : ""}</div></div>
     <div id="list"></div>`;
 }
