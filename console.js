@@ -199,7 +199,7 @@ async function load(a, b, coll = "orders") {
   } else L = (await A.F.getDocs(A.F.query(A.C(coll), A.F.where("day", ">=", a), A.F.where("day", "<=", b)))).docs.map(d => d.data());
   cache.set(k, { t: Date.now(), L }); return L;
 }
-const applyF = L => L.filter(o => (st.flt.test || !o.test) && (!st.flt.type || o.type === st.flt.type) && (!st.flt.method || o.method === st.flt.method) && (!st.flt.cashier || o.cashierName === st.flt.cashier));
+const applyF = L => L.filter(o => (st.flt.test || !o.test) && (!st.flt.type || o.type === st.flt.type) && (!st.flt.method || A.hasM(o, st.flt.method)) && (!st.flt.cashier || o.cashierName === st.flt.cashier));
 const isOk = o => o.status === "paid" || !o.status, isVoid = o => o.status === "void", isUnpaid = o => o.status === "open";
 const cogsOf = o => o.cogs || A.orderCogs(o);
 const costOf = o => { const c = cogsOf(o); return c.food + c.pack; };
@@ -378,7 +378,7 @@ function drawer(head, body, foot, bind) {
   document.body.append(s, d); d.querySelector("[data-x]").onclick = closeDrawer; bind?.(d);
 }
 const typeTag = t => `<span class="cx-tag ${t === "lokit" ? "lk" : t === "hunger" ? "hg" : t === "delivery" ? "blue" : t === "dine" ? "warn" : ""}">${A.TYPES.find(x => x[0] === t)?.[1] || t}</span>`;
-const mName = o => o.method ? A.METHODS[o.method] : "لم يُدفع";
+const mName = o => A.mLabel(o);
 const statusTag = o => o.status === "void" ? `<span class="cx-tag bad">${o.void?.kind === "noshow" ? "ملغي — لم يحضر" : o.void?.unpaid ? "ملغي قبل الدفع" : "ملغي"}</span>` : isUnpaid(o) ? `<span class="cx-tag warn">بانتظار الدفع</span>` : o.prep === "open" ? `<span class="cx-tag blue">قيد التحضير</span>` : `<span class="cx-tag ok">مكتمل</span>`;
 function orderDrawer(o) {
   const c = cogsOf(o), pk = o.pack || A.packOf(o.lines), pm = prepMin(o), ev = o.via === "phone" ? [[o.ts, "طلب اتصال أُرسل للمطبخ", `${esc(o.cashierName)} · جوال <span class="num">${esc(o.phone)}</span>${o.name ? ` (${esc(o.name)})` : ""}`]] : [[o.ts, "أُنشئ الطلب ودُفع", `${mName(o)} · ${esc(o.cashierName)}`]];
@@ -394,7 +394,7 @@ function orderDrawer(o) {
     <div class="cx-sec"><h4>الأصناف</h4><div class="cx-it">${o.lines.map(l => `<div class="r"><span class="q num">${l.qty}</span><div><b>${esc(l.name)}</b>${l.mods.map(m => `<div class="m">+ ${esc(m.name)} (${nf(m.price)})</div>`).join("")}
       ${[...(l.notes || []), ...(l.note ? [l.note] : [])].length ? `<div class="nt">● ${esc([...(l.notes || []), ...(l.note ? [l.note] : [])].join(" · "))}</div>` : ""}</div><b class="num">${nf(l.total ?? l.qty * l.price)}</b></div>`).join("")}</div>
       <div class="cx-tot"><div><span>المجموع</span><b class="num">${nf(o.subtotal ?? o.total)}</b></div>${o.discount ? `<div style="color:#B45309"><span>خصم (${esc(o.discount.reason)})</span><b class="num">−${nf(o.discount.amount)}</b></div>` : ""}
-      <div class="big"><span>الإجمالي</span><span class="num">${nf(o.total)} ر.س</span></div>${o.method === "cash" && o.given ? `<div style="color:#71717A"><span>المستلم / الباقي</span><span class="num">${nf(o.given)} / ${nf(o.change)}</span></div>` : ""}</div></div>
+      <div class="big"><span>الإجمالي</span><span class="num">${nf(o.total)} ر.س</span></div>${A.hasM(o, "cash") && o.given ? `<div style="color:#71717A"><span>المستلم / الباقي</span><span class="num">${nf(o.given)} / ${nf(o.change)}</span></div>` : ""}</div></div>
     <div class="cx-sec"><h4>التكلفة والربح</h4><div class="cx-kv"><div><span>تكلفة الطعام</span><b class="num">${nf(c.food)}</b></div><div><span>التغليف (${pk.boxes} علبة · ${pk.bags} كيس)</span><b class="num">${nf(c.pack)}</b></div>
       <div><span>مجمل الربح</span><b class="num">${nf(o.total - c.food - c.pack)}</b></div><div><span>نسبة التكلفة</span><b class="num">${o.total ? pct((c.food + c.pack) / o.total * 100) : "—"}</b></div></div></div>
     <div class="cx-sec"><h4>سجل الطلب</h4><ul class="cx-tl">${ev.map(([t, a, b]) => `<li><b>${a}</b><small><span class="tm">${tm(t)}</span> · ${b}</small></li>`).join("")}</ul></div>`,
@@ -489,7 +489,7 @@ function dashGen(L, Lp, R) {
   const so = S(ok, () => 1), sn = S(ok, o => o.total), sd = S(ok, o => o.discount?.amount || 0), sv = S(vd, o => o.total);
   expT(st.p === "day" ? "حسب الساعة" : "حسب اليوم", [["l", st.p === "day" ? "الساعة" : "اليوم"], ["o", "الطلبات"], ["n", "صافي المبيعات"], ["d", "الخصم"], ["v", "الإلغاء"]],
     B.keys.map((k, i) => ({ l: B.tips[i], o: so[i] ?? "", n: sn[i] == null ? "" : r2(sn[i]), d: sd[i] == null ? "" : r2(sd[i]), v: sv[i] == null ? "" : r2(sv[i]) })).filter(r => r.o !== ""));
-  const mrows = by(ok, "method").sort((x, y) => y[1] - x[1]).map(([k, v]) => ({ k: A.METHODS[k] || k, n: ok.filter(o => o.method === k).length, v: r2(v) }));
+  const mrows = Object.keys(A.METHODS).map(k => ({ k: A.METHODS[k], n: ok.filter(o => A.hasM(o, k)).length, v: r2(ok.reduce((s2, o) => s2 + A.paidBy(o, k), 0)) })).filter(r => r.n).sort((x, y) => y.v - x.v);
   expT("حسب طريقة الدفع", [["k", "طريقة الدفع"], ["n", "الطلبات"], ["v", "المبلغ"]], mrows);
   expT("حسب نوع الطلب", [["k", "النوع"], ["n", "الطلبات"], ["v", "المبلغ"]], A.TYPES.map(([k, l]) => { const g = ok.filter(o => o.type === k); return { k: l, n: g.length, v: r2(g.reduce((s2, o) => s2 + o.total, 0)) }; }).filter(r => r.n));
   expT("أعلى المنتجات", [["k", "المنتج"], ["v", "صافي البيع"]], Object.entries(items).sort((x, y) => y[1] - x[1]).map(([k, v]) => ({ k, v: r2(v) })));
@@ -558,11 +558,11 @@ PAGES.orders = async () => {
 
 /* ---------- تقرير المبيعات ---------- */
 const GROUPS = { none: "لا شيء", day: "اليوم", week: "الأسبوع", month: "الشهر", hour: "الساعة", cashier: "الكاشير", type: "نوع الطلب", method: "طريقة الدفع" };
-function grpKey(o, g) { if (g === "day") return o.day; if (g === "week") return A.dshRange("week", o.day)[0]; if (g === "month") return o.day.slice(0, 7); if (g === "hour") return new Date(o.ts).getHours(); if (g === "cashier") return o.cashierName; if (g === "type") return o.type; if (g === "method") return o.method; return "all"; }
-function grpLabel(k, g) { if (g === "day") return dFull(k); if (g === "week") return `${dLab(k)} – ${dLab(A.addDays(k, 6))}`; if (g === "month") return `${AR_M[+k.slice(5) - 1]} ${k.slice(0, 4)}`; if (g === "hour") return `${hrLab(+k)} – ${hrLab((+k + 1) % 24)}`; if (g === "type") return A.TYPES.find(t => t[0] === k)?.[1] || k; if (g === "method") return A.METHODS[k] || k; if (g === "none") return "كل المبيعات"; return k; }
+function grpKey(o, g) { if (g === "day") return o.day; if (g === "week") return A.dshRange("week", o.day)[0]; if (g === "month") return o.day.slice(0, 7); if (g === "hour") return new Date(o.ts).getHours(); if (g === "cashier") return o.cashierName; if (g === "type") return o.type; if (g === "method") return o.pays?.length ? "split" : o.method; return "all"; }
+function grpLabel(k, g) { if (g === "day") return dFull(k); if (g === "week") return `${dLab(k)} – ${dLab(A.addDays(k, 6))}`; if (g === "month") return `${AR_M[+k.slice(5) - 1]} ${k.slice(0, 4)}`; if (g === "hour") return `${hrLab(+k)} – ${hrLab((+k + 1) % 24)}`; if (g === "type") return A.TYPES.find(t => t[0] === k)?.[1] || k; if (g === "method") return k === "split" ? "مقسّم (كاش + شبكة)" : A.METHODS[k] || k; if (g === "none") return "كل المبيعات"; return k; }
 const grpSel = (id, cur, opts) => `<label style="display:inline-flex;align-items:center;gap:8px;color:#71717A;font-size:14px">تجميع بـ<select class="cx-sel" id="${id}">${opts.map(k => `<option value="${k}" ${cur === k ? "selected" : ""}>${GROUPS[k]}</option>`).join("")}</select></label>`;
 function salesCsv(L) { const ok = L.filter(o => isOk(o) && !o.test), rows = [["التاريخ", "طريقة الدفع", "المبلغ الصافي", "العدد"]];
-  [...new Set(ok.map(o => o.day))].sort().forEach(d => Object.entries(A.METHODS).forEach(([k, l]) => { const g = ok.filter(o => o.day === d && o.method === k); if (g.length) rows.push([d, l, nf(g.reduce((s, o) => s + o.total, 0)).replace(/,/g, ""), g.length]); }));
+  [...new Set(ok.map(o => o.day))].sort().forEach(d => Object.entries(A.METHODS).forEach(([k, l]) => { const g = ok.filter(o => o.day === d && A.hasM(o, k)); if (g.length) rows.push([d, l, nf(g.reduce((s, o) => s + A.paidBy(o, k), 0)).replace(/,/g, ""), g.length]); }));
   if (rows.length < 2) return A.toast("لا توجد مبيعات في هذه الفترة"); A.download(rows, `مبيعات-الكاشير-${st.a}${st.b !== st.a ? "_" + st.b : ""}.csv`); }
 PAGES.sales = async () => {
   const [rb, rbind] = rangeBtn(PAGES.sales); let all = [];
@@ -606,8 +606,8 @@ PAGES.hours = async () => {
   if (!sel.length) return;
   const L = applyF(all), hOf = o => new Date(o.ts).getHours(), inSel = L.filter(o => st.hrs.includes(hOf(o))), ok = inSel.filter(isOk);
   const dayTot = L.filter(isOk).reduce((s, o) => s + o.total, 0), a = agg(inSel), sum = G => G.reduce((s, o) => s + o.total, 0);
-  const MS = Object.keys(A.METHODS).filter(k => k === "cash" || ok.some(o => o.method === k));
-  const row = (G, extra) => { const g = G.filter(isOk), s = agg(G); const r = { ...extra, n: s.n, net: s.net, avg: s.avg, vN: s.vN, vT: s.vT, share: dayTot ? s.net / dayTot * 100 : 0 }; MS.forEach(k => r["m_" + k] = sum(g.filter(o => o.method === k))); return r; };
+  const MS = Object.keys(A.METHODS).filter(k => k === "cash" || ok.some(o => A.hasM(o, k)));
+  const row = (G, extra) => { const g = G.filter(isOk), s = agg(G); const r = { ...extra, n: s.n, net: s.net, avg: s.avg, vN: s.vN, vT: s.vT, share: dayTot ? s.net / dayTot * 100 : 0 }; MS.forEach(k => r["m_" + k] = g.reduce((s2, o) => s2 + A.paidBy(o, k), 0)); return r; };
   const rows = sel.map((h, i) => row(L.filter(o => hOf(o) === h), { h, i, label: hrSpan(h) }));
   const multi = st.a !== st.b, days = multi ? [...new Set(inSel.map(o => o.day))].sort() : [];
   charts.clear(); EXP = [];
@@ -636,11 +636,11 @@ PAGES.pays = async () => {
   let all; try { all = await load(st.a, st.b); bindFlt(PAGES.pays, all.map(o => o.cashierName)); } catch (e) { $("#pb").innerHTML = errBox(e); return; }
   const L = applyF(all), g = st.pgrp, ok = L.filter(isOk), tot = ok.reduce((s, o) => s + o.total, 0), rows = [];
   [...new Set(L.map(o => grpKey(o, g)))].sort().forEach(k => Object.entries(A.METHODS).forEach(([mk, ml]) => {
-    const G = L.filter(o => grpKey(o, g) === k && o.method === mk); if (!G.length && g !== "none") return; const gok = G.filter(isOk), gv = G.filter(o => isVoid(o)), net = gok.reduce((s, o) => s + o.total, 0);
-    rows.push({ gk: k, grp: grpLabel(k, g), m: mk, ml, n: gok.length, val: net + gv.reduce((s, o) => s + o.total, 0), vN: gv.length, vT: gv.reduce((s, o) => s + o.total, 0), net, share: tot ? net / tot * 100 : 0 }); }));
-  const byM = Object.entries(A.METHODS).map(([k, l]) => [k, ok.filter(o => o.method === k).reduce((s, o) => s + o.total, 0)]);
+    const G = L.filter(o => grpKey(o, g) === k && A.hasM(o, mk)); if (!G.length && g !== "none") return; const gok = G.filter(isOk), gv = G.filter(o => isVoid(o)), net = gok.reduce((s, o) => s + A.paidBy(o, mk), 0), vT = gv.reduce((s, o) => s + A.paidBy(o, mk), 0);
+    rows.push({ gk: k, grp: grpLabel(k, g), m: mk, ml, n: gok.length, val: net + vT, vN: gv.length, vT, net, share: tot ? net / tot * 100 : 0 }); }));
+  const byM = Object.entries(A.METHODS).map(([k, l]) => [k, ok.reduce((s, o) => s + A.paidBy(o, k), 0)]);
   charts.clear(); EXP = [];
-  $("#pb").innerHTML = `<div class="cx-stats">${Object.entries(A.METHODS).map(([k, l]) => { const v = byM.find(x => x[0] === k)[1]; return `<div class="cx-st"><span>${l}</span><b class="num">${nf(v)}</b><small>${ni(ok.filter(o => o.method === k).length)} عملية · ${tot ? pct(v / tot * 100) : "0%"}</small></div>`; }).join("")}<div class="cx-st"><span>المجموع</span><b class="num">${nf(tot)}</b><small>${ni(ok.length)} عملية</small></div></div>
+  $("#pb").innerHTML = `<div class="cx-stats">${Object.entries(A.METHODS).map(([k, l]) => { const v = byM.find(x => x[0] === k)[1]; return `<div class="cx-st"><span>${l}</span><b class="num">${nf(v)}</b><small>${ni(ok.filter(o => A.hasM(o, k)).length)} عملية · ${tot ? pct(v / tot * 100) : "0%"}</small></div>`; }).join("")}<div class="cx-st"><span>المجموع</span><b class="num">${nf(tot)}</b><small>${ni(ok.length)} عملية</small></div></div>
     ${st.chart ? `<div class="cx-grid" style="margin-bottom:20px"><div class="cx-card"><div class="cx-ch"><h3>نسبة طرق الدفع</h3></div>${donut(byM, A.METHODS)}</div>
       <div class="cx-card s2"><div class="cx-ch"><h3>المبالغ حسب الطريقة</h3></div>${chart({ kind: "bar", labels: byM.map(x => A.METHODS[x[0]]), series: [{ color: "#1F4E9E", values: byM.map(x => x[1]) }] }, 230)}</div></div>` : ""}
     <div class="cx-tcard"><div id="ptb"></div></div>`;
@@ -739,7 +739,8 @@ async function shiftDrawer(sh) {
     `<div class="cx-sec"><div class="cx-kv"><div><span>الفتح</span><b><span class="tm">${tm(sh.openedAt)}</span> · ${esc(sh.openedBy?.name)}</b></div><div><span>التقفيل</span><b>${sh.closedAt ? `<span class="tm">${tm(sh.closedAt)}</span> · ${esc(sh.closedBy?.name)}` : "مفتوحة"}</b></div>
       <div><span>فكّة البداية</span><b class="num">${nf(sh.float)}</b></div><div><span>الكاشيرون</span><b>${esc((sh.cashiers || []).join("، "))}</b></div>
       ${c ? `<div><span>مبيعات الكاش</span><b class="num">${nf(c.m.cash)}</b></div><div><span>الإيداعات / المصروفات</span><b class="num">${nf(c.cin)} / ${nf(c.cout)}</b></div>
-      <div><span>المتوقع في الدرج</span><b class="num">${nf(c.expected)}</b></div><div><span>المعدود</span><b class="num">${nf(sh.counted)}</b></div>
+      ${c.mode === "float" ? `<div><span>العهدة / المعدودة</span><b class="num">${nf(c.expected)} / ${nf(sh.counted)}</b></div><div><span>كاش المبيعات للتسليم</span><b class="num">${nf(c.salesCash)}</b></div>`
+        : `<div><span>المتوقع في الدرج</span><b class="num">${nf(c.expected)}</b></div><div><span>المعدود</span><b class="num">${nf(sh.counted)}</b></div>`}
       <div><span>إجمالي المبيعات</span><b class="num">${nf(c.total)} <small style="color:#71717A">(${c.count} طلب)</small></b></div><div><span>جهاز الشبكة</span><b class="num">${sh.terminal != null ? nf(sh.terminal) + " / " + nf(c.m.mada + c.m.visa) : "—"}</b></div>` : ""}</div>
       ${sh.note ? `<p style="background:#FFF5E6;color:#92400E;padding:10px 12px;border-radius:10px;margin:12px 0 0">ملاحظة: ${esc(sh.note)}</p>` : ""}</div>
     ${(sh.moves || []).length ? `<div class="cx-sec"><h4>حركات الدرج</h4><ul class="cx-tl">${sh.moves.map(m => `<li><b>${m.kind === "in" ? "إيداع" : "صرف"} <span class="num">${nf(m.amount)}</span></b><small><span class="tm">${tm(m.at)}</span> · ${esc(m.reason)} · ${esc(m.by)}</small></li>`).join("")}</ul></div>` : ""}

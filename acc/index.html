@@ -6506,11 +6506,16 @@ function posAgg(orders, sday, keep, lo, hi){
     const t = n(o.total);
     if (o.status === "void"){ x.voids++; x.voidAmt += t; }
     else if (o.status === "open"){ x.open++; x.openAmt += t; }
+    /* a split payment counts each part under its own method */
+    else if (Array.isArray(o.pays) && o.pays.length){
+      for (const p of o.pays) if (POS_M.includes(p.m)) x[p.m] += n(p.a);
+      x.count++; x.disc += n(o.discount && o.discount.amount);
+    }
     else if (POS_M.includes(o.method)){
       x[o.method] += t; x.count++; x.disc += n(o.discount && o.discount.amount);
       if (o.method === "hunger"){ x.hsN++; x.hsGross += t; x.hsFee += hsFee(t); x.hsDel += hsDelivery(t); }
     }
-    if (o.status === "paid"){ const k = o.method ? (["cash","mada","visa"].includes(o.method) ? null : o.method) : "t:" + (o.type || ""); if (k) x.ag.push({k, t}); }
+    if (o.status === "paid"){ const k = o.method ? (["cash","mada","visa","split"].includes(o.method) ? null : o.method) : "t:" + (o.type || ""); if (k) x.ag.push({k, t}); }
     x.last = Math.max(x.last, n(o.paidAt || o.ts)); by.set(d, x);
   }
   by.forEach(x => { POS_M.forEach(k => x[k] = r2(x[k])); x.total = r2(POS_M.reduce((a, k) => a + x[k], 0)); x.hsFee = r2(x.hsFee); });
@@ -6590,12 +6595,12 @@ function openPosDay(day){
   const st = o => o.status === "void" ? '<span class="chip bad">ملغي</span>' : o.status === "open" ? '<span class="chip warn">غير مدفوع</span>' : '<span class="chip ok">مدفوع</span>';
   const items = o => (o.lines || []).map(l => `<div><b class="num">${n(l.qty)}</b> × ${esc(l.name)}${(l.mods || []).length ? ` <span class="small muted">+ ${l.mods.map(m => esc(m.name)).join("، ")}</span>` : ""}${(l.notes || []).length || l.note ? ` <span class="small muted">(${esc([...(l.notes || []), l.note].filter(Boolean).join("، "))})</span>` : ""}</div>`).join("");
   const paid = L.filter(o => o.status !== "void" && o.status !== "open");
-  const tot = k => r2(paid.filter(o => o.method === k).reduce((a, o) => a + n(o.total), 0));
+  const tot = k => r2(paid.reduce((a, o) => a + (Array.isArray(o.pays) && o.pays.length ? o.pays.filter(p => p.m === k).reduce((b, p) => b + n(p.a), 0) : o.method === k ? n(o.total) : 0), 0));
   const qty = new Map(); paid.forEach(o => (o.lines || []).forEach(l => qty.set(l.name, (qty.get(l.name) || 0) + n(l.qty))));
   $("#sheet").innerHTML = `<div class="entry"><div class="bar" style="margin:0;border:0;padding:0;flex-wrap:nowrap"><h3 style="margin:0">طلبات وردية ${dayName(day)} <span class="num">${dmy(day)}</span></h3><button class="btn ghost sm" type="button" id="pd_x">إغلاق</button></div>
     <div class="small" style="margin:6px 0 10px">${paid.length} طلب مدفوع${L.length > paid.length ? ` · ${L.length - paid.length} ملغي أو غير مدفوع` : ""} · ${POS_M.filter(k => tot(k)).map(k => `${POS_METH[k]} <b class="num">${fmt(tot(k))}</b>`).join(" · ")} · الإجمالي <b class="num">${fmt(r2(paid.reduce((a, o) => a + n(o.total), 0)))}</b></div>
     ${L.length ? `<div class="tw" style="max-height:60vh"><table><thead><tr><th class="n">رقم</th><th>الوقت</th><th>النوع</th><th>الدفع</th><th>الأصناف</th><th class="n">الخصم</th><th class="n">الإجمالي</th><th>الحالة</th><th>الكاشير</th></tr></thead><tbody>
-      ${L.map(o => `<tr class="${o.status === "void" ? "unpaid" : ""}"><td class="n num">${o.no ?? ""}</td><td class="num">${hm(o.ts)}${o.paidAt && o.paidAt - n(o.ts) > 60000 ? `<div class="by">دُفع ${hm(o.paidAt)}</div>` : ""}</td><td>${esc(POS_TYPE[o.type] || o.type || "")}${o.name || o.phone ? `<div class="by">${esc(o.name || "")} ${o.phone ? `<span class="num">${esc(o.phone)}</span>` : ""}</div>` : ""}</td><td>${esc(POS_METH[o.method] || (o.status === "open" ? "—" : o.method || ""))}</td><td>${items(o)}</td><td class="n">${o.discount && n(o.discount.amount) ? money(-n(o.discount.amount)) : ""}</td><td class="n"><b>${money(n(o.total))}</b></td><td>${st(o)}${o.status === "void" && o.void && o.void.reason ? `<div class="by">${esc(o.void.reason)}</div>` : ""}</td><td>${esc(o.cashierName || "")}</td></tr>`).join("")}
+      ${L.map(o => `<tr class="${o.status === "void" ? "unpaid" : ""}"><td class="n num">${o.no ?? ""}</td><td class="num">${hm(o.ts)}${o.paidAt && o.paidAt - n(o.ts) > 60000 ? `<div class="by">دُفع ${hm(o.paidAt)}</div>` : ""}</td><td>${esc(POS_TYPE[o.type] || o.type || "")}${o.name || o.phone ? `<div class="by">${esc(o.name || "")} ${o.phone ? `<span class="num">${esc(o.phone)}</span>` : ""}</div>` : ""}</td><td>${esc(Array.isArray(o.pays) && o.pays.length ? o.pays.map(p => `${POS_METH[p.m] || p.m} ${fmt(p.a)}`).join(" + ") : POS_METH[o.method] || (o.status === "open" ? "—" : o.method || ""))}</td><td>${items(o)}</td><td class="n">${o.discount && n(o.discount.amount) ? money(-n(o.discount.amount)) : ""}</td><td class="n"><b>${money(n(o.total))}</b></td><td>${st(o)}${o.status === "void" && o.void && o.void.reason ? `<div class="by">${esc(o.void.reason)}</div>` : ""}</td><td>${esc(o.cashierName || "")}</td></tr>`).join("")}
     </tbody></table></div>
     <details style="margin-top:10px"><summary class="small" style="cursor:pointer;font-weight:700">الأصناف المباعة في الوردية (${qty.size})</summary>
       <div class="tw"><table><thead><tr><th>الصنف</th><th class="n">الكمية</th></tr></thead><tbody>${[...qty].sort((a, b) => b[1] - a[1]).map(([k, v]) => `<tr><td>${esc(k)}</td><td class="n num">${v}</td></tr>`).join("")}</tbody></table></div></details>`
