@@ -45,7 +45,7 @@ service cloud.firestore {
     match /approvals/{id} {
       allow read: if isAdmin() || isCashier();
       allow create: if isAdmin() || (isCashier() && (request.resource.data.status == 'pending'
-                                     || (request.resource.data.status == 'approved' && request.resource.data.via in ['pin', 'code'])));
+                                     || (request.resource.data.status == 'approved' && request.resource.data.via in ['pin', 'code', 'open'])));
       allow update: if isAdmin() || (isCashier() && resource.data.status == 'pending' && request.resource.data.status == 'cancelled');
       allow delete: if isAdmin();
     }

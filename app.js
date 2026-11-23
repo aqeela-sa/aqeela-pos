@@ -4,7 +4,7 @@
 import * as F from "./fb.js";
 import { firebaseConfig } from "./firebase-config.js";
 
-const VERSION = "2.8.0";
+const VERSION = "2.8.1";
 const ADMIN_EMAIL = "abuabraj@gmail.com";
 const DEVICE_EMAIL = "cashier@aqeela-pos.app";
 const APP_NAME = `<span dir="ltr">Cashier AQ</span>`;
@@ -145,7 +145,7 @@ function watchToday() {
     S.pending = S.today.filter(o => o._pending).length; drawTop(); if ($("#orders-list")) drawOrdersList(); if ($("#prep-list")) drawPrep();
   }, e => console.error(e));
 }
-setInterval(() => { if (S.view === "pos") watchToday(); }, 60e3);
+setInterval(() => { if (S.view === "pos") { watchToday(); if (!document.querySelector("#q:focus")) drawTop(); } }, 60e3);
 
 /* ترقية بيانات قديمة مرة واحدة (من حساب المدير فقط): تكلفة الأصناف، والعلب، وأسعار التغليف */
 let migrated = false;
@@ -328,7 +328,7 @@ function drawTop() {
 const prnChip = () => S.unprinted ? `<button class="tchip pbad" id="prx" title="${esc(S.unprinted.msg || "")}">${ic("print")}لم يُطبع <span class="num">${(S.unprinted.o.no ?? "")}</span></button>`
   : S.device.printMode === "epos" && S.printer?.err ? `<button class="tchip pbad" id="prc" title="${esc(S.printer.err)}">${ic("print")}الطابعة</button>`
   : S.device.printMode === "epos" && S.printer?.near ? `<button class="tchip pwarn" id="prc" title="ركّب لفة ورق جديدة قريباً">${ic("print")}الورق قارب على الانتهاء</button>` : "";
-const topBtns = np => { const nu = unpaidList().length; return `${S.device.test ? `<span class="tchip test">تجريبي</span>` : ""}${prnChip()}
+const topBtns = np => { const nu = unpaidList().length; return `${S.device.test ? `<span class="tchip test">تجريبي</span>` : ""}${mgrOpen() ? `<span class="tchip test" title="الخصم والإلغاء والصرف بدون رمز المدير، وكلها تُسجَّل">صلاحيات التدريب مفتوحة</span>` : ""}${prnChip()}
     <button class="tbtn ${nu ? "due" : ""}" id="unp" title="طلبات أُرسلت للمطبخ ولم تُدفع">${ic("clock")}<span class="tl">بانتظار الدفع</span>${nu ? `<b class="bd num">${nu}</b>` : ""}</button>
     <button class="tbtn ${np ? "hot" : ""}" id="prp" title="طلبات قيد التحضير">${ic("fire")}<span class="tl">قيد التحضير</span>${np ? `<b class="bd num">${np}</b>` : ""}</button>
     <button class="tbtn" id="ord" title="التقارير: المبيعات والطلبات والأصناف">${ic("dash")}<span class="tl">التقارير</span></button>
@@ -438,7 +438,7 @@ function drawCart() {
   $("#clr").onclick = () => { if (confirm("تفريغ الطلب الحالي؟")) resetCart(); };
   $("#pkl").onclick = openParked; $("#park").onclick = parkCart;
   $("#cback").onclick = () => toggleCart(false);
-  $("#disc").onclick = () => askManager(`خصم على طلب بقيمة ${m2(total())} ر.س`, openDiscount);
+  $("#disc").onclick = () => askManager(`خصم على طلب بقيمة ${m2(total())} ر.س`, openDiscount, { open: true });
   $("#last").onclick = () => { const P = S.today.filter(x => x.status === "paid" && !!x.test === !!S.device.test), o = P.find(x => x.device === S.dev) || P[0]; if (!o) return toast("لا توجد طلبات اليوم"); printJob(o, { receipt: true }, true); };
   $$("[data-pay]").forEach(b => b.onclick = () => openPay(b.dataset.pay));
   $("#sendk") && ($("#sendk").onclick = sendKitchen);
@@ -516,7 +516,11 @@ function mgrLog(title, via, extra = {}) {
   const d = { id, title, via, status: "approved", at: Date.now(), decidedAt: Date.now(), day: bizDay(), cashierId: S.cashier?.id || "", cashierName: S.cashier?.name || "", device: S.dev, test: !!S.device.test, ...extra };
   fire(F.setDoc(D("approvals", id), d), "سجل الموافقة"); return id;
 }
-function askManager(title, onOk) {
+/* training: the owner may open the everyday protected actions (discount, void, cash out) for a while from the accounting
+   program; they then go through without a code, each still logged as «open». Device settings and sign-out stay protected. */
+const mgrOpen = () => +(S.config?.mgrOpenUntil || 0) > Date.now();
+function askManager(title, onOk, opts = {}) {
+  if (opts.open && mgrOpen()) { S.mgrOk = { via: "open", id: mgrLog(title, "open"), at: Date.now() }; return onOk(); }
   if (!S.config.managerPinHash) return toast("لم يُحدَّد رمز المدير بعد", true);
   let pin = "";
   const ok = (via, id) => { S.mgrOk = { via, id: id || "", at: Date.now() }; closeModal(); onOk(); };
@@ -1016,7 +1020,7 @@ function openOrder(o) {
       Object.assign(o, { status: "void", void: v }); keepLocal(o);
       fire(F.updateDoc(D("orders", o.id), { status: "void", void: v }), "الإلغاء");
       toast(`تم إلغاء الطلب ${(o.no ?? "")}`); openOrders(); };
-  }));
+  }, { open: true }));
 }
 
 /* ----- more menu & device settings ----- */
@@ -1289,7 +1293,7 @@ function openShift() {
   modal(`${mh(`الوردية <span class="muted small">منذ <span class="num">${hm(S.shift.openedAt)}</span> · فتحها ${esc(S.shift.openedBy.name)}</span>`)}<div class="mdl-b" id="shift-sum"></div>
     <div class="mdl-f"><button class="btn ghost" id="cin">${ic("add")}إيداع في الدرج</button><button class="btn ghost" id="cout">${ic("remove")}صرف من الدرج</button><span class="sp"></span><button class="btn dark" id="cls">${ic("lock")}تقفيل الوردية</button></div>`, { wide: true });
   drawShiftSum();
-  $("#cin").onclick = () => cashMove("in"); $("#cout").onclick = () => askManager("صرف نقد من الدرج", () => cashMove("out"));
+  $("#cin").onclick = () => cashMove("in"); $("#cout").onclick = () => askManager("صرف نقد من الدرج", () => cashMove("out"), { open: true });
   $("#cls").onclick = closeShiftFlow;
 }
 function drawShiftSum() {

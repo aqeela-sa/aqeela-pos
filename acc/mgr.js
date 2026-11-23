@@ -16,7 +16,8 @@ function mgrStart(){
   MG.started = true;
   window.__accFb.mgr.watch(L => { MG.list = L; mgrBar(); }, e => console.error("approvals", e));
   mgrSecret();
-  setInterval(() => { mgrTick(); mgrBar(); }, 1000);
+  window.__accFb.mgr.watchCfg(c => { MG.openUntil = +(c.mgrOpenUntil || 0); mgrOpenDraw(); });
+  setInterval(() => { mgrTick(); mgrBar(); mgrOpenDraw(); }, 1000);
 }
 setInterval(mgrStart, 1500);
 /* the secret behind the code (made once, kept in the cashier's settings); asked again every 20 s until it is there */
@@ -52,7 +53,8 @@ function mgrCard(){
   return `<div class="card" id="mgrcard" style="margin-bottom:14px;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
     <div><h3 style="margin:0 0 4px;font-size:16px">رمز المدير المؤقت للكاشير</h3><p class="small muted" style="margin:0">أعطه للكاشير عند الحاجة لموافقتك وأنت بعيد، حتى لو انقطع الإنترنت في المحل. يُستخدم مرة واحدة، ويتغير كل 5 دقائق.</p></div>
     <div style="text-align:center"><div class="num" id="mgcode" style="font-size:32px;font-weight:800;letter-spacing:4px;direction:ltr">${MG.secret ? "······" : "—"}</div><div class="small muted" id="mgleft"></div>
-    <button class="btn ghost sm" type="button" id="mgcopy" style="margin-top:4px">نسخ</button></div></div>`;
+    <button class="btn ghost sm" type="button" id="mgcopy" style="margin-top:4px">نسخ</button></div>
+    <div id="mgopen" style="flex-basis:100%;border-top:1px solid var(--line,#e7e7eb);padding-top:10px"></div></div>`;
 }
 async function mgrTick(){
   const c = document.getElementById("mgcode"); if (!c) return; if (!MG.secret){ mgrSecret(); return; }
@@ -60,3 +62,27 @@ async function mgrTick(){
   c.textContent = code; const l = document.getElementById("mgleft"); if (l) l.textContent = `يتغير بعد ${Math.floor(left / 60)}:${String(left % 60).padStart(2, "0")}`;
   const b = document.getElementById("mgcopy"); if (b && !b.onclick) b.onclick = async () => { try { await navigator.clipboard.writeText(c.textContent); toast("نُسخ الرمز"); } catch(e){ toast("لم يُنسخ الرمز"); } };
 }
+
+/* صلاحيات التدريب: the owner opens discount, void and cash out on the cashier for a while, without a code (each still logged) */
+function mgrOpenDraw(){
+  const el = document.getElementById("mgopen"); if (!el) return;
+  const on = (MG.openUntil || 0) > Date.now(), sig = on ? "on" + MG.openUntil : "off";
+  if (el.dataset.sig === sig){ const l = el.querySelector("[data-left]"); if (l) l.textContent = mgrLeft(MG.openUntil); return; }
+  el.dataset.sig = sig;
+  el.innerHTML = on
+    ? `<div class="actions" style="justify-content:space-between;flex-wrap:wrap;align-items:center"><span><b style="color:#B26A00">صلاحيات التدريب مفتوحة</b> <span class="small muted">الخصم والإلغاء والصرف من الدرج بدون رمز · <span data-left>${mgrLeft(MG.openUntil)}</span></span></span>
+        <button class="btn sm" type="button" id="mgclose" style="background:var(--bad,#C62828) !important;color:#fff">إغلاق الصلاحيات الآن</button></div>`
+    : `<div class="actions" style="justify-content:space-between;flex-wrap:wrap;align-items:center"><span><b>صلاحيات التدريب</b> <span class="small muted">مغلقة: الخصم والإلغاء والصرف تحتاج موافقتك</span></span>
+        <span class="actions" style="gap:6px;flex-wrap:wrap"><span class="small muted">افتحها لمدة:</span>
+        <button class="btn ghost sm" type="button" data-mgopen="1">ساعة</button><button class="btn ghost sm" type="button" data-mgopen="4">4 ساعات</button>
+        <button class="btn ghost sm" type="button" data-mgopen="day">حتى نهاية اليوم</button><button class="btn ghost sm" type="button" data-mgopen="week">أسبوع</button></span></div>`;
+  el.querySelectorAll("[data-mgopen]").forEach(b => b.onclick = async () => {
+    const v = b.dataset.mgopen, now = new Date(); let until;
+    if (v === "day"){ const e = new Date(now); e.setHours(28, 0, 0, 0); until = e.getTime(); }   /* the business day ends at 4 am */
+    else if (v === "week") until = Date.now() + 7 * 864e5; else until = Date.now() + (+v) * 36e5;
+    try { await window.__accFb.mgr.setOpen(until); toast("فُتحت صلاحيات التدريب على الكاشير"); } catch(e){ toast("تعذّر الحفظ: " + (e.code || e.message)); } });
+  const c = document.getElementById("mgclose");
+  if (c) c.onclick = async () => { try { await window.__accFb.mgr.setOpen(0); toast("أُغلقت الصلاحيات، وعاد الكاشير يحتاج موافقتك"); } catch(e){ toast("تعذّر الحفظ: " + (e.code || e.message)); } };
+}
+const mgrLeft = t => { const m = Math.max(0, Math.round((t - Date.now()) / 60000)), d = Math.floor(m / 1440), h = Math.floor(m % 1440 / 60), mm = m % 60;
+  return "باقٍ " + (d ? `${d} يوم ` : "") + (d || h ? `${h} س ` : "") + `${mm} د`; };
