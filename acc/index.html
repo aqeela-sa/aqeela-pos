@@ -1049,7 +1049,7 @@ function setStatus(msg, ok){ const el = $("#status"); el.textContent = msg; el.c
 /* ---------- state ---------- */
 const now = new Date();
 const S = { db:null, user:null, uid:null, canWrite:true, canEdit:true,
-  settings:{...DEF}, sales:new Map(), invoices:[], custody:[], recon:new Map(), apps:[], bankTx:[], editApp:null, isOwner:false, menuItems:[], itemSales:[], ingredients:[], recipes:new Map(), ingCounts:[], purchaseOrders:[], raw:{ingredients:[],recipes:[],ingCounts:[],purchaseOrders:[],bankTx:[],menuItems:[],itemSales:[],sales:[],invoices:[],custody:[],apps:[],recon:[],journal:[],suppliers:[],payments:[],staff:[],advances:[],payroll:[],stockItems:[],stockCounts:[]}, stockItems:[], stockCounts:[], journal:[], suppliers:[], payments:[], staff:[], advances:[], payroll:[], ver:0,
+  settings:{...DEF}, sales:new Map(), invoices:[], custody:[], recon:new Map(), apps:[], bankTx:[], editApp:null, isOwner:false, menuItems:[], itemSales:[], ingredients:[], recipes:new Map(), ingCounts:[], purchaseOrders:[], batches:[], raw:{ingredients:[],recipes:[],ingCounts:[],purchaseOrders:[],batches:[],bankTx:[],menuItems:[],itemSales:[],sales:[],invoices:[],custody:[],apps:[],recon:[],journal:[],suppliers:[],payments:[],staff:[],advances:[],payroll:[],stockItems:[],stockCounts:[]}, stockItems:[], stockCounts:[], journal:[], suppliers:[], payments:[], staff:[], advances:[], payroll:[], ver:0,
   loaded:new Set(), names:{}, y:now.getFullYear(), m:now.getMonth()+1,
   view:"dashboard", reconMode:"cash", editInv:null, editCus:null };
 try { const saved = JSON.parse(localStorage.getItem("aqeela-ui")||"{}"); if (saved.reconMode) S.reconMode = saved.reconMode; } catch(e) {}
@@ -1188,8 +1188,8 @@ async function write(fn, okMsg){
 }
 const stamp = () => ({ by: S.uid || "", updatedAt: new Date().toISOString() });
 const clean = o => Object.fromEntries(Object.entries(o).filter(([,v]) => v !== undefined));
-const KEY = {sales:"sales",invoices:"invoices",custody:"custody",appTransfers:"apps",recon:"recon",journal:"journal",suppliers:"suppliers",payments:"payments",staff:"staff",advances:"advances",payroll:"payroll",stockItems:"stockItems",stockCounts:"stockCounts",ingredients:"ingredients",recipes:"recipes",ingCounts:"ingCounts",purchaseOrders:"purchaseOrders"};
-const COLL_LABEL = {sales:"مبيعات",invoices:"فاتورة",custody:"عهدة",appTransfers:"تحويل تطبيقات",recon:"مطابقة",journal:"قيد يومية",suppliers:"مورد",payments:"سداد مورد",staff:"موظف",advances:"سلفة",payroll:"مسير رواتب",stockItems:"صنف تغليف",stockCounts:"جرد تغليف",ingredients:"مكوّن",recipes:"وصفة",ingCounts:"جرد المكونات",purchaseOrders:"طلب شراء"};
+const KEY = {sales:"sales",invoices:"invoices",custody:"custody",appTransfers:"apps",recon:"recon",journal:"journal",suppliers:"suppliers",payments:"payments",staff:"staff",advances:"advances",payroll:"payroll",stockItems:"stockItems",stockCounts:"stockCounts",ingredients:"ingredients",recipes:"recipes",ingCounts:"ingCounts",purchaseOrders:"purchaseOrders",batches:"batches"};
+const COLL_LABEL = {sales:"مبيعات",invoices:"فاتورة",custody:"عهدة",appTransfers:"تحويل تطبيقات",recon:"مطابقة",journal:"قيد يومية",suppliers:"مورد",payments:"سداد مورد",staff:"موظف",advances:"سلفة",payroll:"مسير رواتب",stockItems:"صنف تغليف",stockCounts:"جرد تغليف",ingredients:"مكوّن",recipes:"وصفة",ingCounts:"جرد المكونات",purchaseOrders:"طلب شراء",batches:"دفعة تحضير"};
 const ACT = {create:["إضافة","ok"],edit:["تعديل","info"],delete:["حذف (أرشفة)","bad"],restore:["استعادة","ok"]};
 const strip = x => { if (!x) return {}; const {id, history, ...r} = x; return r; };
 const findRaw = (coll, id) => id ? S.raw[KEY[coll]].find(x => x.id === id) : null;
@@ -1203,7 +1203,7 @@ const STAFF_PAGES = [["guide","دليل العمل اليومي"],["dashboard","
   ["budget","الميزانية الشهرية"],["kitchen","الوصفات والمخزون"],["stock","مخزون التغليف"],["apps","تحويلات التطبيقات"],["recon","المطابقة اليومية"],["accounting","المحاسبة"],["reports","التقارير"],
   ["cfo","المدير المالي"],["history","السجل والأرشيف"],["setup","الإعدادات"]];
 /* collections closed to the employee unless the page that uses them is granted */
-const STAFF_COLL_PAGE = {recipes:"kitchen", ingCounts:"kitchen", purchaseOrders:"kitchen", journal:"accounting", staff:"payroll", advances:"payroll", payroll:"payroll", cfo:"cfo", menuItems:"menu", itemSales:"menu"};
+const STAFF_COLL_PAGE = {recipes:"kitchen", ingCounts:"kitchen", purchaseOrders:"kitchen", batches:"kitchen", journal:"accounting", staff:"payroll", advances:"payroll", payroll:"payroll", cfo:"cfo", menuItems:"menu", itemSales:"menu"};
 const staffSees = k => !isStaff() || staffPerms().views.has(k);
 const STAFF_DEFAULT = ["guide","daily","sales","invoices","suppliers","custody","recon"], STAFF_HOME = "guide";
 const staffPerms = () => { const P = (S.settings && S.settings.staffPerms) || {}; const v = Array.isArray(P.views) ? P.views : STAFF_DEFAULT;
@@ -1536,7 +1536,7 @@ function bindInvoices(){
     document.querySelectorAll("[data-spdel]").forEach(b => b.onclick = () => { S.invSplit.splice(+b.dataset.spdel, 1); spDraw(); });
     spSum(); };
   /* the stock lines of the invoice: ingredient, quantity, amount */
-  const itDraw = () => { const box = $("#i_it"); if (!box) return; const G = S.ingredients || []; box.hidden = !G.length; if (!G.length) return;
+  const itDraw = () => { const box = $("#i_it"); if (!box) return; const G = (S.ingredients || []).filter(g => typeof ktIsPrep !== "function" || !ktIsPrep(g)); box.hidden = !G.length; if (!G.length) return;
     const L = S.invItems = S.invItems && S.invItems.length ? S.invItems : [{ing:"", q:"", a:""}];
     $("#i_it_rows").innerHTML = L.map((l, i) => { const g = G.find(z => z.id === l.ing);
       return `<div class="sp-row"><select data-iti="${i}" aria-label="المكوّن"><option value="">— المكوّن —</option>${G.map(z => `<option value="${esc(z.id)}" ${z.id === l.ing ? "selected" : ""}>${esc(z.name)}</option>`).join("")}</select>
@@ -5222,7 +5222,7 @@ const lockedMonths = () => Array.isArray(S.settings.locks) ? S.settings.locks : 
 const isLockedYm = ym => !!ym && lockedMonths().includes(ym);
 const isLockedDate = d => !!d && isLockedYm(String(d).slice(0, 7));
 const ymName = ym => { const [y, m] = ym.split("-").map(Number); return `${MONTHS[m - 1]} ${y}`; };
-const DATED = new Set(["sales","invoices","custody","appTransfers","recon","journal","payments","advances","stockCounts","ingCounts"]);
+const DATED = new Set(["sales","invoices","custody","appTransfers","recon","journal","payments","advances","stockCounts","ingCounts","batches"]);
 /* why a write is refused, or "" when allowed */
 function lockReason(coll, id, ex, data, act){
   if (!lockedMonths().length) return "";
@@ -5937,7 +5937,7 @@ function gdDashChip(){
 
 /* ---------- FULL BACKUP & RESTORE (owner) ---------- */
 const bkAge = () => S.settings.lastBackupAt ? Math.floor((Date.now() - new Date(S.settings.lastBackupAt).getTime()) / 864e5) : 999;
-const BK_NAMES = {purchaseOrders:"طلبات الشراء", ingredients:"المكونات", recipes:"الوصفات", ingCounts:"جرد المكونات", settings:"الإعدادات", sales:"المبيعات", invoices:"الفواتير", custody:"العهد", appTransfers:"تحويلات التطبيقات", recon:"المطابقة اليومية", journal:"القيود اليدوية", suppliers:"الموردون", payments:"سداد الموردين", staff:"الموظفون", advances:"السلف", payroll:"مسيرات الرواتب", stockItems:"أصناف المخزون", stockCounts:"جرد المخزون", cfo:"المدير المالي", bankTx:"كشف البنك", menuItems:"تكلفة الوجبات", itemSales:"تقارير الأصناف", attachments:"الصور والمرفقات", platforms:"التطبيقات والعقود", users:"المستخدمون", posDays:"ملخصات أيام الكاشير", orders:"طلبات الكاشير", shifts:"ورديات الكاشير", menu:"منيو الكاشير", config:"إعدادات الكاشير"};
+const BK_NAMES = {batches:"دفعات التحضير", purchaseOrders:"طلبات الشراء", ingredients:"المكونات", recipes:"الوصفات", ingCounts:"جرد المكونات", settings:"الإعدادات", sales:"المبيعات", invoices:"الفواتير", custody:"العهد", appTransfers:"تحويلات التطبيقات", recon:"المطابقة اليومية", journal:"القيود اليدوية", suppliers:"الموردون", payments:"سداد الموردين", staff:"الموظفون", advances:"السلف", payroll:"مسيرات الرواتب", stockItems:"أصناف المخزون", stockCounts:"جرد المخزون", cfo:"المدير المالي", bankTx:"كشف البنك", menuItems:"تكلفة الوجبات", itemSales:"تقارير الأصناف", attachments:"الصور والمرفقات", platforms:"التطبيقات والعقود", users:"المستخدمون", posDays:"ملخصات أيام الكاشير", orders:"طلبات الكاشير", shifts:"ورديات الكاشير", menu:"منيو الكاشير", config:"إعدادات الكاشير"};
 function bindBackup(){
   const B = window.__accFb && window.__accFb.backup, dlb = $("#bk_dl"); if (!B || !dlb) return;
   const st = h => { S.bkMsg = h; const e = $("#bk_st"); if (e) e.innerHTML = h; };
@@ -6745,6 +6745,7 @@ async function connect(){
   sub("recipes","recipes", a => S.recipes = new Map(a.map(x => [x.id, x])));
   sub("ingCounts","ingCounts", a => S.ingCounts = a);
   sub("purchaseOrders","purchaseOrders", a => S.purchaseOrders = a);
+  sub("batches","batches", a => S.batches = a);
   render();
   if (S.isOwner) setTimeout(fixAttFlags, 8000);
   staffFeeds();
@@ -6789,8 +6790,8 @@ async function fixAttFlags(){
 if (window.__accHost) window.__accStart = connect; else connect();
 </script>
 <script src="apps.js?v=10"></script>
-<script src="kitchen.js?v=4"></script>
-<script src="purchase.js?v=2"></script>
-<script type="module" src="acc-fb.js?v=8"></script>
+<script src="kitchen.js?v=5"></script>
+<script src="purchase.js?v=3"></script>
+<script type="module" src="acc-fb.js?v=9"></script>
 </body>
 </html>

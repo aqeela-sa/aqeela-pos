@@ -22,8 +22,21 @@ function ktInItems(a, b){
   for (const x of (S.invoices || [])) if (!x.deleted && Array.isArray(x.items) && x.date >= a && x.date <= b) for (const it of x.items) if (it && it.ing && n(it.q) > 0) out.push({...it, date:x.date, inv:x});
   return out;
 }
-/* unit price of an ingredient on day d: its latest invoice line on or before d (amount ÷ quantity), else the price set by hand */
-function ktPrice(ing, d){
+/* a prepared ingredient (made in the kitchen, e.g. the marinated shawarma mix, then the grilled shawarma) has a batch recipe:
+   prep = {out, lines:[{ing, q}]}: the batch's inputs make `out` of it. Its losses (cleaning, burning off on the fire) are simply
+   the gap between the inputs and the output. Sales of an item that uses it are traced back to the raw ingredients. */
+const ktIsPrep = g => !!(g && g.prep && n(g.prep.out) > 0 && Array.isArray(g.prep.lines) && g.prep.lines.some(l => l.ing && n(l.q) > 0));
+function ktRawAdd(map, id, q, depth){
+  const g = ktIng(id); depth = depth || 0;
+  if (!ktIsPrep(g) || depth > 6){ map.set(id, (map.get(id) || 0) + q); return; }
+  const f = q / n(g.prep.out); for (const l of g.prep.lines) if (l.ing && n(l.q) > 0) ktRawAdd(map, l.ing, n(l.q) * f, depth + 1);
+}
+/* input weight of a batch (inputs measured in kg or litres), for its yield */
+const ktBatchIn = g => sumBy((g.prep && g.prep.lines) || [], l => { const x = ktIng(l.ing); return x && /كجم|لتر/.test(x.unit || "") ? n(l.q) : 0; });
+/* unit price of an ingredient on day d: its latest invoice line on or before d (amount ÷ quantity), else the price set by hand;
+   a prepared one costs its batch inputs over its output */
+function ktPrice(ing, d, depth){
+  if (ktIsPrep(ing) && (depth || 0) < 6) return sumBy(ing.prep.lines, l => { const x = ktIng(l.ing); return x ? n(l.q) * ktPrice(x, d, (depth || 0) + 1) : 0; }) / n(ing.prep.out);
   const L = ktInItems("0000-00-00", d || today()).filter(it => it.ing === ing.id && n(it.a) > 0).sort((p, q) => p.date < q.date ? -1 : 1);
   const last = L[L.length - 1]; return last ? n(last.a) / n(last.q) : n(ing.price);
 }
@@ -44,7 +57,7 @@ function ktCons(a, b){
       out.qty += q; out.amt += v;
       if (!R.length){ if (u === l || v > 0){ const m = out.noRec.get(id) || {id, name:u.name || "", q:0, v:0}; m.q += q; m.v += v; out.noRec.set(id, m); } continue; }
       out.qtyR += q; out.amtR += v;
-      for (const r of R) use.set(r.ing, (use.get(r.ing) || 0) + q * n(r.q));
+      for (const r of R) ktRawAdd(use, r.ing, q * n(r.q));
     }
   }
   return out;
@@ -57,14 +70,24 @@ function ktNeedOld(a, el, redraw){
   if (!S.ktOldBusy){ S.ktOldBusy = true; posOldLoad(a, today()).then(() => { S.ktOldBusy = false; if (el.isConnected) redraw(); }, e => { S.ktOldBusy = false; el.innerHTML = `<div class="note warn">تعذّرت القراءة (${esc(e && (e.code || e.message) || e)}).</div>`; }); }
   return true;
 }
-/* stock of each ingredient at the end of day d: its last count on or before d, plus what came in, less what the sales used */
+/* what a count holds of a raw ingredient: its own count, plus what the prepared stock counted with it was made from
+   (marinated shawarma on the skewers already took its chicken out of the stores) */
+let ktEq = new WeakMap();
+function ktCountRaw(c, id){
+  if (!has((c.qty || {})[id])) return null;
+  let m = ktEq.get(c); if (!m){ m = new Map(); for (const [k, v] of Object.entries(c.qty || {})) if (ktIsPrep(ktIng(k))) ktRawAdd(m, k, n(v)); ktEq.set(c, m); }
+  return n(c.qty[id]) + (m.get(id) || 0);
+}
+const ktRaws = () => (S.ingredients || []).filter(g => !ktIsPrep(g));
+/* stock of each raw ingredient at the end of day d: its last count on or before d, plus what came in, less what the sales used */
 function ktStock(d){
   const C = ktCounts().filter(c => c.date <= d), res = new Map();
-  for (const g of (S.ingredients || [])){
+  ktEq = new WeakMap();
+  for (const g of ktRaws()){
     const c = [...C].reverse().find(x => has((x.qty || {})[g.id]));
     if (!c){ res.set(g.id, null); continue; }
     const from = addDays(c.date, 1);
-    res.set(g.id, {count:c, base:n(c.qty[g.id]), from, inQ:0, use:0});
+    res.set(g.id, {count:c, base:ktCountRaw(c, g.id), from, inQ:0, use:0});
   }
   const froms = [...res.values()].filter(Boolean).map(x => x.from).sort();
   if (froms.length){ const a = froms[0], cons = new Map(), ins = new Map();
@@ -80,7 +103,7 @@ function viewKitchen(){
   const t = S.ktTab || "live";
   return `<div class="bar"><h2>الوصفات والمخزون</h2></div>${readonlyNote()}
     <div class="actions" style="justify-content:space-between;flex-wrap:wrap;gap:8px"><div class="seg" role="tablist" aria-label="القسم">
-      ${[["live","المخزون الحي"],["po","طلبات الشراء"],["recipes","الوصفات"],["var","الفرق: النظري والفعلي"],["ings","المكونات"]].map(([k, l]) => `<button type="button" data-ktt="${k}" class="${t === k ? "on" : ""}">${l}</button>`).join("")}</div>
+      ${[["live","المخزون الحي"],["po","طلبات الشراء"],["recipes","الوصفات"],["prep","التحضير"],["var","الفرق: النظري والفعلي"],["ings","المكونات"]].map(([k, l]) => `<button type="button" data-ktt="${k}" class="${t === k ? "on" : ""}">${l}</button>`).join("")}</div>
       <div class="actions">${S.canWrite ? `<button class="btn" type="button" id="kt_count">تسجيل جرد</button><button class="btn ghost" type="button" id="kt_ing">مكوّن جديد</button>` : ""}${S.canEdit ? `<button class="btn ghost" type="button" id="kt_paste">لصق من Claude</button>` : ""}</div></div>
     <div id="list"></div>`;
 }
@@ -98,11 +121,12 @@ function renderKitchen(){
   if (t === "recipes") return ktRecipes(el);
   if (t === "var") return ktVar(el);
   if (t === "po") return ktPO(el);
+  if (t === "prep") return ktBatches(el);
   return ktLive(el);
 }
 
 function ktLive(el){
-  const G = S.ingredients || [];
+  const G = ktRaws();
   if (!G.length){ el.innerHTML = `<div class="empty card"><b>ابدأ بإضافة مكونات المطبخ</b><br>الدجاج، الخبز، الثوم، البطاطس، الصوصات… ثم اكتب لكل صنف في الكاشير وصفته، وسجّل أول جرد. من بعدها يحسب البرنامج الرصيد بنفسه من المبيعات والفواتير.<br><span class="small muted">أسرع طريقة: أرسل لـ Claude المكونات والوصفات كما تعرفها، والصق النص الذي يعطيك إياه من زر «لصق من Claude».</span></div>`; return; }
   const d = today(), C = ktCounts(), first = C.find(c => G.some(g => has((c.qty || {})[g.id])));
   if (first && ktNeedOld(addDays(first.date, 1), el, renderKitchen)) return;
@@ -134,7 +158,7 @@ function ktIngs(el){
   const G = S.ingredients || [], d = today(), m0 = addDays(d, -29), ins = ktIn(m0, d);
   el.innerHTML = G.length ? `<div class="card tw"><table><thead><tr><th>المكوّن</th><th>الوحدة</th><th class="n">سعر الوحدة</th><th>مصدر السعر</th><th class="n">الحد الأدنى</th><th class="n">الوارد (30 يوماً)</th><th>أسماء أخرى</th></tr></thead><tbody>
     ${G.map(g => { const fromInv = ktInItems("0000-00-00", d).some(it => it.ing === g.id && n(it.a) > 0);
-      return `<tr class="click" data-kting="${esc(g.id)}"><td><b>${esc(g.name)}</b></td><td>${esc(g.unit || "")}</td><td class="n">${money(ktPrice(g, d))}</td><td class="small muted">${fromInv ? "آخر فاتورة" : "مُدخل يدوياً"}</td>
+      return `<tr class="click" data-kting="${esc(g.id)}"><td><b>${esc(g.name)}</b></td><td>${esc(g.unit || "")}</td><td class="n">${money(ktPrice(g, d))}</td><td class="small muted">${ktIsPrep(g) ? `محضّر: ${g.prep.lines.map(l => { const x = ktIng(l.ing); return x ? `${esc(x.name)} ${ktQ(l.q)}` : ""; }).filter(Boolean).join(" + ")} ← ${ktQ(g.prep.out)} ${esc(g.unit || "")}${ktBatchIn(g) ? ` (فقد ${pct(1 - n(g.prep.out) / ktBatchIn(g))})` : ""}` : fromInv ? "آخر فاتورة" : "مُدخل يدوياً"}</td>
         <td class="n num">${n(g.min) ? ktQ(g.min) : "—"}</td><td class="n num">${ktQ(ins.get(g.id) || 0)}</td><td class="small muted">${esc((g.aliases || []).join("، "))}</td></tr>`; }).join("")}</tbody></table></div>`
     : `<div class="empty card">لا توجد مكونات بعد. أضفها من «مكوّن جديد» أو «لصق من Claude».</div>`;
   el.querySelectorAll("[data-kting]").forEach(tr => tr.onclick = () => ktOpenIng(tr.dataset.kting));
@@ -169,8 +193,9 @@ function ktVar(el){
   const c0 = before.find(c => c.id === S.ktV0), a = addDays(c0.date, 1), b = c1.date;
   if (ktNeedOld(a, el, renderKitchen)) return;
   const cons = ktCons(a, b), ins = ktIn(a, b), days = daysBetween(a, b);
-  const rows = G.filter(g => has((c0.qty || {})[g.id]) && has((c1.qty || {})[g.id])).map(g => {
-    const o = n(c0.qty[g.id]), i = ins.get(g.id) || 0, u = cons.use.get(g.id) || 0, ex = o + i - u, ac = n(c1.qty[g.id]), df = ac - ex, p = ktPrice(g, b);
+  ktEq = new WeakMap();
+  const rows = ktRaws().filter(g => has((c0.qty || {})[g.id]) && has((c1.qty || {})[g.id])).map(g => {
+    const o = ktCountRaw(c0, g.id), i = ins.get(g.id) || 0, u = cons.use.get(g.id) || 0, ex = o + i - u, ac = ktCountRaw(c1, g.id), df = ac - ex, p = ktPrice(g, b);
     return {g, o, i, u, ex, ac, df, val: df * p, rel: u > 0 ? df / u : null}; }).sort((p, q) => p.val - q.val);
   const loss = sumBy(rows.filter(r => r.val < 0), r => r.val), gain = sumBy(rows.filter(r => r.val > 0), r => r.val), sales = cons.amt;
   const opt = (L, v) => L.map(c => `<option value="${esc(c.id)}" ${c.id === v ? "selected" : ""}>${dmy(c.date)}</option>`).join("");
@@ -200,15 +225,39 @@ function ktOpenIng(id){
       <div class="f"><label for="kg_m">الحد الأدنى للطلب</label><input id="kg_m" type="number" step="0.001" min="0" inputmode="decimal" value="${x && n(x.min) ? x.min : ""}"></div>
       <div class="f"><label for="kg_s">المورد المعتاد</label><input id="kg_s" list="kg_sl" value="${esc(x ? x.supplier || "" : "")}"><datalist id="kg_sl">${(S.suppliers || []).map(s => `<option value="${esc(s.name)}">`).join("")}</datalist></div>
       <div class="f wide"><label for="kg_a">أسماء أخرى (يُعرف بها في الفواتير، مفصولة بفاصلة)</label><input id="kg_a" value="${esc(x ? (x.aliases || []).join("، ") : "")}" placeholder="دجاج مبرد، صدور"></div></div>
+    <label class="small" style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="kg_pp" ${ktIsPrep(x) ? "checked" : ""}> مكوّن محضّر في المطبخ (يُصنع من مكونات أخرى)</label>
+    <div class="sp-box" id="kg_pbox" ${ktIsPrep(x) ? "" : "hidden"}><div class="sp-head"><b>دفعة التحضير</b><span class="small muted">مكونات دفعة واحدة، وكم تُنتج بعد الفقد (التنظيف، الاحتراق والتبخر على النار…)</span></div>
+      <div id="kg_prows"></div><div class="actions"><button type="button" class="btn ghost sm" id="kg_padd">+ مكوّن</button></div>
+      <div class="grid g2"><div class="f"><label for="kg_out">ناتج الدفعة</label><input id="kg_out" type="number" step="0.001" min="0" inputmode="decimal" value="${ktIsPrep(x) ? x.prep.out : ""}"></div><div class="f"><span class="small" id="kg_psum" style="margin-top:26px"></span></div></div></div>
     ${x ? `<p class="small muted" style="margin:0">سعر الوحدة الآن: <b class="num">${fmt(ktPrice(x, d))}</b> ر.س ${ktInItems("0000-00-00", d).some(it => it.ing === x.id && n(it.a) > 0) ? "(من آخر فاتورة)" : ""}</p>` : ""}
     <div class="actions"><button class="btn" type="submit">حفظ</button><button class="btn ghost" type="button" id="kg_x">إغلاق</button>${x && S.canEdit ? `<button class="btn danger sm" type="button" id="kg_del">حذف</button>` : ""}</div></form>`;
   $("#modal").classList.add("open"); $("#kg_x").onclick = closeModal;
   if ($("#kg_del")) armDelete($("#kg_del"), async () => { if (await archive("ingredients", id)) closeModal(); });
+  const PL = ktIsPrep(x) ? x.prep.lines.map(l => ({...l})) : [{ing:"", q:""}], others = (S.ingredients || []).filter(g => g.id !== id);
+  const pDraw = () => {
+    $("#kg_prows").innerHTML = PL.map((l, i) => { const g = ktIng(l.ing);
+      return `<div class="sp-row"><select data-kpi="${i}"><option value="">— المكوّن —</option>${others.map(z => `<option value="${esc(z.id)}" ${z.id === l.ing ? "selected" : ""}>${esc(z.name)} (${esc(z.unit || "")})</option>`).join("")}</select>
+        <input data-kpq="${i}" type="number" step="0.001" min="0" inputmode="decimal" placeholder="الكمية" value="${l.q === "" ? "" : l.q}"><span class="small muted" style="min-width:40px">${g ? esc(g.unit || "") : ""}</span>
+        <button type="button" class="btn danger sm" data-kpd="${i}">×</button></div>`; }).join("");
+    const inW = sumBy(PL, l => { const g = ktIng(l.ing); return g && /كجم|لتر/.test(g.unit || "") ? n(l.q) : 0; }), out = n($("#kg_out").value), cost = sumBy(PL, l => { const g = ktIng(l.ing); return g ? n(l.q) * ktPrice(g) : 0; });
+    $("#kg_psum").innerHTML = out > 0 ? `${inW ? `الفقد <b class="num">${pct(1 - out / inW)}</b> · ` : ""}تكلفة ${esc($("#kg_u").value || "الوحدة")} <b class="num">${fmt(cost / out)}</b>` : "";
+    document.querySelectorAll("[data-kpi]").forEach(e => e.onchange = () => { PL[+e.dataset.kpi].ing = e.value; pDraw(); });
+    document.querySelectorAll("[data-kpq]").forEach(e => e.onchange = () => { PL[+e.dataset.kpq].q = e.value; pDraw(); });
+    document.querySelectorAll("[data-kpd]").forEach(b => b.onclick = () => { PL.splice(+b.dataset.kpd, 1); if (!PL.length) PL.push({ing:"", q:""}); pDraw(); }); };
+  pDraw(); $("#kg_out").oninput = pDraw; $("#kg_pp").onchange = () => { $("#kg_pbox").hidden = !$("#kg_pp").checked; };
+  $("#kg_padd").onclick = () => { PL.push({ing:"", q:""}); pDraw(); };
   $("#fkg").onsubmit = async e => { e.preventDefault();
     const name = normName($("#kg_n").value); if (!name) return;
     const dup = (S.ingredients || []).find(g => g.id !== id && ktKey(g.name) === ktKey(name)); if (dup){ toast(`المكوّن «${dup.name}» موجود`); return; }
     const data = {...(x ? strip(x) : {}), name, unit:$("#kg_u").value.trim() || "كجم", price: $("#kg_p").value === "" ? null : n($("#kg_p").value), min: n($("#kg_m").value) || null, supplier: $("#kg_s").value.trim() ? supKey($("#kg_s").value) : "",
       aliases:[...new Set($("#kg_a").value.split(/[،,]/).map(s => normName(s)).filter(Boolean))]};
+    data.prep = null;
+    if ($("#kg_pp").checked){ const lines = PL.filter(l => l.ing && n(l.q) > 0).map(l => ({ing:l.ing, q:Math.round(n(l.q) * 1000) / 1000})), out = Math.round(n($("#kg_out").value) * 1000) / 1000;
+      if (!lines.length || !(out > 0)){ toast("أدخل مكونات الدفعة وناتجها"); return; }
+      /* a prepared ingredient may not be made, directly or further down, from itself */
+      const loops = (gid, seen) => { const g = gid === id ? {prep:{out, lines}} : ktIng(gid); if (!ktIsPrep(g)) return false; return g.prep.lines.some(l => l.ing === id || (!seen.has(l.ing) && loops(l.ing, new Set([...seen, l.ing])))); };
+      if (id && loops(id, new Set())){ toast("المكوّن لا يُصنع من نفسه"); return; }
+      data.prep = {out, lines}; }
     if (await recWrite("ingredients", id || null, data, null, "تم حفظ المكوّن")) closeModal(); };
 }
 
@@ -219,7 +268,7 @@ function ktOpenRecipe(menuId){
   if (!L.length) L = [{ing:"", q:""}];
   const draw = () => {
     $("#kr_rows").innerHTML = L.map((l, i) => { const g = ktIng(l.ing);
-      return `<div class="sp-row"><select data-kri="${i}" aria-label="المكوّن"><option value="">— المكوّن —</option>${G.map(z => `<option value="${esc(z.id)}" ${z.id === l.ing ? "selected" : ""}>${esc(z.name)} (${esc(z.unit || "")})</option>`).join("")}</select>
+      return `<div class="sp-row"><select data-kri="${i}" aria-label="المكوّن"><option value="">— المكوّن —</option>${G.map(z => `<option value="${esc(z.id)}" ${z.id === l.ing ? "selected" : ""}>${esc(z.name)} (${esc(z.unit || "")})${ktIsPrep(z) ? " · محضّر" : ""}</option>`).join("")}</select>
         <input data-krq="${i}" type="number" step="0.001" min="0" inputmode="decimal" placeholder="الكمية" value="${l.q === "" ? "" : l.q}" aria-label="الكمية"><span class="small muted" style="min-width:64px">${g ? esc(g.unit || "") : ""}${g && n(l.q) ? ` · ${fmt(n(l.q) * ktPrice(g))}` : ""}</span>
         <button type="button" class="btn danger sm" data-krd="${i}" aria-label="حذف">×</button></div>`; }).join("");
     const cost = sumBy(L, l => { const g = ktIng(l.ing); return g ? n(l.q) * ktPrice(g) : 0; }), price = n(m.price);
@@ -246,13 +295,13 @@ function ktOpenCount(id){
   $("#sheet").innerHTML = `<form class="entry" id="fkc"><h3 style="margin:0">${x ? "تعديل جرد" : "جرد المكونات"}</h3>
     <div class="grid g2"><div class="f"><label for="kc_d">تاريخ الجرد</label><input id="kc_d" type="date" required max="${today()}" value="${d0}"></div>
       <div class="f"><label for="kc_n">ملاحظات</label><input id="kc_n" value="${esc(x ? x.notes || "" : "")}"></div></div>
-    <p class="small muted" style="margin:0">الجرد يمثل الكمية في <b>نهاية</b> اليوم المختار. اترك الخانة فارغة لما لم تجرده. «المتوقع» يحسبه البرنامج من الجرد السابق والفواتير والمبيعات.</p>
+    <p class="small muted" style="margin:0">المحضّر (مثل الشاورما المتبلة على الأسياخ) يُعدّ كما هو، ويحسبه البرنامج بما صُنع منه. الجرد يمثل الكمية في <b>نهاية</b> اليوم المختار. اترك الخانة فارغة لما لم تجرده. «المتوقع» يحسبه البرنامج من الجرد السابق والفواتير والمبيعات.</p>
     <div class="tw"><table><thead><tr><th>المكوّن</th><th class="n">المتوقع</th><th>المعدود</th></tr></thead><tbody id="kc_rows"></tbody></table></div>
     <div class="actions"><button class="btn" type="submit">حفظ الجرد</button><button class="btn ghost" type="button" id="kc_x">إغلاق</button>${x && S.canEdit ? `<button class="btn danger sm" type="button" id="kc_del">حذف</button>` : ""}</div></form>`;
   $("#modal").classList.add("open"); $("#kc_x").onclick = closeModal;
   const rowsFor = d => { const st = ktStock(addDays(d, -1)), use = ktCons(d, d).use, ins = ktIn(d, d);
-    $("#kc_rows").innerHTML = G.map(g => { const s = st.get(g.id), ex = s ? s.qty + (ins.get(g.id) || 0) - (use.get(g.id) || 0) : null, v = x && has((x.qty || {})[g.id]) ? x.qty[g.id] : "";
-      return `<tr><td><b>${esc(g.name)}</b><small class="muted"> ${esc(g.unit || "")}</small></td><td class="n num">${ex == null ? "—" : ktQ(ex)}</td><td><input data-kcq="${esc(g.id)}" type="number" step="0.001" min="0" inputmode="decimal" value="${v}" style="max-width:140px"></td></tr>`; }).join(""); };
+    $("#kc_rows").innerHTML = [...G].sort((p, q) => ktIsPrep(p) - ktIsPrep(q)).map(g => { const s = ktIsPrep(g) ? null : st.get(g.id), ex = s ? s.qty + (ins.get(g.id) || 0) - (use.get(g.id) || 0) : null, v = x && has((x.qty || {})[g.id]) ? x.qty[g.id] : "";
+      return `<tr><td><b>${esc(g.name)}</b><small class="muted"> ${esc(g.unit || "")}${ktIsPrep(g) ? " · محضّر" : ""}</small></td><td class="n num">${ex == null ? "—" : ktQ(ex)}</td><td><input data-kcq="${esc(g.id)}" type="number" step="0.001" min="0" inputmode="decimal" value="${v}" style="max-width:140px"></td></tr>`; }).join(""); };
   rowsFor(d0); $("#kc_d").onchange = () => { const keep = {}; document.querySelectorAll("[data-kcq]").forEach(i => keep[i.dataset.kcq] = i.value); rowsFor($("#kc_d").value || today()); document.querySelectorAll("[data-kcq]").forEach(i => { if (keep[i.dataset.kcq] !== undefined) i.value = keep[i.dataset.kcq]; }); };
   if ($("#kc_del")) armDelete($("#kc_del"), async () => { if (await archive("ingCounts", id)) closeModal(); });
   $("#fkc").onsubmit = async e => { e.preventDefault();
@@ -283,10 +332,16 @@ function ktPaste(){
       ${badL.length ? `<br>وصفات فيها مكوّن غير معروف (لن تُحفظ): ${badL.map(x => `<b>${esc(x.r.item)}</b> (${x.bad.map(esc).join("، ")})`).join("؛ ")}` : ""}</div>
       ${recs.some(x => x.m && !x.bad.length && ktRecipe(x.m.id).length) ? `<p class="small muted">الوصفات الموجودة لهذه الأصناف ستُستبدل.</p>` : ""}
       <div class="actions"><button class="btn" type="button" id="kp_go" ${newIngs.length || recs.some(x => x.m && !x.bad.length) ? "" : "disabled"}>حفظ</button></div>`;
-    $("#kp_go").onclick = async () => { $("#kp_go").disabled = true; let ki = 0, kr = 0;
-      for (const g of newIngs){ const ref = S.db.collection("ingredients").doc();
-        if (await recWrite("ingredients", ref.id, {name:normName(g.name), unit:g.unit || "كجم", price: has(g.price) ? n(g.price) : null, min: n(g.min) || null, aliases:(g.aliases || []).map(normName).filter(Boolean)}, "create", "")){ ki++;
-          S.ingredients = [...(S.ingredients || []), {id:ref.id, name:normName(g.name), aliases:(g.aliases || []).map(normName)}]; } }
+    $("#kp_go").onclick = async () => { $("#kp_go").disabled = true; let ki = 0, kr = 0; const made = new Map();
+      for (const g of newIngs){ const ref = S.db.collection("ingredients").doc(), data = {name:normName(g.name), unit:g.unit || "كجم", price: has(g.price) ? n(g.price) : null, min: n(g.min) || null, aliases:(g.aliases || []).map(normName).filter(Boolean), supplier: g.supplier ? supKey(g.supplier) : ""};
+        if (await recWrite("ingredients", ref.id, data, "create", "")){ ki++; made.set(ref.id, data);
+          S.ingredients = [...(S.ingredients || []), {id:ref.id, ...data}]; } }
+      /* prepared ones: their batch, once every ingredient it names exists */
+      for (const g of (J.ingredients || [])) if (g && g.name && g.prep && n(g.prep.out) > 0 && Array.isArray(g.prep.lines)){ const me = ktFind(g.name); if (!me) continue;
+        const lines = g.prep.lines.map(l => ({ing:(ktFind(l.ing) || {}).id, q:Math.round(n(l.q) * 1000) / 1000})).filter(l => l.ing && l.ing !== me.id && l.q > 0);
+        const raw = made.get(me.id) || strip((S.raw.ingredients || []).find(z => z.id === me.id) || me);
+        if (lines.length){ const i = S.ingredients.findIndex(z => z.id === me.id), pr = {out:Math.round(n(g.prep.out) * 1000) / 1000, lines}; if (i >= 0) S.ingredients[i] = {...S.ingredients[i], prep:pr};
+          await recWrite("ingredients", me.id, {...raw, prep:pr}, made.has(me.id) ? "edit" : null, ""); } }
       for (const x of recs) if (x.m && !x.bad.length){ const lines = [];
         for (const l of (x.r.lines || [])){ const g = ktFind(l.ing); if (g && n(l.q) > 0){ const e2 = lines.find(z => z.ing === g.id); if (e2) e2.q = Math.round((e2.q + n(l.q)) * 1000) / 1000; else lines.push({ing:g.id, q:Math.round(n(l.q) * 1000) / 1000}); } }
         if (lines.length && await recWrite("recipes", x.m.id, {name:x.m.name || "", lines}, null, "")) kr++; }
@@ -295,3 +350,50 @@ function ktPaste(){
 }
 
 VIEWS.kitchen = {v:viewKitchen, bind:bindKitchen, list:renderKitchen};
+
+/* ================= التحضير: دفعات المطبخ ونسبة الناتج الفعلية =================
+   acc_batches/{id} = {date, ing (a prepared ingredient), inW (what went in, kg), outW (what came out), notes}
+   The standard yield is the prepared ingredient's batch (out ÷ its input weight); each batch logged shows the actual yield,
+   and what the gap cost. The stock and the variance use the standard; logging the batches shows where the gap comes from. */
+const ktStdYield = g => { const w = ktBatchIn(g); return w > 0 ? n(g.prep.out) / w : null; };
+function ktBatches(el){
+  const P = (S.ingredients || []).filter(ktIsPrep);
+  if (!P.length){ el.innerHTML = `<div class="empty card">لا توجد مكونات محضّرة بعد.<br>عرّف مثلاً «خلطة شاورما دجاج» (دجاج + توابل + زبادي + زيت… ← الناتج بعد التنظيف)، ثم «شاورما دجاج مشوية» (من الخلطة ← الناتج بعد الشوي بفقد 30–40%)، من «مكوّن جديد» ← مكوّن محضّر.</div>`; return; }
+  const B = [...(S.batches || [])].sort((a, b) => (b.date || "").localeCompare(a.date || "")), d30 = addDays(today(), -29);
+  const sum = P.map(g => { const std = ktStdYield(g), L = B.filter(b => b.ing === g.id && b.date >= d30 && n(b.inW) > 0), inW = sumBy(L, b => n(b.inW)), outW = sumBy(L, b => n(b.outW));
+    const act = inW > 0 ? outW / inW : null, gap = std != null ? inW * std - outW : 0; return {g, std, n:L.length, inW, outW, act, gap, val: gap * ktPrice(g)}; });
+  el.innerHTML = `<div class="card tw" style="margin-bottom:14px"><table><thead><tr><th>المحضّر</th><th class="n">نسبة الناتج المعيارية</th><th class="n">الفعلية (30 يوماً)</th><th class="n">الدفعات</th><th class="n">الداخل</th><th class="n">الناتج</th><th class="n">نقص عن المعيار</th><th class="n">قيمته</th><th></th></tr></thead><tbody>
+    ${sum.map(r => `<tr><td><b>${esc(r.g.name)}</b></td><td class="n num">${r.std == null ? "—" : pct(r.std)}</td>
+      <td class="n">${r.act == null ? "—" : `<b class="num" style="color:${r.std != null && r.act < r.std - 0.02 ? "var(--bad,#C62828)" : "#1B7A57"}">${pct(r.act)}</b>`}</td><td class="n num">${r.n}</td>
+      <td class="n num">${ktQ(r.inW)}</td><td class="n num">${ktQ(r.outW)}</td><td class="n num">${r.n ? ktQ(r.gap) : "—"}</td><td class="n">${r.n ? money(r.val) : "—"}</td>
+      <td>${r.n >= 3 && r.std != null && r.act != null && Math.abs(r.act - r.std) > 0.005 && S.canEdit ? `<button class="btn ghost sm" type="button" data-kbstd="${esc(r.g.id)}" data-y="${r.act}">اعتماد الفعلية معياراً</button>` : ""}</td></tr>`).join("")}</tbody></table></div>
+    <div class="actions" style="justify-content:space-between"><h3 style="margin:0">سجل دفعات التحضير</h3>${S.canWrite ? `<button class="btn" type="button" id="kb_new">تسجيل دفعة</button>` : ""}</div>
+    <div class="card tw"><table><thead><tr><th>التاريخ</th><th>المحضّر</th><th class="n">الداخل</th><th class="n">الناتج</th><th class="n">نسبة الناتج</th><th class="n">المعيارية</th><th>ملاحظات</th></tr></thead><tbody>
+    ${B.slice(0, 80).map(b => { const g = ktIng(b.ing), std = g ? ktStdYield(g) : null, y = n(b.inW) ? n(b.outW) / n(b.inW) : null;
+      return `<tr class="click" data-kb="${esc(b.id)}"><td class="num">${dmy(b.date)}</td><td>${esc(g ? g.name : "—")}</td><td class="n num">${ktQ(b.inW)}</td><td class="n num">${ktQ(b.outW)}</td>
+        <td class="n">${y == null ? "—" : `<b class="num" style="color:${std != null && y < std - 0.02 ? "var(--bad,#C62828)" : "inherit"}">${pct(y)}</b>`}</td><td class="n num">${std == null ? "—" : pct(std)}</td><td class="small muted">${esc(b.notes || "")}</td></tr>`; }).join("") || `<tr><td colspan="7" class="empty">لم تُسجَّل دفعات بعد</td></tr>`}</tbody></table></div>
+    <p class="small muted">سجّل وزن كل دفعة قبل وبعد: مثلاً 20 كجم خلطة على الأسياخ ← 13 كجم شاورما بعد الشوي = 65%. الفرق عن المعيار يظهر هنا بقيمته، ويفسّر جزءاً من الفرق بين النظري والفعلي.</p>`;
+  if ($("#kb_new")) $("#kb_new").onclick = () => ktOpenBatch();
+  el.querySelectorAll("[data-kb]").forEach(tr => tr.onclick = () => ktOpenBatch(tr.dataset.kb));
+  el.querySelectorAll("[data-kbstd]").forEach(b => b.onclick = async () => { const g = ktIng(b.dataset.kbstd), y = n(b.dataset.y), w = ktBatchIn(g); if (!g || !w) return;
+    if (await recWrite("ingredients", g.id, {...strip(g), prep:{...g.prep, out:Math.round(w * y * 1000) / 1000}}, null, `صارت نسبة ناتج ${g.name} ${pct(y)}`)) renderKitchen(); });
+}
+function ktOpenBatch(id){
+  const P = (S.ingredients || []).filter(ktIsPrep), x = id ? (S.batches || []).find(b => b.id === id) : null;
+  $("#sheet").innerHTML = `<form class="entry" id="fkb"><h3 style="margin:0">${x ? "تعديل دفعة" : "دفعة تحضير"}</h3>
+    <div class="grid g2"><div class="f"><label for="kb_d">التاريخ</label><input id="kb_d" type="date" required max="${today()}" value="${x ? x.date : today()}"></div>
+      <div class="f"><label for="kb_g">المحضّر</label><select id="kb_g">${P.map(g => `<option value="${esc(g.id)}" ${x && x.ing === g.id ? "selected" : ""}>${esc(g.name)}</option>`).join("")}</select></div>
+      <div class="f"><label for="kb_i">الداخل (كجم)</label><input id="kb_i" type="number" step="0.001" min="0" required inputmode="decimal" value="${x ? x.inW : ""}"></div>
+      <div class="f"><label for="kb_o">الناتج (كجم)</label><input id="kb_o" type="number" step="0.001" min="0" required inputmode="decimal" value="${x ? x.outW : ""}"></div>
+      <div class="f wide"><label for="kb_n">ملاحظات</label><input id="kb_n" value="${esc(x ? x.notes || "" : "")}"></div></div>
+    <p class="small" id="kb_y"></p>
+    <div class="actions"><button class="btn" type="submit">حفظ</button><button class="btn ghost" type="button" id="kb_x">إغلاق</button>${x && S.canEdit ? `<button class="btn danger sm" type="button" id="kb_del">حذف</button>` : ""}</div></form>`;
+  $("#modal").classList.add("open"); $("#kb_x").onclick = closeModal;
+  const y = () => { const g = ktIng($("#kb_g").value), i = n($("#kb_i").value), o = n($("#kb_o").value), std = g ? ktStdYield(g) : null;
+    $("#kb_y").innerHTML = i > 0 && o > 0 ? `نسبة الناتج <b class="num">${pct(o / i)}</b> (الفقد ${pct(1 - o / i)})${std != null ? ` · المعيارية <b class="num">${pct(std)}</b>` : ""}` : ""; };
+  ["#kb_g","#kb_i","#kb_o"].forEach(s => $(s).oninput = y); y();
+  if ($("#kb_del")) armDelete($("#kb_del"), async () => { if (await archive("batches", id)) closeModal(); });
+  $("#fkb").onsubmit = async e => { e.preventDefault(); const i = n($("#kb_i").value), o = n($("#kb_o").value);
+    if (!(i > 0) || !(o > 0)){ toast("أدخل الداخل والناتج"); return; } if (o > i * 1.5){ toast("الناتج أكبر بكثير من الداخل؛ راجع الأرقام"); return; }
+    if (await recWrite("batches", id || null, {date:$("#kb_d").value, ing:$("#kb_g").value, inW:Math.round(i * 1000) / 1000, outW:Math.round(o * 1000) / 1000, notes:$("#kb_n").value.trim()}, null, "تم حفظ الدفعة")) closeModal(); };
+}

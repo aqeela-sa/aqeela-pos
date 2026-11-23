@@ -32,7 +32,7 @@ function ktUseByDay(a, b){
     if (o.test || o.status !== "paid") continue;
     const d = pfDayOf(o, sday); if (!d || d < a || d > b) continue;
     const m = days.get(d) || new Map(); days.set(d, m);
-    for (const l of (o.lines || [])) for (const u of [l, ...(l.mods || [])]) for (const r of ktRecipe(u.id || u.ref)) m.set(r.ing, (m.get(r.ing) || 0) + n(l.qty) * n(r.q));
+    for (const l of (o.lines || [])) for (const u of [l, ...(l.mods || [])]) for (const r of ktRecipe(u.id || u.ref)) ktRawAdd(m, r.ing, n(l.qty) * n(r.q));
   }
   return days;
 }
@@ -44,7 +44,7 @@ function poForecast(cover){
   for (let i = 1; i <= cover; i++){
     const d = addDays(t, i), same = [7, 14, 21, 28].map(k => addDays(d, -k)).filter(x => x < t && x >= addDays(t, -28));
     const seen = same.filter(x => past.has(x));
-    for (const g of (S.ingredients || [])){
+    for (const g of ktRaws()){
       const v = seen.length ? sumBy(seen, x => past.get(x).get(g.id) || 0) / same.length : (avg14.get(g.id) || 0);
       out.set(g.id, (out.get(g.id) || 0) + v);
     }
@@ -57,7 +57,7 @@ const poRound = (q, unit) => { const u = String(unit || ""); return /كجم|لت
 /* the suggested list: what each ingredient needs to cover the coming days and keep its minimum, less stock and open orders */
 function poSuggest(){
   const L = poLim(), st = ktStock(today()), fc = poForecast(L.cover), oo = poOnOrder();
-  return (S.ingredients || []).map(g => { const x = st.get(g.id), have = x ? Math.max(0, x.qty) : null, need = (fc.get(g.id) || 0) + n(g.min), on = oo.get(g.id) || 0;
+  return ktRaws().map(g => { const x = st.get(g.id), have = x ? Math.max(0, x.qty) : null, need = (fc.get(g.id) || 0) + n(g.min), on = oo.get(g.id) || 0;
     const want = have == null ? null : need - have - on;
     return {g, have, fc: fc.get(g.id) || 0, min: n(g.min), on, q: want != null && want > 1e-6 ? poRound(want, g.unit) : 0, p: ktPrice(g, today()), sup: poSupOf(g), noCount: have == null}; });
 }
