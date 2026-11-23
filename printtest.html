@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="ar" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>تجربة طابعة إبسون</title>
+<style>body{font-family:-apple-system,system-ui,sans-serif;margin:20px;max-width:640px}input{font-size:18px;padding:8px;width:220px;direction:ltr}
+button{display:block;width:100%;font-size:17px;padding:12px;margin:8px 0;border-radius:10px;border:1px solid #bbb;background:#f6f6f6}
+pre{white-space:pre-wrap;direction:ltr;text-align:left;background:#f3f3f3;padding:10px;border-radius:8px;font-size:13px}</style></head>
+<body>
+<h2>تجربة طابعة إبسون (ePOS-Print)</h2>
+<p>عنوان الطابعة: <input id="ip" value="192.168.100.28" inputmode="decimal"></p>
+<p>اضغط الأزرار بالترتيب، وانتظر النتيجة تحت الأزرار بعد كل ضغطة. كل زر يطبع ورقة صغيرة برقمه إذا نجح.</p>
+<button data-m="1">1 · الطريقة الحالية للكاشير</button>
+<button data-m="2">2 · بدون ترويسة SOAPAction</button>
+<button data-m="3">3 · طلب بسيط (text/plain)</button>
+<button data-m="4">4 · طلب بدون قراءة الرد (no-cors)</button>
+<button data-m="5">5 · بطريقة مكتبة إبسون (XHR)</button>
+<pre id="out"></pre>
+<script>
+const out = document.getElementById("out"), log = s => { out.textContent += s + "\n"; };
+const xml = n => `<?xml version="1.0" encoding="utf-8"?><s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"><s:Body><epos-print xmlns="http://www.epson-pos.com/schemas/2011/03/epos-print"><text>AQ TEST ${n}&#10;${new Date().toLocaleTimeString("en-GB")}&#10;</text><feed line="3"/><cut type="feed"/></epos-print></s:Body></s:Envelope>`;
+const url = () => `https://${document.getElementById("ip").value.trim()}/cgi-bin/epos/service.cgi?devid=local_printer&timeout=10000`;
+async function run(m){
+  log(`— ${m}: ${new Date().toLocaleTimeString("en-GB")}`);
+  const ac = new AbortController(), tm = setTimeout(() => ac.abort(), 15000);
+  try {
+    if (m === 5){
+      await new Promise(res => { const x = new XMLHttpRequest(); x.open("POST", url(), true);
+        x.setRequestHeader("Content-Type", "text/xml; charset=utf-8"); x.setRequestHeader("If-Modified-Since", "Thu, 01 Jan 1970 00:00:00 GMT"); x.setRequestHeader("SOAPAction", '""');
+        x.onload = () => { log(`   status ${x.status}: ${x.responseText.slice(0, 300)}`); res(); };
+        x.onerror = () => { log("   XHR error (no response readable)"); res(); }; x.ontimeout = () => { log("   timeout"); res(); }; x.timeout = 15000; x.send(xml(5)); });
+      return;
+    }
+    const opt = m === 1 ? {method:"POST", headers:{"Content-Type":"text/xml; charset=utf-8", "SOAPAction":'""'}, body:xml(1)}
+      : m === 2 ? {method:"POST", headers:{"Content-Type":"text/xml; charset=utf-8"}, body:xml(2)}
+      : m === 3 ? {method:"POST", headers:{"Content-Type":"text/plain;charset=UTF-8"}, body:xml(3)}
+      : {method:"POST", mode:"no-cors", headers:{"Content-Type":"text/plain;charset=UTF-8"}, body:xml(4)};
+    const r = await fetch(url(), {...opt, signal:ac.signal});
+    if (m === 4){ log(`   sent (response is hidden by design: type ${r.type}). Did paper 4 print?`); return; }
+    const t = await r.text(); log(`   status ${r.status}: ${t.slice(0, 300)}`);
+  } catch(e){ log(`   ERROR ${e.name}: ${e.message}`); }
+  finally { clearTimeout(tm); }
+}
+document.querySelectorAll("button[data-m]").forEach(b => b.onclick = () => run(+b.dataset.m));
+log("UA: " + navigator.userAgent);
+</script>
+</body></html>
