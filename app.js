@@ -4,7 +4,7 @@
 import * as F from "./fb.js";
 import { firebaseConfig } from "./firebase-config.js";
 
-const VERSION = "2.9.1";
+const VERSION = "2.9.2";
 const ADMIN_EMAIL = "abuabraj@gmail.com";
 const DEVICE_EMAIL = "cashier@aqeela-pos.app";
 const APP_NAME = `<span dir="ltr">Cashier AQ</span>`;
@@ -1228,17 +1228,51 @@ const ASB = { END: 0x00080000, NEAR: 0x00020000, COVER: 0x00000020, OFF: 0x00000
 const asbText = st => { st = +st || 0; return st & ASB.END ? "الورق انتهى" : st & ASB.COVER ? "غطاء الطابعة مفتوح" : st & ASB.CUT ? "مشكلة في قاطع الورق" : st & (ASB.MECH | ASB.UNREC | ASB.AUTOREC) ? "خطأ في الطابعة (أطفئها وشغّلها)" : st & ASB.OFF ? "الطابعة غير جاهزة" : ""; };
 const EPOS_CODES = { EPTR_REC_EMPTY: "الورق انتهى", EPTR_COVER_OPEN: "غطاء الطابعة مفتوح", EPTR_CUTTER: "مشكلة في قاطع الورق", EPTR_MECHANICAL: "خطأ في الطابعة (أطفئها وشغّلها)", EPTR_AUTOMATICAL: "خطأ مؤقت في الطابعة", EPTR_UNRECOVERABLE: "خطأ في الطابعة (أطفئها وشغّلها)", EX_TIMEOUT: "الطابعة لم تستجب في الوقت", DeviceNotFound: "رقم الجهاز في الطابعة ليس local_printer", ParameterError: "خطأ في أمر الطباعة", SchemaError: "خطأ في أمر الطباعة" };
 const eposQ = new Map();
+/* Safari 27 on iPad blocks pages from fetch()-ing devices on the local network, with no prompt and no setting (Foodics, an app, is not affected).
+   A form posted into a hidden frame is a navigation, which Safari still allows: the printer gets the same XML, but its reply can't be read,
+   so a frame that loads counts as printed. Used only on Safari 27+, and only after fetch() failed there. */
+const SAFARI_V = (() => { const u = navigator.userAgent; return /Safari\//.test(u) && !/CriOS|FxiOS|EdgiOS|Chrome|Android/.test(u) ? +((u.match(/Version\/(\d+)/) || [])[1] || 0) : 0; })();
+let eposForm = SAFARI_V >= 27 && !!ls.get("eposForm", false);
+const eposUrl = ip => `https://${ip}/cgi-bin/epos/service.cgi?devid=local_printer&timeout=10000`;
+const eposXml = body => `<?xml version="1.0" encoding="utf-8"?><s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"><s:Body><epos-print xmlns="http://www.epson-pos.com/schemas/2011/03/epos-print">${body}</epos-print></s:Body></s:Envelope>`;
+async function eposFetch(ip, xml) {
+  const ac = new AbortController(), tm = setTimeout(() => ac.abort(), 15000);
+  try {
+    const r = await fetch(eposUrl(ip), { method: "POST", headers: { "Content-Type": "text/xml; charset=utf-8", "SOAPAction": '""' }, body: xml, signal: ac.signal });
+    const t = await r.text(), st = +((t.match(/status="(\d+)"/) || [])[1] || 0);
+    if (!/success="true"/.test(t)) { const c = (t.match(/code="([^"]*)"/) || [])[1] || ""; const e = new Error(asbText(st) || EPOS_CODES[c] || ("رمز الخطأ " + (c || r.status))); e.st = st; throw e; }
+    return { st };
+  } finally { clearTimeout(tm); }
+}
+/* text/plain form encoding sends name + "=" + value: the XML is split inside a comment, so the "=" lands in <!--=--> */
+function eposFormPost(ip, xml) {
+  return new Promise((res, rej) => {
+    const cut = xml.indexOf(">", xml.indexOf("<epos-print")) + 1, name = "aqp" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+    const fr = document.createElement("iframe"); fr.name = name; fr.setAttribute("aria-hidden", "true"); fr.tabIndex = -1;
+    fr.style.cssText = "position:fixed;left:-10000px;top:0;width:1px;height:1px;border:0;visibility:hidden";
+    document.body.appendChild(fr);
+    let done = false, tm = 0;
+    const fin = ok => { if (done) return; done = true; clearTimeout(tm); setTimeout(() => fr.remove(), 1000);
+      if (ok) res({ st: 0 }); else { const e = new Error("timeout"); e.name = "AbortError"; rej(e); } };
+    setTimeout(() => { /* after the blank frame's own load */
+      fr.onload = () => fin(true); tm = setTimeout(() => fin(false), 20000);
+      const f = document.createElement("form"); f.method = "POST"; f.enctype = "text/plain"; f.action = eposUrl(ip); f.target = name; f.style.display = "none";
+      const i = document.createElement("input"); i.type = "hidden"; i.name = xml.slice(0, cut) + "<!--"; i.value = "-->" + xml.slice(cut); f.appendChild(i);
+      document.body.appendChild(f); f.submit(); f.remove();
+    }, 30);
+  });
+}
 function eposSend(ip, body) {
   const prev = eposQ.get(ip) || Promise.resolve();
   const job = prev.catch(() => {}).then(async () => {
-    const xml = `<?xml version="1.0" encoding="utf-8"?><s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"><s:Body><epos-print xmlns="http://www.epson-pos.com/schemas/2011/03/epos-print">${body}</epos-print></s:Body></s:Envelope>`;
-    const ac = new AbortController(), tm = setTimeout(() => ac.abort(), 15000);
-    try {
-      const r = await fetch(`https://${ip}/cgi-bin/epos/service.cgi?devid=local_printer&timeout=10000`, { method: "POST", headers: { "Content-Type": "text/xml; charset=utf-8", "SOAPAction": '""' }, body: xml, signal: ac.signal });
-      const t = await r.text(), st = +((t.match(/status="(\d+)"/) || [])[1] || 0);
-      if (!/success="true"/.test(t)) { const c = (t.match(/code="([^"]*)"/) || [])[1] || ""; const e = new Error(asbText(st) || EPOS_CODES[c] || ("رمز الخطأ " + (c || r.status))); e.st = st; throw e; }
-      return { st };
-    } finally { clearTimeout(tm); }
+    const xml = eposXml(body);
+    if (!eposForm) {
+      try { return await eposFetch(ip, xml); }
+      catch (e) { if (!(SAFARI_V >= 27 && e.name === "TypeError")) throw e; }
+    }
+    const r = await eposFormPost(ip, xml);
+    if (!eposForm) { eposForm = true; ls.set("eposForm", true); }
+    return r;
   });
   eposQ.set(ip, job); return job;
 }
@@ -1259,6 +1293,7 @@ function notePrinter(st, err) {
 }
 async function checkPrinter(manual) {
   if (S.device.printMode !== "epos" || !S.device.printerIp) return manual ? "طريقة الطباعة ليست طابعة إبسون عبر الشبكة" : null;
+  if (eposForm) { if (!manual) return null; eposForm = false; }
   try { const r = await eposSend(S.device.printerIp, ""); const m = asbText(r.st); notePrinter(r.st, m); return m || (r.st & ASB.NEAR ? "الطابعة جاهزة، والورق قارب على الانتهاء" : true); }
   catch (e) { const m = printErr(e, S.device.printerIp); notePrinter(e.st || 0, m); return m; }
 }
