@@ -745,7 +745,26 @@ async function shiftDrawer(sh) {
       ${sh.note ? `<p style="background:#FFF5E6;color:#92400E;padding:10px 12px;border-radius:10px;margin:12px 0 0">ملاحظة: ${esc(sh.note)}</p>` : ""}</div>
     ${(sh.moves || []).length ? `<div class="cx-sec"><h4>حركات الدرج</h4><ul class="cx-tl">${sh.moves.map(m => `<li><b>${m.kind === "in" ? "إيداع" : "صرف"} <span class="num">${nf(m.amount)}</span></b><small><span class="tm">${tm(m.at)}</span> · ${esc(m.reason)} · ${esc(m.by)}</small></li>`).join("")}</ul></div>` : ""}
     ${img ? `<div class="cx-sec"><h4>تقرير الوردية</h4><img src="${img}" alt="تقرير الوردية" style="width:300px;max-width:100%;border:1px solid #E7E7EB;border-radius:8px;display:block;margin:0 auto"></div>` : ""}`,
-    c ? `<button class="cx-btn pri" id="zp">${ic("print")}طباعة تقرير الوردية</button>` : "", d => { d.querySelector("#zp") && (d.querySelector("#zp").onclick = async () => A.printCanvas(await A.drawShiftReport(sh, []), true)); });
+    (c ? `<button class="cx-btn pri" id="zp">${ic("print")}طباعة تقرير الوردية</button>` : "")
+      + (A.S.role === "admin" ? `<button class="cx-btn" id="zt" style="margin-inline-start:auto">${sh.test ? "إرجاعها وردية حقيقية" : "تحويلها إلى تجريبية"}</button>` : ""),
+    d => { d.querySelector("#zp") && (d.querySelector("#zp").onclick = async () => A.printCanvas(await A.drawShiftReport(sh, []), true));
+      d.querySelector("#zt") && (d.querySelector("#zt").onclick = () => markShiftTest(sh, !sh.test, d.querySelector("#zt"))); });
+}
+/* the owner only: a shift run by mistake outside test mode (setup, printer trials) becomes test with all its orders, so it leaves the
+   reports, the shift list and the accounting import; nothing is deleted, and the same button turns it back */
+async function markShiftTest(sh, on, btn) {
+  if (sh.status === "open" && on) return A.toast("قفّل الوردية من الكاشير أولاً، ثم حوّلها إلى تجريبية", true);
+  btn.disabled = true;
+  try {
+    const os = (await A.F.getDocs(A.F.query(A.C("orders"), A.F.where("shiftId", "==", sh.id)))).docs.map(x => x.data());
+    const sum = r2(os.filter(isOk).reduce((s, o) => s + (+o.total || 0), 0));
+    if (!confirm(on ? `تحويل وردية ${dLab(sh.day)} (فتحت ${tm(sh.openedAt)}) و${os.length} طلب فيها بمبلغ ${nf(sum)} ر.س إلى تجريبية؟\nتخرج من التقارير والمحاسبة، ولا يُحذف شيء، ويمكن إرجاعها من نفس الزر.`
+      : `إرجاع وردية ${dLab(sh.day)} و${os.length} طلب فيها إلى المبيعات الحقيقية؟`)) { btn.disabled = false; return; }
+    const mark = on ? { test: true, testMarked: { at: Date.now(), by: "owner" } } : { test: false, testMarked: null };
+    await Promise.all([...os.map(o => A.F.updateDoc(A.D("orders", o.id), mark)), A.F.updateDoc(A.D("shifts", sh.id), mark)]);
+    cache.clear(); A.toast(on ? `تم: الوردية و${os.length} طلب صارت تجريبية` : "تم إرجاعها إلى المبيعات الحقيقية");
+    closeDrawer?.(); PAGES.shifts();
+  } catch (e) { btn.disabled = false; A.toast("تعذّر التحويل: " + (e?.code || e?.message || ""), true); }
 }
 
 /* ---------- العملاء: يُجمَّع كل رقم جوال في سطر واحد مهما تكرر طلبه ---------- */
