@@ -17,6 +17,8 @@ pre{white-space:pre-wrap;direction:ltr;text-align:left;background:#f3f3f3;paddin
 <button data-m="7">7 · مع طلب إذن الشبكة المحلية (private)</button>
 <button data-m="8">8 · نموذج مخفي داخل الصفحة (iframe)</button>
 <button data-m="9">9 · نموذج في نافذة منبثقة تُغلق تلقائياً</button>
+<button data-m="10">10 · مثل 8 لكن بعد 3 ثوانٍ من الضغط</button>
+<button data-m="11">11 · مثل 8 مع صورة بحجم إيصال حقيقي</button>
 <pre id="out"></pre>
 <script>
 const out = document.getElementById("out"), log = s => { out.textContent += s + "\n"; };
@@ -25,7 +27,8 @@ const url = () => `https://${document.getElementById("ip").value.trim()}/cgi-bin
 async function run(m){
   log(`— ${m}: ${new Date().toLocaleTimeString("en-GB")}`);
   const ac = new AbortController(), tm = setTimeout(() => ac.abort(), 15000);
-  if (m === 8 || m === 9){ clearTimeout(tm); formPost(m); return; }
+  if (m === 8 || m === 9 || m === 11){ clearTimeout(tm); formPost(m); return; }
+  if (m === 10){ clearTimeout(tm); log("   waiting 3s…"); setTimeout(() => formPost(10), 3000); return; }
   try {
     if (m === 5){
       await new Promise(res => { const x = new XMLHttpRequest(); x.open("POST", url(), true);
@@ -47,8 +50,12 @@ async function run(m){
   finally { clearTimeout(tm); }
 }
 /* top-level/iframe form POST (text/plain): the XML is split around an XML comment so the "=" the encoding adds falls inside it */
+function bigImg(){ const w = 576, h = 800, row = w / 8, b = new Uint8Array(row * h);
+  for (let y = 0; y < h; y++) if (y % 100 < 4) for (let i = 0; i < row; i++) b[y * row + i] = 0xff;
+  let s = ""; for (let i = 0; i < b.length; i++) s += String.fromCharCode(b[i]);
+  return `<image width="${w}" height="${h}" color="color_1" mode="mono">${btoa(s)}</image>`; }
 function formPost(m){
-  const x = xml(m), cut = x.indexOf("<feed"), name = x.slice(0, cut) + "<!--", value = "-->" + x.slice(cut);
+  const x = m === 11 ? xml(11).replace("<feed", bigImg() + "<feed") : xml(m), cut = x.indexOf("<feed"), name = x.slice(0, cut) + "<!--", value = "-->" + x.slice(cut);
   const f = document.createElement("form"); f.method = "POST"; f.enctype = "text/plain"; f.action = url();
   const i = document.createElement("input"); i.type = "hidden"; i.name = name; i.value = value; f.appendChild(i);
   let target = "aqp" + Date.now(), w = null;
