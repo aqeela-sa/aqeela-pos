@@ -4,7 +4,7 @@
 import * as F from "./fb.js";
 import { firebaseConfig } from "./firebase-config.js";
 
-const VERSION = "2.9.2";
+const VERSION = "2.9.3";
 const ADMIN_EMAIL = "abuabraj@gmail.com";
 const DEVICE_EMAIL = "cashier@aqeela-pos.app";
 const APP_NAME = `<span dir="ltr">Cashier AQ</span>`;
@@ -80,6 +80,27 @@ const ls = { get: (k, d) => { try { const v = localStorage.getItem("aq_" + k); r
   set: (k, v) => { try { localStorage.setItem("aq_" + k, JSON.stringify(v)); } catch {} } };
 let cartBack = false;
 async function sha(s) { const b = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s)); return [...new Uint8Array(b)].map(x => x.toString(16).padStart(2, "0")).join(""); }
+const SHA_K = new Uint32Array([0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5, 0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
+  0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da, 0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,
+  0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85, 0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
+  0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3, 0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2]);
+/* SHA-256 without await, identical to sha() */
+function sha256Hex(s) {
+  const m = new TextEncoder().encode(s), l = m.length, n = ((l + 9 + 63) >> 6) << 6, b = new Uint8Array(n); b.set(m); b[l] = 0x80;
+  const dv = new DataView(b.buffer); dv.setUint32(n - 4, (l * 8) >>> 0); dv.setUint32(n - 8, Math.floor(l / 0x20000000));
+  const H = [0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19], w = new Uint32Array(64), r = (x, k) => (x >>> k) | (x << (32 - k));
+  for (let o = 0; o < n; o += 64) {
+    for (let i = 0; i < 16; i++) w[i] = dv.getUint32(o + i * 4);
+    for (let i = 16; i < 64; i++) { const a = w[i - 15], c = w[i - 2]; w[i] = (w[i - 16] + (r(a, 7) ^ r(a, 18) ^ (a >>> 3)) + w[i - 7] + (r(c, 17) ^ r(c, 19) ^ (c >>> 10))) >>> 0; }
+    let [a, bb, c, d, e, f, g, h] = H;
+    for (let i = 0; i < 64; i++) {
+      const t1 = (h + (r(e, 6) ^ r(e, 11) ^ r(e, 25)) + ((e & f) ^ (~e & g)) + SHA_K[i] + w[i]) >>> 0, t2 = ((r(a, 2) ^ r(a, 13) ^ r(a, 22)) + ((a & bb) ^ (a & c) ^ (bb & c))) >>> 0;
+      h = g; g = f; f = e; e = (d + t1) >>> 0; d = c; c = bb; bb = a; a = (t1 + t2) >>> 0;
+    }
+    H[0] = (H[0] + a) >>> 0; H[1] = (H[1] + bb) >>> 0; H[2] = (H[2] + c) >>> 0; H[3] = (H[3] + d) >>> 0; H[4] = (H[4] + e) >>> 0; H[5] = (H[5] + f) >>> 0; H[6] = (H[6] + g) >>> 0; H[7] = (H[7] + h) >>> 0;
+  }
+  return H.map(x => x.toString(16).padStart(8, "0")).join("");
+}
 const rid = (n = 6) => [...crypto.getRandomValues(new Uint8Array(n))].map(x => "abcdefghjkmnpqrstuvwxyz23456789"[x % 31]).join("");
 function toast(t, bad) { $(".toast")?.remove(); const e = document.createElement("div"); e.className = "toast" + (bad ? " bad" : ""); e.textContent = t; document.body.append(e); setTimeout(() => e.remove(), 3200); }
 const bizDay = (t = Date.now()) => ymd(new Date(t - (S.config?.cutoff ?? 4) * 3600e3));
@@ -131,7 +152,7 @@ F.onAuthStateChanged(auth, u => {
   if (S.role === "other") return render("login", "هذا الحساب غير مصرّح له بالكاشير.");
   S.configReady = S.menuReady = false; render("boot");
   if (S.shift) { shiftSubId = ""; setShift(S.shift); }
-  S.unsub.push(F.onSnapshot(D("config", "main"), s => { S.config = s.exists() ? s.data() : null; S.configReady = true; migrate(); route(); },
+  S.unsub.push(F.onSnapshot(D("config", "main"), s => { S.config = s.exists() ? s.data() : null; S.configReady = true; migrate(); route(); loadLogo(); },
     e => { console.error(e); render("login", "تعذّر قراءة الإعدادات: " + (e.code || e.message)); }));
   /* الوردية المفتوحة على هذا الجهاز (لاسترجاعها إن فُقدت من ذاكرة الجهاز) */
   S.unsub.push(F.onSnapshot(F.query(C("shifts"), F.where("device", "==", S.dev), F.where("status", "==", "open")), s => {
@@ -717,8 +738,9 @@ function nextNo(day) {
   try { Object.keys(localStorage).filter(x => x.startsWith("aq_seq_") && x < "aq_seq_" + addDays(day, -7)).forEach(x => localStorage.removeItem(x)); } catch {}
   return n;
 }
-async function receiptCode(o) {
-  const h = await sha([S.config.receiptKey || S.config.salt, o.id, m2(o.total), o.ts, o.method].join("|"));
+/* synchronous (same SHA-256 as sha()), so a sale can print inside the tap that made it */
+function receiptCode(o) {
+  const h = sha256Hex([S.config.receiptKey || S.config.salt, o.id, m2(o.total), o.ts, o.method].join("|"));
   return parseInt(h.slice(0, 10), 16).toString(36).toUpperCase().padStart(7, "0").slice(-6);
 }
 /* التكلفة والتغليف */
@@ -762,13 +784,13 @@ async function complete(method, given, change, ord, pays) {
     const nt = PTT || ord.type, u = { status: "paid", method, given: cashIn ? r2(given) : null, change: cashIn ? r2(change) : 0, type: nt, paidAt: Date.now(), paidBy: S.cashier.name, ...(pays ? { pays } : {}) };
     if (nt !== ord.type) u.typeChanges = [...(ord.typeChanges || []), { from: ord.type, to: nt, at: u.paidAt, by: S.cashier.name }];
     if (ord.prep === "open") Object.assign(u, { prep: "done", deliveredAt: u.paidAt, deliveredBy: S.cashier.name });
-    const o = Object.assign(ord, u); o.code = await receiptCode(o); u.code = o.code;
+    const o = Object.assign(ord, u); o.code = receiptCode(o); u.code = o.code;
     fire(F.updateDoc(D("orders", o.id), u), "دفع الطلب"); keepLocal(o); drawTop();
     showDone(o); if (S.device.autoPrint) autoPrint(o, { receipt: true, drawer: cashIn });
     return;
   }
   const o = buildOrder({ method, given: cashIn ? r2(given) : null, change: cashIn ? r2(change) : 0, ...(pays ? { pays } : {}) });
-  o.code = await receiptCode(o);
+  o.code = receiptCode(o);
   fire(F.setDoc(D("orders", o.id), { ...o, savedAt: F.serverTimestamp() }), "الطلب");
   keepLocal(o);
   resetCart();
@@ -1173,8 +1195,10 @@ function loadLogo() {
   const src = S.config?.logo; if (!src) { logoImg = null; return Promise.resolve(); } if (src === logoSrc && logoImg) return Promise.resolve();
   return new Promise(res => { const im = new Image(); im.onload = () => { logoImg = im; logoSrc = src; res(); }; im.onerror = () => res(); im.src = src; });
 }
-async function drawReceipt(o) {
-  await loadLogo();
+const logoReady = () => !S.config?.logo || (!!logoImg && logoSrc === S.config.logo);
+async function drawReceipt(o) { await loadLogo(); return receiptCanvas(o); }
+/* synchronous once the logo is loaded: on Safari the print must leave inside the tap that made the order */
+function receiptCanvas(o) {
   const W = 576, M = 16, st = S.config.store, FONT = `-apple-system,"SF Arabic","Geeza Pro",Tahoma,sans-serif`;
   const cv = document.createElement("canvas"); cv.width = W; cv.height = 3000; const g = cv.getContext("2d");
   g.fillStyle = "#fff"; g.fillRect(0, 0, W, cv.height); g.fillStyle = "#000"; let y = 10;
@@ -1230,9 +1254,10 @@ const EPOS_CODES = { EPTR_REC_EMPTY: "الورق انتهى", EPTR_COVER_OPEN: "
 const eposQ = new Map();
 /* Safari 27 on iPad blocks pages from fetch()-ing devices on the local network, with no prompt and no setting (Foodics, an app, is not affected).
    A form posted into a hidden frame is a navigation, which Safari still allows: the printer gets the same XML, but its reply can't be read,
-   so a frame that loads counts as printed. Used only on Safari 27+, and only after fetch() failed there. */
+   so a frame that loads counts as printed. Safari lets that navigation through only inside the tap that started it (a print sent 3 s
+   later was dropped), so on Safari 27+ every print goes this way at once, submitted synchronously from the tap (sale, retry, test). */
 const SAFARI_V = (() => { const u = navigator.userAgent; return /Safari\//.test(u) && !/CriOS|FxiOS|EdgiOS|Chrome|Android/.test(u) ? +((u.match(/Version\/(\d+)/) || [])[1] || 0) : 0; })();
-let eposForm = SAFARI_V >= 27 && !!ls.get("eposForm", false);
+const eposForm = SAFARI_V >= 27;
 const eposUrl = ip => `https://${ip}/cgi-bin/epos/service.cgi?devid=local_printer&timeout=10000`;
 const eposXml = body => `<?xml version="1.0" encoding="utf-8"?><s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"><s:Body><epos-print xmlns="http://www.epson-pos.com/schemas/2011/03/epos-print">${body}</epos-print></s:Body></s:Envelope>`;
 async function eposFetch(ip, xml) {
@@ -1250,30 +1275,22 @@ function eposFormPost(ip, xml) {
     const cut = xml.indexOf(">", xml.indexOf("<epos-print")) + 1, name = "aqp" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
     const fr = document.createElement("iframe"); fr.name = name; fr.setAttribute("aria-hidden", "true"); fr.tabIndex = -1;
     fr.style.cssText = "position:fixed;left:-10000px;top:0;width:1px;height:1px;border:0;visibility:hidden";
-    document.body.appendChild(fr);
-    let done = false, tm = 0;
+    let done = false;
     const fin = ok => { if (done) return; done = true; clearTimeout(tm); setTimeout(() => fr.remove(), 1000);
       if (ok) res({ st: 0 }); else { const e = new Error("timeout"); e.name = "AbortError"; rej(e); } };
-    setTimeout(() => { /* after the blank frame's own load */
-      fr.onload = () => fin(true); tm = setTimeout(() => fin(false), 20000);
-      const f = document.createElement("form"); f.method = "POST"; f.enctype = "text/plain"; f.action = eposUrl(ip); f.target = name; f.style.display = "none";
-      const i = document.createElement("input"); i.type = "hidden"; i.name = xml.slice(0, cut) + "<!--"; i.value = "-->" + xml.slice(cut); f.appendChild(i);
-      document.body.appendChild(f); f.submit(); f.remove();
-    }, 30);
+    /* the blank frame's own load is ignored: it is same-origin and readable, the printer's answer is not */
+    fr.onload = () => { try { if (fr.contentWindow.location.href === "about:blank") return; } catch {} fin(true); };
+    const tm = setTimeout(() => fin(false), 12000);
+    document.body.appendChild(fr);
+    const f = document.createElement("form"); f.method = "POST"; f.enctype = "text/plain"; f.action = eposUrl(ip); f.target = name; f.style.display = "none";
+    const i = document.createElement("input"); i.type = "hidden"; i.name = xml.slice(0, cut) + "<!--"; i.value = "-->" + xml.slice(cut); f.appendChild(i);
+    document.body.appendChild(f); f.submit(); f.remove();
   });
 }
 function eposSend(ip, body) {
+  if (eposForm) return eposFormPost(ip, eposXml(body)); /* now, inside the tap; the printer queues jobs itself */
   const prev = eposQ.get(ip) || Promise.resolve();
-  const job = prev.catch(() => {}).then(async () => {
-    const xml = eposXml(body);
-    if (!eposForm) {
-      try { return await eposFetch(ip, xml); }
-      catch (e) { if (!(SAFARI_V >= 27 && e.name === "TypeError")) throw e; }
-    }
-    const r = await eposFormPost(ip, xml);
-    if (!eposForm) { eposForm = true; ls.set("eposForm", true); }
-    return r;
-  });
+  const job = prev.catch(() => {}).then(() => eposFetch(ip, eposXml(body)));
   eposQ.set(ip, job); return job;
 }
 /* receipts as raster images, each fed and cut; the cash drawer (if one is plugged into the printer) opens with the first */
@@ -1293,7 +1310,7 @@ function notePrinter(st, err) {
 }
 async function checkPrinter(manual) {
   if (S.device.printMode !== "epos" || !S.device.printerIp) return manual ? "طريقة الطباعة ليست طابعة إبسون عبر الشبكة" : null;
-  if (eposForm) { if (!manual) return null; eposForm = false; }
+  if (eposForm && !manual) return null; /* a background check can't reach the printer on Safari 27 */
   try { const r = await eposSend(S.device.printerIp, ""); const m = asbText(r.st); notePrinter(r.st, m); return m || (r.st & ASB.NEAR ? "الطابعة جاهزة، والورق قارب على الانتهاء" : true); }
   catch (e) { const m = printErr(e, S.device.printerIp); notePrinter(e.st || 0, m); return m; }
 }
@@ -1314,7 +1331,7 @@ async function printOrder(o, manual, quiet) { return printJob(o, { receipt: true
 async function printJob(o, what, manual, quiet) {
   const d = S.device, wantK = what.kitchen && d.kitchenMode !== "none", opts = { drawer: !!what.drawer && !!d.drawer };
   let rc = null, kc = null;
-  try { if (what.receipt) rc = await drawReceipt(o); if (wantK) kc = await drawKitchen(o); }
+  try { if (what.receipt) rc = logoReady() ? receiptCanvas(o) : await drawReceipt(o); if (wantK) kc = drawKitchen(o); }
   catch (e) { console.error(e); toast("تعذّر تجهيز الطباعة", true); return "تعذّر تجهيز الطباعة"; }
   if (!rc && !kc) { if (what.kitchen && !what.receipt && manual) toast("ورقة المطبخ مطفأة في إعدادات الجهاز"); return true; }
   if (d.printMode !== "epos" || d.kitchenMode !== "ip" || !kc) return printCanvas([rc, kc].filter(Boolean), manual, quiet, opts);
@@ -1325,7 +1342,7 @@ async function printJob(o, what, manual, quiet) {
   catch (e) { const m = "تعذّرت طباعة ورقة المطبخ: " + printErr(e, d.kitchenIp, "طابعة المطبخ"); if (!quiet) toast(m, true); return m; }
 }
 /* ورقة المطبخ: رقم الطلب كبير، النوع، الأصناف والإضافات والملاحظات، بدون أسعار */
-async function drawKitchen(o) {
+function drawKitchen(o) {
   const W = 576, M = 16, FONT = `-apple-system,"SF Arabic","Geeza Pro",Tahoma,sans-serif`;
   const cv = document.createElement("canvas"); cv.width = W; cv.height = 3000; const g = cv.getContext("2d");
   g.fillStyle = "#fff"; g.fillRect(0, 0, W, cv.height); g.fillStyle = "#000"; let y = 10;
@@ -1759,4 +1776,4 @@ function admVerify() {
 }
 
 /* expose for tests */
-window.__aq = { S, F, D, mgrCode, render, total, bizDay, drawReceipt, drawKitchen, raster, shiftCalc, drawShiftReport, packOf, orderCogs };
+window.__aq = { S, F, D, mgrCode, render, total, bizDay, drawReceipt, drawKitchen, raster, shiftCalc, drawShiftReport, packOf, orderCogs, sha256Hex };
