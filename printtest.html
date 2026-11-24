@@ -15,6 +15,8 @@ pre{white-space:pre-wrap;direction:ltr;text-align:left;background:#f3f3f3;paddin
 <button data-m="5">5 · بطريقة مكتبة إبسون (XHR)</button>
 <button data-m="6">6 · مع طلب إذن الشبكة المحلية (local)</button>
 <button data-m="7">7 · مع طلب إذن الشبكة المحلية (private)</button>
+<button data-m="8">8 · نموذج مخفي داخل الصفحة (iframe)</button>
+<button data-m="9">9 · نموذج في نافذة منبثقة تُغلق تلقائياً</button>
 <pre id="out"></pre>
 <script>
 const out = document.getElementById("out"), log = s => { out.textContent += s + "\n"; };
@@ -23,6 +25,7 @@ const url = () => `https://${document.getElementById("ip").value.trim()}/cgi-bin
 async function run(m){
   log(`— ${m}: ${new Date().toLocaleTimeString("en-GB")}`);
   const ac = new AbortController(), tm = setTimeout(() => ac.abort(), 15000);
+  if (m === 8 || m === 9){ clearTimeout(tm); formPost(m); return; }
   try {
     if (m === 5){
       await new Promise(res => { const x = new XMLHttpRequest(); x.open("POST", url(), true);
@@ -42,6 +45,18 @@ async function run(m){
     const t = await r.text(); log(`   status ${r.status}: ${t.slice(0, 300)}`);
   } catch(e){ log(`   ERROR ${e.name}: ${e.message}`); }
   finally { clearTimeout(tm); }
+}
+/* top-level/iframe form POST (text/plain): the XML is split around an XML comment so the "=" the encoding adds falls inside it */
+function formPost(m){
+  const x = xml(m), cut = x.indexOf("<feed"), name = x.slice(0, cut) + "<!--", value = "-->" + x.slice(cut);
+  const f = document.createElement("form"); f.method = "POST"; f.enctype = "text/plain"; f.action = url();
+  const i = document.createElement("input"); i.type = "hidden"; i.name = name; i.value = value; f.appendChild(i);
+  let target = "aqp" + Date.now(), w = null;
+  if (m === 8){ const fr = document.createElement("iframe"); fr.name = target; fr.style.cssText = "width:100%;height:120px;border:1px solid #ccc";
+    fr.onload = () => log("   iframe loaded (look at the box above: does it show success=\"true\"?)"); out.before(fr); }
+  else { w = window.open("about:blank", target); if (!w) { log("   popup blocked"); return; } setTimeout(() => { try { w.close(); log("   popup closed"); } catch(e){ log("   close failed " + e.message); } }, 4000); }
+  f.target = target; document.body.appendChild(f); f.submit(); f.remove();
+  log("   form sent. Did paper " + m + " print?");
 }
 document.querySelectorAll("button[data-m]").forEach(b => b.onclick = () => run(+b.dataset.m));
 const ipEl = document.getElementById("ip");
