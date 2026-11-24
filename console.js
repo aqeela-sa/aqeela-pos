@@ -757,7 +757,7 @@ async function markShiftTest(sh, on, btn) {
   try {
     const os = (await A.F.getDocs(A.F.query(A.C("orders"), A.F.where("shiftId", "==", sh.id)))).docs.map(x => x.data());
     /* an open shift with sales is still in use on a device; an empty one left open (another browser, a trial) can go */
-    if (sh.status === "open" && on && os.length) { btn.disabled = false; return A.toast("قفّل الوردية من الكاشير أولاً، ثم حوّلها إلى تجريبية", true); }
+    if (sh.status === "open" && on && os.some(o => !o.test)) { btn.disabled = false; return A.toast("قفّل الوردية من الكاشير أولاً، ثم حوّلها إلى تجريبية", true); }
     const sum = r2(os.filter(isOk).reduce((s, o) => s + (+o.total || 0), 0));
     if (!confirm(on ? `تحويل وردية ${dLab(sh.day)} (فتحت ${tm(sh.openedAt)}) و${os.length} طلب فيها بمبلغ ${nf(sum)} ر.س إلى تجريبية؟\nتخرج من التقارير والمحاسبة، ولا يُحذف شيء، ويمكن إرجاعها من نفس الزر.`
       : `إرجاع وردية ${dLab(sh.day)} و${os.length} طلب فيها إلى المبيعات الحقيقية؟`)) { btn.disabled = false; return; }
