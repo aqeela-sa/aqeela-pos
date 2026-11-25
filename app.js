@@ -4,7 +4,7 @@
 import * as F from "./fb.js";
 import { firebaseConfig } from "./firebase-config.js";
 
-const VERSION = "2.9.7";
+const VERSION = "2.9.8";
 const ADMIN_EMAIL = "abuabraj@gmail.com";
 const DEVICE_EMAIL = "cashier@aqeela-pos.app";
 const APP_NAME = `<span dir="ltr">Cashier AQ</span>`;
@@ -1300,7 +1300,8 @@ async function eposPrint(cvs, ip, opts = {}) {
   const r = await eposSend(ip, body); notePrinter(r.st, ""); return true;
 }
 /* a printing error in words the cashier can act on */
-const printErr = (e, ip, what = "الطابعة") => e.name === "AbortError" ? `${what} لا ترد (تأكد أنها تعمل وعلى نفس الشبكة)`
+/* on Safari 27 a silent timeout almost always means Safari stopped trusting the printer's certificate (an accepted warning is forgotten) */
+const printErr = (e, ip, what = "الطابعة") => e.name === "AbortError" ? (eposForm ? `${what} لا ترد. افتح https://${ip} في تبويب جديد، واقبل الشهادة إن ظهر تحذير، ثم ارجع واضغط «لم يُطبع»` : `${what} لا ترد (تأكد أنها تعمل وعلى نفس الشبكة)`)
   : /Load failed|Failed to fetch|NetworkError|network/i.test(e.message || "") ? `لا يمكن الوصول إلى ${what}. افتح https://${ip} في Safari واقبل الشهادة، وتأكد أن الآيباد على نفس الواي فاي`
   : e.message;
 /* printer state for the top bar: paper near its end, or the last error; checked quietly with an empty job */
