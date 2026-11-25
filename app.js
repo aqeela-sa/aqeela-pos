@@ -4,7 +4,7 @@
 import * as F from "./fb.js";
 import { firebaseConfig } from "./firebase-config.js";
 
-const VERSION = "2.10.1";
+const VERSION = "2.10.2";
 const ADMIN_EMAIL = "abuabraj@gmail.com";
 const DEVICE_EMAIL = "cashier@aqeela-pos.app";
 const APP_NAME = `<span dir="ltr">Cashier AQ</span>`;
@@ -1447,7 +1447,7 @@ function openShift() {
   modal(`${mh(`الوردية <span class="muted small">منذ <span class="num">${hm(S.shift.openedAt)}</span> · فتحها ${esc(S.shift.openedBy.name)}</span>`)}<div class="mdl-b" id="shift-sum"></div>
     <div class="mdl-f"><button class="btn ghost" id="cin">${ic("add")}إيداع في الدرج</button><button class="btn ghost" id="cout">${ic("remove")}صرف من الدرج</button><span class="sp"></span><button class="btn dark" id="cls">${ic("lock")}تقفيل الوردية</button></div>`, { wide: true });
   drawShiftSum();
-  $("#cin").onclick = () => cashMove("in"); $("#cout").onclick = () => askManager("صرف نقد من الدرج", () => cashMove("out"), { open: true });
+  $("#cin").onclick = () => cashMove("in"); $("#cout").onclick = () => S.config?.cashOutFree ? cashMove("out") : askManager("صرف نقد من الدرج", () => cashMove("out"), { open: true });
   $("#cls").onclick = closeShiftFlow;
 }
 function drawShiftSum() {

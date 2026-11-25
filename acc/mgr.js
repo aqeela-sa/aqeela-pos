@@ -16,7 +16,7 @@ function mgrStart(){
   MG.started = true;
   window.__accFb.mgr.watch(L => { MG.list = L; mgrBar(); }, e => console.error("approvals", e));
   mgrSecret();
-  window.__accFb.mgr.watchCfg(c => { MG.openUntil = +(c.mgrOpenUntil || 0); mgrOpenDraw(); });
+  window.__accFb.mgr.watchCfg(c => { MG.openUntil = +(c.mgrOpenUntil || 0); MG.cashOutFree = !!c.cashOutFree; mgrOpenDraw(); });
   setInterval(() => { mgrTick(); mgrBar(); mgrOpenDraw(); }, 1000);
 }
 setInterval(mgrStart, 1500);
@@ -66,23 +66,29 @@ async function mgrTick(){
 /* صلاحيات التدريب: the owner opens discount, void and cash out on the cashier for a while, without a code (each still logged) */
 function mgrOpenDraw(){
   const el = document.getElementById("mgopen"); if (!el) return;
-  const on = (MG.openUntil || 0) > Date.now(), sig = on ? "on" + MG.openUntil : "off";
+  const on = (MG.openUntil || 0) > Date.now(), sig = (on ? "on" + MG.openUntil : "off") + "|" + (MG.cashOutFree ? 1 : 0);
   if (el.dataset.sig === sig){ const l = el.querySelector("[data-left]"); if (l) l.textContent = mgrLeft(MG.openUntil); return; }
   el.dataset.sig = sig;
-  el.innerHTML = on
-    ? `<div class="actions" style="justify-content:space-between;flex-wrap:wrap;align-items:center"><span><b style="color:#B26A00">صلاحيات التدريب مفتوحة</b> <span class="small muted">الخصم والإلغاء والصرف من الدرج بدون رمز · <span data-left>${mgrLeft(MG.openUntil)}</span></span></span>
-        <button class="btn sm" type="button" id="mgclose" style="background:var(--bad,#C62828) !important;color:#fff">إغلاق الصلاحيات الآن</button></div>`
-    : `<div class="actions" style="justify-content:space-between;flex-wrap:wrap;align-items:center"><span><b>صلاحيات التدريب</b> <span class="small muted">مغلقة: الخصم والإلغاء والصرف تحتاج موافقتك</span></span>
-        <span class="actions" style="gap:6px;flex-wrap:wrap"><span class="small muted">افتحها لمدة:</span>
-        <button class="btn ghost sm" type="button" data-mgopen="1">ساعة</button><button class="btn ghost sm" type="button" data-mgopen="4">4 ساعات</button>
-        <button class="btn ghost sm" type="button" data-mgopen="day">حتى نهاية اليوم</button><button class="btn ghost sm" type="button" data-mgopen="week">أسبوع</button></span></div>`;
+  el.innerHTML = `<div class="actions" style="justify-content:space-between;flex-wrap:wrap;align-items:center;gap:8px">
+      <span><b${on ? ' style="color:#B26A00"' : ""}>صلاحيات التدريب ${on ? "مفتوحة" : ""}</b> <span class="small muted">${on ? `الخصم والإلغاء والصرف من الدرج بدون رمز · <span data-left>${mgrLeft(MG.openUntil)}</span>` : "مغلقة: الخصم والإلغاء والصرف تحتاج موافقتك"}</span></span>
+      ${on ? `<button class="btn sm" type="button" id="mgclose" style="background:var(--bad,#C62828) !important;color:#fff">إغلاق الصلاحيات الآن</button>`
+        : `<span class="actions" style="gap:6px;flex-wrap:wrap"><button class="btn sm" type="button" data-mgopen="forever">فتح حتى أغلقها</button><span class="small muted">أو لمدة:</span><button class="btn ghost sm" type="button" data-mgopen="1">ساعة</button><button class="btn ghost sm" type="button" data-mgopen="day">حتى نهاية اليوم</button></span>`}</div>
+    <div class="actions" style="justify-content:space-between;flex-wrap:wrap;align-items:center;gap:8px;margin-top:10px;padding-top:10px;border-top:1px solid #eee">
+      <span><b>الصرف من الدرج بدون رمز</b> <span class="small muted">${MG.cashOutFree ? "مفتوح: يصرف الكاشير ويكتب السبب، ويظهر الصرف في تقرير الوردية وفي «درج الكاشير»" : "مغلق: الصرف يحتاج رمزك أو موافقتك"}</span></span>
+      <button class="btn sm ${MG.cashOutFree ? "" : "ghost"}" type="button" id="mgcof" style="min-width:110px${MG.cashOutFree ? ";background:#2E7D32 !important;color:#fff" : ""}">${MG.cashOutFree ? "مفتوح · إغلاق" : "مغلق · فتح"}</button></div>`;
+  const f = document.getElementById("mgcof");
+  if (f) f.onclick = async () => { const v = !MG.cashOutFree; f.disabled = true;
+    try { await window.__accFb.mgr.setCfg({ cashOutFree: v }); toast(v ? "صار الصرف من الدرج بدون رمز" : "عاد الصرف من الدرج يحتاج موافقتك"); } catch(e){ f.disabled = false; toast("تعذّر الحفظ: " + (e.code || e.message)); } };
   el.querySelectorAll("[data-mgopen]").forEach(b => b.onclick = async () => {
     const v = b.dataset.mgopen, now = new Date(); let until;
-    if (v === "day"){ const e = new Date(now); e.setHours(28, 0, 0, 0); until = e.getTime(); }   /* the business day ends at 4 am */
-    else if (v === "week") until = Date.now() + 7 * 864e5; else until = Date.now() + (+v) * 36e5;
+    if (v === "forever") until = MGR_FOREVER;
+    else if (v === "day"){ const e = new Date(now); e.setHours(28, 0, 0, 0); until = e.getTime(); }   /* the business day ends at 4 am */
+    else until = Date.now() + (+v) * 36e5;
     try { await window.__accFb.mgr.setOpen(until); toast("فُتحت صلاحيات التدريب على الكاشير"); } catch(e){ toast("تعذّر الحفظ: " + (e.code || e.message)); } });
   const c = document.getElementById("mgclose");
   if (c) c.onclick = async () => { try { await window.__accFb.mgr.setOpen(0); toast("أُغلقت الصلاحيات، وعاد الكاشير يحتاج موافقتك"); } catch(e){ toast("تعذّر الحفظ: " + (e.code || e.message)); } };
 }
-const mgrLeft = t => { const m = Math.max(0, Math.round((t - Date.now()) / 60000)), d = Math.floor(m / 1440), h = Math.floor(m % 1440 / 60), mm = m % 60;
+/* «until I close it»: 1/1/2100, so the cashier's check (until > now) needs no change */
+const MGR_FOREVER = 4102444800000;
+const mgrLeft = t => { if (t >= MGR_FOREVER) return "حتى تغلقها"; const m = Math.max(0, Math.round((t - Date.now()) / 60000)), d = Math.floor(m / 1440), h = Math.floor(m % 1440 / 60), mm = m % 60;
   return "باقٍ " + (d ? `${d} يوم ` : "") + (d || h ? `${h} س ` : "") + `${mm} د`; };

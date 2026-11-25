@@ -200,6 +200,7 @@ const mgr = {
   watch(cb, onErr){ return F.onSnapshot(F.query(F.collection(fs, "approvals"), F.where("status", "==", "pending")), q => cb(q.docs.map(d => ({ id: d.id, ...d.data() }))), e => onErr && onErr(e)); },
   watchCfg: cb => F.onSnapshot(F.doc(fs, "config", "main"), s => cb(s.exists() ? s.data() : {}), () => {}),
   setOpen: until => F.setDoc(F.doc(fs, "config", "main"), { mgrOpenUntil: until }, { merge: true }),
+  setCfg: o => F.setDoc(F.doc(fs, "config", "main"), o, { merge: true }),
   decide: (id, status, note) => F.updateDoc(F.doc(fs, "approvals", id), { status, note: note || "", decidedAt: Date.now(), decidedBy: "owner" }),
   async log(fromDay){ const q = await F.getDocs(F.query(F.collection(fs, "approvals"), F.where("day", ">=", fromDay))); return q.docs.map(d => ({ id: d.id, ...d.data() })); }
 };
