@@ -464,7 +464,7 @@ function dashGen(L, Lp, R) {
   if (!L.length && !st.cmp) { $("#dbody").innerHTML = `<div class="cx-card">${emptyBox("لا توجد طلبات في هذه الفترة. جرّب يوماً آخر أو فعّل «إظهار الطلبات التجريبية» من التصفية.")}</div>`; return; }
   const hrs = [...Array(24).keys()].map(i => (i + (A.S.config?.cutoff ?? 4)) % 24), hv = hrs.map(h => ok.filter(o => new Date(o.ts).getHours() === h).reduce((s, o) => s + o.total, 0)), hn = hrs.map(h => ok.filter(o => new Date(o.ts).getHours() === h).length);
   const items = {}; ok.forEach(o => { const f = o.subtotal ? o.total / o.subtotal : 1; o.lines.forEach(l => { items[l.name] = (items[l.name] || 0) + l.qty * l.price * f; }); });
-  const by = (arr, k) => { const m = {}; arr.forEach(o => m[o[k]] = (m[o[k]] || 0) + o.total); return Object.entries(m); };
+  const by = (arr, k) => { const m = {}; arr.forEach(o => { if (k === "method") A.payParts(o).forEach(p => m[p.m] = (m[p.m] || 0) + (+p.a || 0)); else m[o[k]] = (m[o[k]] || 0) + o.total; }); return Object.entries(m); };
   const typeSeries = A.TYPES.map(([k, l]) => ({ name: l, color: TYPE_C[k], values: S(ok.filter(o => o.type === k), () => 1) }));
   $("#dbody").innerHTML = `<div class="cx-grid">
     ${kpiCard({ t: "الطلبات", v: a.n, pv: p.n, html: `<span class="num">${ni(a.n)}</span>`, s: S(ok, () => 1), ps: st.cmp ? SP(okp, () => 1) : null, B, f: "int", go: "orders" })}

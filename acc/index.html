@@ -6604,8 +6604,25 @@ function openPosDay(day){
     </tbody></table></div>
     <details style="margin-top:10px"><summary class="small" style="cursor:pointer;font-weight:700">الأصناف المباعة في الوردية (${qty.size})</summary>
       <div class="tw"><table><thead><tr><th>الصنف</th><th class="n">الكمية</th></tr></thead><tbody>${[...qty].sort((a, b) => b[1] - a[1]).map(([k, v]) => `<tr><td>${esc(k)}</td><td class="n num">${v}</td></tr>`).join("")}</tbody></table></div></details>`
-    : '<div class="empty">لا توجد طلبات.</div>'}</div>`;
+    : '<div class="empty">لا توجد طلبات.</div>'}${posDrawerSec(day)}</div>`;
   $("#sheet").classList.add("pd-wide"); $("#modal").classList.add("open"); $("#pd_x").onclick = closeModal;
+}
+/* the cashier drawer of each shift of the day: what was paid out of it or put in (with the reason the cashier typed) and the sales
+   cash handed over in the envelope. A payout here is money spent from the sales: it needs its invoice or expense entered,
+   or the safe shows it as a shortage */
+function posDrawerSec(day){
+  const sh = [...(S.posOld ? S.posOld.shifts : []), ...((S.pos && S.pos.shifts) || [])].filter((z, i, A) => z.day === day && posTestOk(z) && A.findIndex(y => y.id === z.id) === i);
+  if (!sh.length) return "";
+  const rows = sh.sort((a, b) => n(a.openedAt) - n(b.openedAt)).map(z => {
+    const sm = z.summary || {}, mv = z.moves || [], out = mv.filter(x => x.kind === "out"), inn = mv.filter(x => x.kind === "in");
+    return `<tr><td class="num">${hm(z.openedAt)}${z.closedAt ? ` – ${hm(z.closedAt)}` : ""}<div class="by">${esc((z.openedBy && z.openedBy.name) || "")}${z.status === "open" ? " · مفتوحة" : ""}</div></td>
+      <td class="n">${money(n(z.float))}</td><td class="n">${z.counted != null ? money(n(z.counted)) : "—"}${sm.diff && Math.abs(n(sm.diff)) >= 0.005 && sm.mode !== "full" ? `<div class="by ${n(sm.diff) < 0 ? "neg" : ""}">${n(sm.diff) > 0 ? "+" : ""}${fmt(n(sm.diff))}</div>` : ""}</td>
+      <td>${out.length ? out.map(x => `<div>${esc(x.reason || "")} <b class="num">${fmt(n(x.amount))}</b> <span class="by">${hm(x.at)} · ${esc(x.by || "")}</span></div>`).join("") : '<span class="muted">—</span>'}</td>
+      <td>${inn.length ? inn.map(x => `<div>${esc(x.reason || "")} <b class="num">${fmt(n(x.amount))}</b></div>`).join("") : '<span class="muted">—</span>'}</td>
+      <td class="n"><b>${sm.salesCash != null ? money(n(sm.salesCash)) : "—"}</b></td></tr>`; }).join("");
+  const outT = r2(sumBy(sh, z => sumBy((z.moves || []).filter(x => x.kind === "out"), x => n(x.amount))));
+  return `<h4 style="margin:16px 0 6px">درج الكاشير</h4>${outT ? `<div class="note warn" style="margin-bottom:8px">صُرف من درج الكاشير <b class="num">${fmt(outT)}</b> ر.س من مبيعات الكاش: سجّل فاتورته أو مصروفه (الدفع «كاش» بتاريخ اليوم)، وإلا ظهر في جرد الخزنة عجزاً.</div>` : ""}
+    <div class="tw"><table><thead><tr><th>الوردية</th><th class="n">العهدة</th><th class="n">المعدودة</th><th>صرف من الدرج</th><th>إيداع</th><th class="n">المسلَّم للمحاسب</th></tr></thead><tbody>${rows}</tbody></table></div>`;
 }
 const posAsSale = x => ({cash: x.cash || null, mada: x.mada || null, visa: x.visa || null, delivery: r2(x.lokit + x.hunger) || null});
 function viewPos(){
