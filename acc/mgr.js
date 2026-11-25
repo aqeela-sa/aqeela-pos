@@ -69,13 +69,33 @@ function mgrOpenDraw(){
   const on = (MG.openUntil || 0) > Date.now(), sig = (on ? "on" + MG.openUntil : "off") + "|" + (MG.cashOutFree ? 1 : 0);
   if (el.dataset.sig === sig){ const l = el.querySelector("[data-left]"); if (l) l.textContent = mgrLeft(MG.openUntil); return; }
   el.dataset.sig = sig;
-  el.innerHTML = `<div class="actions" style="justify-content:space-between;flex-wrap:wrap;align-items:center;gap:8px">
-      <span><b${on ? ' style="color:#B26A00"' : ""}>صلاحيات التدريب ${on ? "مفتوحة" : ""}</b> <span class="small muted">${on ? `الخصم والإلغاء والصرف من الدرج بدون رمز · <span data-left>${mgrLeft(MG.openUntil)}</span>` : "مغلقة: الخصم والإلغاء والصرف تحتاج موافقتك"}</span></span>
-      ${on ? `<button class="btn sm" type="button" id="mgclose" style="background:var(--bad,#C62828) !important;color:#fff">إغلاق الصلاحيات الآن</button>`
-        : `<span class="actions" style="gap:6px;flex-wrap:wrap"><button class="btn sm" type="button" data-mgopen="forever">فتح حتى أغلقها</button><span class="small muted">أو لمدة:</span><button class="btn ghost sm" type="button" data-mgopen="1">ساعة</button><button class="btn ghost sm" type="button" data-mgopen="day">حتى نهاية اليوم</button></span>`}</div>
-    <div class="actions" style="justify-content:space-between;flex-wrap:wrap;align-items:center;gap:8px;margin-top:10px;padding-top:10px;border-top:1px solid #eee">
-      <span><b>الصرف من الدرج بدون رمز</b> <span class="small muted">${MG.cashOutFree ? "مفتوح: يصرف الكاشير ويكتب السبب، ويظهر الصرف في تقرير الوردية وفي «درج الكاشير»" : "مغلق: الصرف يحتاج رمزك أو موافقتك"}</span></span>
-      <button class="btn sm ${MG.cashOutFree ? "" : "ghost"}" type="button" id="mgcof" style="min-width:110px${MG.cashOutFree ? ";background:#2E7D32 !important;color:#fff" : ""}">${MG.cashOutFree ? "مفتوح · إغلاق" : "مغلق · فتح"}</button></div>`;
+  /* two tiles, each a clear state (colour, icon, word) and a real on/off switch */
+  if (!document.getElementById("mgsw-css")){ const st = document.createElement("style"); st.id = "mgsw-css"; st.textContent = `
+    .mgt{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:12px;margin-top:4px}
+    .mgc{display:flex;gap:14px;align-items:flex-start;padding:14px 16px;border-radius:14px;border:2px solid #E4E4E7;background:#FAFAFA;transition:.2s}
+    .mgc.on{border-color:#2E7D32;background:#EEF8EF}
+    .mgc .ic{flex:none;width:42px;height:42px;border-radius:12px;display:grid;place-items:center;font-size:20px;background:#E4E4E7}
+    .mgc.on .ic{background:#2E7D32;color:#fff}
+    .mgc .tx{flex:1;min-width:0}.mgc .tt{font-weight:800;font-size:15px}
+    .mgc .pill{display:inline-block;margin-inline-start:8px;padding:2px 10px;border-radius:99px;font-size:12px;font-weight:800;background:#E4E4E7;color:#52525B;vertical-align:middle}
+    .mgc.on .pill{background:#2E7D32;color:#fff}
+    .mgc .ds{font-size:12.5px;color:#71717A;margin-top:4px;line-height:1.6}
+    .mgc .tm{margin-top:8px;display:flex;gap:6px;flex-wrap:wrap;align-items:center;font-size:12px;color:#71717A}
+    .mgc .tm button{border:1px solid #D4D4D8;background:#fff;border-radius:99px;padding:3px 10px;font:inherit;cursor:pointer}
+    .mgsw{flex:none;position:relative;width:58px;height:32px;border-radius:99px;border:0;background:#D4D4D8;cursor:pointer;transition:.2s;margin-top:4px}
+    .mgsw::after{content:"";position:absolute;top:3px;inset-inline-end:3px;width:26px;height:26px;border-radius:50%;background:#fff;box-shadow:0 1px 3px #0003;transition:.2s}
+    .mgsw.on{background:#2E7D32}.mgsw.on::after{inset-inline-end:29px}
+    .mgsw:disabled{opacity:.5}`; document.head.appendChild(st); }
+  const tile = (id, on, icon, title, dOn, dOff, extra) => `<div class="mgc ${on ? "on" : ""}"><div class="ic">${on ? "🔓" : icon}</div>
+      <div class="tx"><div class="tt">${title}<span class="pill">${id === "mgcof" ? (on ? "مفتوح" : "مغلق") : (on ? "مفتوحة" : "مغلقة")}</span></div><div class="ds">${on ? dOn : dOff}</div>${extra || ""}</div>
+      <button class="mgsw ${on ? "on" : ""}" type="button" role="switch" aria-checked="${on}" id="${id}" title="${on ? "اضغط للإغلاق" : "اضغط للفتح"}"></button></div>`;
+  el.innerHTML = `<div class="mgt">
+    ${tile("mgtr", on, "🔒", "صلاحيات التدريب", `الخصم والإلغاء والصرف بدون رمز · <b data-left>${mgrLeft(MG.openUntil)}</b>`, "الخصم والإلغاء والصرف تحتاج رمزك أو موافقتك",
+      on ? "" : `<div class="tm">أو افتحها مؤقتاً: <button type="button" data-mgopen="1">ساعة</button><button type="button" data-mgopen="day">حتى نهاية اليوم</button></div>`)}
+    ${tile("mgcof", MG.cashOutFree, "🔒", "الصرف من الدرج بدون رمز", "يصرف الكاشير ويكتب السبب، ويظهر في تقرير الوردية و«درج الكاشير»", "الصرف من الدرج يحتاج رمزك أو موافقتك")}</div>`;
+  const tr = document.getElementById("mgtr");
+  tr.onclick = async () => { tr.disabled = true;
+    try { await window.__accFb.mgr.setOpen(on ? 0 : MGR_FOREVER); toast(on ? "أُغلقت صلاحيات التدريب" : "فُتحت صلاحيات التدريب حتى تغلقها"); } catch(e){ tr.disabled = false; toast("تعذّر الحفظ: " + (e.code || e.message)); } };
   const f = document.getElementById("mgcof");
   if (f) f.onclick = async () => { const v = !MG.cashOutFree; f.disabled = true;
     try { await window.__accFb.mgr.setCfg({ cashOutFree: v }); toast(v ? "صار الصرف من الدرج بدون رمز" : "عاد الصرف من الدرج يحتاج موافقتك"); } catch(e){ f.disabled = false; toast("تعذّر الحفظ: " + (e.code || e.message)); } };
@@ -85,8 +105,6 @@ function mgrOpenDraw(){
     else if (v === "day"){ const e = new Date(now); e.setHours(28, 0, 0, 0); until = e.getTime(); }   /* the business day ends at 4 am */
     else until = Date.now() + (+v) * 36e5;
     try { await window.__accFb.mgr.setOpen(until); toast("فُتحت صلاحيات التدريب على الكاشير"); } catch(e){ toast("تعذّر الحفظ: " + (e.code || e.message)); } });
-  const c = document.getElementById("mgclose");
-  if (c) c.onclick = async () => { try { await window.__accFb.mgr.setOpen(0); toast("أُغلقت الصلاحيات، وعاد الكاشير يحتاج موافقتك"); } catch(e){ toast("تعذّر الحفظ: " + (e.code || e.message)); } };
 }
 /* «until I close it»: 1/1/2100, so the cashier's check (until > now) needs no change */
 const MGR_FOREVER = 4102444800000;
