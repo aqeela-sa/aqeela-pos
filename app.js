@@ -4,7 +4,7 @@
 import * as F from "./fb.js";
 import { firebaseConfig } from "./firebase-config.js";
 
-const VERSION = "2.10.2";
+const VERSION = "2.11.0";
 const ADMIN_EMAIL = "abuabraj@gmail.com";
 const DEVICE_EMAIL = "cashier@aqeela-pos.app";
 const APP_NAME = `<span dir="ltr">Cashier AQ</span>`;
@@ -110,7 +110,7 @@ const S = {
   user: null, role: null, config: null, menu: [], menuReady: false, configReady: false,
   cashier: ls.get("cashier", null), view: "boot", shift: ls.get("shift", null), shiftOrders: [],
   /* الطلب الجاري يُحفظ في الجهاز مع كل تعديل، فإن أُعيد تحميل الصفحة (يحدث في سفاري أحياناً) يرجع كما كان */
-  cart: (() => { const c = ls.get("cart", null); if (c && Array.isArray(c.lines) && c.lines.length && Date.now() - (c.at || 0) < 12 * 36e5) { cartBack = true; return { type: c.type || null, lines: c.lines, discount: c.discount || null, sel: null, ...(c.phone ? { phone: c.phone } : {}), ...(c.name ? { name: c.name } : {}) }; } return { type: null, lines: [], discount: null, sel: null }; })(), cat: "chicken",
+  cart: (() => { const c = ls.get("cart", null); if (c && Array.isArray(c.lines) && c.lines.length && Date.now() - (c.at || 0) < 12 * 36e5) { cartBack = true; return { type: c.type || null, lines: c.lines, discount: c.discount || null, sel: null, ...(c.phone ? { phone: c.phone } : {}), ...(c.name ? { name: c.name } : {}), ...(c.edit ? { edit: c.edit, driver: c.driver || "" } : {}) }; } return { type: null, lines: [], discount: null, sel: null }; })(), cat: "chicken",
   today: [], pending: 0, online: navigator.onLine,
   dev: ls.get("dev", null) || (() => { const d = rid(4); ls.set("dev", d); return d; })(),
   device: Object.assign({ printMode: "browser", printerIp: "", autoPrint: true, test: false, kitchenMode: "same", kitchenIp: "", drawer: false }, ls.get("device", {})),
@@ -432,10 +432,10 @@ const subtotal = () => r2(S.cart.lines.reduce((s, l) => s + lineTotal(l), 0));
 const discAmt = () => { const d = S.cart.discount, st = subtotal(); if (!d) return 0; return Math.min(st, r2(d.kind === "pct" ? st * d.value / 100 : d.value)); };
 const total = () => r2(subtotal() - discAmt());
 function drawCart() {
-  ls.set("cart", S.cart.lines.length ? { type: S.cart.type, lines: S.cart.lines, discount: S.cart.discount, phone: S.cart.phone || null, name: S.cart.name || null, at: Date.now() } : null);
+  ls.set("cart", S.cart.lines.length ? { type: S.cart.type, lines: S.cart.lines, discount: S.cart.discount, phone: S.cart.phone || null, name: S.cart.name || null, ...(S.cart.edit ? { edit: S.cart.edit, driver: S.cart.driver || "" } : {}), at: Date.now() } : null);
   if (cartBack && $("#cart")) { cartBack = false; setTimeout(() => toast("استُعيد الطلب الذي لم يكتمل قبل إعادة تحميل الصفحة"), 300); }
   const K = $("#cart"); if (!K) return; const L = S.cart.lines, n = L.reduce((s, l) => s + l.qty, 0), lk = isAgg(S.cart.type), pk = parked().length, dis = !L.length ? "disabled" : "";
-  K.innerHTML = `<div class="c-h"><button class="c-back" id="cback" aria-label="رجوع للأصناف">${ic("close")}</button><div class="c-t"><b>طلب جديد</b><span class="num">#${peekNo()}</span></div>
+  K.innerHTML = `<div class="c-h"><button class="c-back" id="cback" aria-label="رجوع للأصناف">${ic("close")}</button><div class="c-t">${S.cart.edit ? `<b style="color:#C2410C">تعديل الطلب</b><span class="num">#${S.cart.edit.no ?? ""}</span>` : `<b>طلب جديد</b><span class="num">#${peekNo()}</span>`}</div>
       <button class="c-ib ${pk ? "has" : ""}" id="pkl" title="الطلبات المعلّقة" ${pk ? "" : "disabled"}>${ic("pause")}${pk ? `<b class="num">${pk}</b>` : ""}</button>
       <button class="c-ib danger" id="clr" title="تفريغ الطلب" ${dis}>${ic("trash")}</button></div>
     <div class="c-type ${L.length && !S.cart.type ? "need" : ""}">${TYPES.map(([k, l]) => `<button data-t="${k}" class="${S.cart.type === k ? "on" : ""} ${k}">${ic(TYPE_IC[k])}${l}</button>`).join("")}</div>
@@ -451,8 +451,10 @@ function drawCart() {
       <div class="tot"><div class="r"><span>المجموع <small>(<span class="num">${n}</span> صنف)</small></span><span class="num">${m2(subtotal())}</span></div>
         ${S.cart.discount ? `<div class="r disc"><span>خصم ${S.cart.discount.kind === "pct" ? `<span class="num">${S.cart.discount.value}%</span>` : ""} <small>${esc(S.cart.discount.reason || "")}</small></span><span class="num">−${m2(discAmt())}</span></div>` : ""}
         <div class="r big"><span>الإجمالي</span><span><span class="num">${m2(total())}</span> <small>ر.س</small></span></div></div>
-      <div class="acts"><button id="disc" class="${S.cart.discount ? "on" : ""}" ${dis}>${ic("tag")}${S.cart.discount ? "الخصم ✓" : "خصم"}</button><button id="park" ${dis}>${ic("pause")}تعليق</button><button id="last">${ic("print")}آخر إيصال</button></div>
-      ${lk ? "" : S.cart.type === "delivery" ? `<button class="sendk" id="sendk" ${dis}>${ic("car")}<span>إرسال مع المندوب<small>تُطبع الفاتورة، والدفع عند عودة المندوب</small></span></button>`
+      <div class="acts"><button id="disc" class="${S.cart.discount ? "on" : ""}" ${dis}>${ic("tag")}${S.cart.discount ? "الخصم ✓" : "خصم"}</button><button id="park" ${S.cart.edit ? "disabled" : dis}>${ic("pause")}تعليق</button><button id="last">${ic("print")}آخر إيصال</button></div>
+      ${S.cart.edit ? `<div class="edit-note">${ic("note")}<span>تعديل طلب لم يُدفع: أضف الأصناف ثم «حفظ الإضافة» ليصل الجديد للمطبخ، أو اضغط طريقة الدفع مباشرة إن كان العميل حاضراً.</span></div>
+        <button class="sendk" id="sendk" ${dis}>${ic("fire")}<span>حفظ الإضافة وإرسالها للمطبخ<small>يبقى الطلب بانتظار الدفع بالمبلغ الجديد</small></span></button>`
+      : lk ? "" : S.cart.type === "delivery" ? `<button class="sendk" id="sendk" ${dis}>${ic("car")}<span>إرسال مع المندوب<small>تُطبع الفاتورة، والدفع عند عودة المندوب</small></span></button>`
         : `<button class="sendk" id="sendk" ${dis}>${ic("fire")}<span>إرسال للمطبخ<small>طلب اتصال — الدفع عند الاستلام</small></span></button>`}
       <div class="pays ${lk ? "one" : ""}">${lk ? `<button class="pay pay-${S.cart.type}" data-pay="${S.cart.type}" ${dis}>${ic(TYPE_IC[S.cart.type])}<span>تأكيد طلب ${tName(S.cart.type)}</span><b class="num">${m2(total())}</b></button>`
         : `<button class="pay pay-cash" data-pay="cash" ${dis}>${ic("cash")}<span>كاش</span></button><button class="pay pay-mada" data-pay="mada" ${dis}>${ic("card")}<span>مدى</span></button><button class="pay pay-visa" data-pay="visa" ${dis}>${ic("card")}<span>فيزا<small>ماستركارد</small></span></button>`}</div></div>`;
@@ -464,19 +466,19 @@ function drawCart() {
   $$("[data-nt]").forEach(b => b.onclick = () => openNotes(b.dataset.nt));
   $$("[data-rm]").forEach(b => b.onclick = () => { const [k, i] = b.dataset.rm.split(":"); find(k).mods.splice(+i, 1); drawCart(); drawMenu(); });
   $$("[data-t]").forEach(b => b.onclick = () => setType(b.dataset.t));
-  $("#clr").onclick = () => { if (confirm("تفريغ الطلب الحالي؟")) resetCart(); };
+  $("#clr").onclick = () => { if (confirm(S.cart.edit ? "إلغاء التعديل؟ يبقى الطلب كما كان قبل الإضافة" : "تفريغ الطلب الحالي؟")) resetCart(); };
   $("#pkl").onclick = openParked; $("#park").onclick = parkCart;
   $("#cback").onclick = () => toggleCart(false);
   $("#disc").onclick = () => askManager(`خصم على طلب بقيمة ${m2(total())} ر.س`, openDiscount, { open: true });
   $("#last").onclick = () => { const P = S.today.filter(x => x.status === "paid" && !!x.test === !!S.device.test), o = P.find(x => x.device === S.dev) || P[0]; if (!o) return toast("لا توجد طلبات اليوم"); printJob(o, { receipt: true }, true); };
   $$("[data-pay]").forEach(b => b.onclick = () => openPay(b.dataset.pay));
-  $("#sendk") && ($("#sendk").onclick = sendKitchen);
+  $("#sendk") && ($("#sendk").onclick = () => S.cart.edit ? saveEdit() : sendKitchen());
   const cb = $("#cbar"); if (cb) { cb.innerHTML = `${ic("cart")}<span>عرض الطلب <b class="num">${n}</b></span><b class="num">${m2(total())} ر.س</b>`; cb.disabled = !L.length && !S.cartOpen; cb.onclick = () => toggleCart(true); }
 }
 function toggleCart(v) { S.cartOpen = v; $("#pos")?.classList.toggle("cart-open", v); }
 function removeLine(key) { S.cart.lines = S.cart.lines.filter(x => x.key !== key); if (S.cart.sel === key) S.cart.sel = null; if (!S.cart.lines.length) S.cart.discount = null; }
 /* بعد كل طلب تُفرَّغ السلة ويُمسح نوع الطلب، فيُختار النوع من جديد لكل طلب (إجباري قبل الدفع) */
-function resetCart() { S.cart = { type: null, lines: [], discount: null, sel: null }; S.cartOpen = false; $("#pos")?.classList.remove("cart-open"); drawTop(); drawCart(); drawMenu(); }
+function resetCart() { S.cart = { type: null, lines: [], discount: null, sel: null }; /* also leaves edit mode */ S.cartOpen = false; $("#pos")?.classList.remove("cart-open"); drawTop(); drawCart(); drawMenu(); }
 function setType(t) {
   if (t === S.cart.type) return;
   const bad = S.cart.lines.filter(l => { const it = S.menu.find(m => m.id === l.id); return !it || !avail(it, t) || l.mods.some(md => { const mi = S.menu.find(m => m.id === md.id); return !mi || !avail(mi, t); }); });
@@ -636,6 +638,7 @@ function takePhone() {
   i.classList.add("bad"); i.focus(); toast("رقم الجوال غير صحيح — صحّحه أو امسحه لإكمال الطلب", true); return false;
 }
 function openPay(method, ord) {
+  if (!ord && S.cart.edit) { const e = saveEdit(true); return e ? openPay(method, e) : undefined; }
   if (!ord && !S.cart.type && S.cart.lines.length) return needType(() => openPay(method));
   PT = ord || null; PTT = ord ? ord.type : null; if (!ord && !S.cart.lines.length) return;
   const T = ord ? ord.total : total(), n = (ord ? ord.lines : S.cart.lines).reduce((s, l) => s + l.qty, 0), hasDisc = ord ? !!ord.discount : !!S.cart.discount, dA = ord ? ord.discount?.amount || 0 : discAmt();
@@ -764,11 +767,12 @@ function orderCogs(o) {
   return { food: r2(food), pack: r2(pk.boxes * pp.box + pk.bags * pp.bag), missing };
 }
 
+const cartLines = () => S.cart.lines.map(l => ({ id: l.id, ref: l.ref ?? null, name: l.name, price: l.price, qty: l.qty, cost: itemCost(l.id), mods: l.mods.map(m => ({ id: m.id, ref: m.ref ?? null, name: m.name, price: m.price, cost: itemCost(m.id) })), notes: l.notes || [], note: l.note || "", total: lineTotal(l) }));
 function buildOrder(extra) {
   const ts = Date.now(), day = bizDay(ts), no = nextNo(day), st = subtotal(), da = discAmt();
   const o = {
     id: `${day}-${S.dev}-${pad(no, 4)}-${rid(3)}`, no, day, ts, type: S.cart.type, method: null,
-    lines: S.cart.lines.map(l => ({ id: l.id, ref: l.ref, name: l.name, price: l.price, qty: l.qty, cost: itemCost(l.id), mods: l.mods.map(m => ({ id: m.id, ref: m.ref, name: m.name, price: m.price, cost: itemCost(m.id) })), notes: l.notes || [], note: l.note || "", total: lineTotal(l) })),
+    lines: cartLines(),
     subtotal: st, discount: S.cart.discount ? { ...S.cart.discount, amount: da } : null, total: r2(st - da), given: null, change: 0,
     cashierId: S.cashier.id, cashierName: S.cashier.name, device: S.dev, shiftId: S.shift?.id || null, status: "paid", prep: "open", test: !!S.device.test, v: 1, app: VERSION,
     ...(S.cart.phone && /^05\d{8}$/.test(S.cart.phone) ? { phone: S.cart.phone } : {}), ...(S.cart.name?.trim() ? { name: S.cart.name.trim().slice(0, 30) } : {}), ...extra,
@@ -908,10 +912,52 @@ function payOpen(o) {
     <div class="cp-r due" style="margin-top:12px"><span>المطلوب</span><b class="num">${m2(o.total)}</b></div>
     <div class="pays" style="margin-top:12px"><button class="pay pay-cash" data-m="cash">${ic("cash")}<span>كاش</span></button><button class="pay pay-mada" data-m="mada">${ic("card")}<span>مدى</span></button><button class="pay pay-visa" data-m="visa">${ic("card")}<span>فيزا<small>ماستركارد</small></span></button></div>
     <button class="btn ghost block" id="usp" style="margin-top:10px">${ic("swap")}تقسيم الدفع (جزء كاش وجزء شبكة)</button></div>
-    <div class="mdl-f"><button class="btn ghost" id="uv" style="margin-inline-end:auto;color:var(--bad)">إلغاء الطلب</button>${remBtn(o, "")}<button class="btn ghost" id="uk">${ic("fire")}المطبخ</button><button class="btn ghost" id="ub">رجوع</button></div>`);
+    <div class="mdl-f"><button class="btn ghost" id="uv" style="margin-inline-end:auto;color:var(--bad)">إلغاء الطلب</button>${remBtn(o, "")}<button class="btn ghost" id="ur">${ic("print")}الفاتورة</button><button class="btn ghost" id="uk">${ic("fire")}المطبخ</button><button class="btn ghost" id="ub">رجوع</button></div>`);
+  $("#ov .mdl-b").insertAdjacentHTML("beforeend", `<button class="btn block" id="uadd" style="margin-top:10px;background:#C2410C">${ic("add")}إضافة أصناف على الطلب</button>`);
+  $("#uadd").onclick = () => editOpen(o);
+  $("#ur").onclick = () => printJob(o, { receipt: true }, true);
   $("#ub").onclick = openUnpaid; $("#uv").onclick = () => voidOpen(o); $("#ov [data-wa]") && ($("#ov [data-wa]").onclick = () => remind(o)); $("#uk").onclick = () => printJob(o, { kitchen: true }, true);
   $$("#ov [data-m]").forEach(b => b.onclick = () => openPay(b.dataset.m, o));
   $("#usp").onclick = () => { PT = o; PTT = o.type; openSplit(o); };
+}
+/* إضافة أصناف على طلب لم يُدفع (اتصال أو مندوب): يُحمَّل في السلة، ويُحفظ على نفس الطلب ونفس الرقم،
+   وتُطبع للمطبخ الأصناف المضافة فقط بعنوان «إضافة على الطلب» */
+function editOpen(o) {
+  if (!o) return;
+  if (S.cart.lines.length && S.cart.edit?.id !== o.id) return toast("في السلة طلب آخر: علّقه أو فرّغه أولاً، ثم أضف على هذا الطلب", true);
+  S.cart = { type: o.type, discount: o.discount ? { kind: o.discount.kind, value: o.discount.value, reason: o.discount.reason || "", ...(o.discount.by ? { by: o.discount.by } : {}) } : null, sel: null,
+    phone: o.phone || "", name: o.name || "", driver: o.driver || "", edit: { id: o.id, no: o.no ?? null },
+    lines: o.lines.map(l => ({ key: rid(5), id: l.id, ref: l.ref ?? null, name: l.name, price: l.price, qty: l.qty, mods: (l.mods || []).map(m => ({ id: m.id, ref: m.ref ?? null, name: m.name, price: m.price })), notes: [...(l.notes || [])], note: l.note || "", was: l.qty, wasMods: (l.mods || []).length })) };
+  closeModal(); toggleCart(true); drawTop(); drawCart(); drawMenu();
+  toast(`أضف الأصناف على الطلب ${o.no ?? ""}`);
+}
+/* حفظ التعديل على الطلب المفتوح. forPay: يُدفع بعده مباشرة، فيرجع الطلب المحدَّث */
+function saveEdit(forPay) {
+  const e = S.cart.edit; if (!e) return null;
+  const ord = unpaidList().find(x => x.id === e.id);
+  if (!ord) { toast("هذا الطلب لم يعد بانتظار الدفع (دُفع أو أُلغي). فُرّغت السلة", true); resetCart(); return null; }
+  if (!S.cart.lines.length) { toast("لا يمكن حفظ طلب بلا أصناف. لإلغائه استخدم «إلغاء الطلب» من بانتظار الدفع", true); return null; }
+  const added = [];
+  for (const l of S.cart.lines) {
+    if (l.was == null) added.push(l);
+    else if (l.qty > l.was || l.mods.length > (l.wasMods || 0)) added.push({ ...l, qty: l.qty > l.was ? l.qty - l.was : l.qty, mods: l.mods.length > (l.wasMods || 0) ? l.mods.slice(l.wasMods || 0) : l.mods });
+  }
+  const st = subtotal(), da = discAmt(), now = Date.now();
+  const u = { lines: cartLines(), subtotal: st, discount: S.cart.discount ? { ...S.cart.discount, amount: da } : null, total: r2(st - da), type: S.cart.type || ord.type,
+    edits: [...(ord.edits || []), { at: now, by: S.cashier.name, from: ord.total, to: r2(st - da) }] };
+  if (u.total === ord.total && JSON.stringify(u.lines) === JSON.stringify(ord.lines)) { if (!forPay) { resetCart(); toast("لا تغيير على الطلب"); } else resetCart(); return forPay ? ord : null; }
+  u.pack = packOf(u.lines); u.cogs = orderCogs({ ...ord, ...u });
+  if (added.length && ord.prep === "done") u.prep = "open";
+  Object.assign(ord, u); keepLocal(ord);
+  fire(F.updateDoc(D("orders", ord.id), u), "تعديل الطلب");
+  resetCart(); closeModal(); drawTop();
+  if (added.length) {
+    const k = { ...ord, addOn: true, lines: added.map(l => ({ name: l.name, qty: l.qty, mods: l.mods.map(m => ({ name: m.name })), notes: l.notes || [], note: l.note || "" })) };
+    printJob(k, { kitchen: true }, false, true).then(r => { if (r !== true) toast(`الإضافة حُفظت ولم تُطبع للمطبخ: ${r}`, true); });
+  }
+  if (!forPay) { toast(`حُفظت الإضافة على الطلب ${ord.no ?? ""} — المطلوب الآن ${m2(ord.total)} ر.س`);
+    if (ord.via === "delivery") printJob(ord, { receipt: true }, false, true); }
+  return ord;
 }
 function voidOpen(o) {
   if (!o) return;
@@ -1358,6 +1404,7 @@ function drawKitchen(o) {
   g.fillRect(0, y, W, 120); g.fillStyle = "#fff"; y -= 4; ctr(`طلب ${(o.no ?? "")}`, 64, 900); g.fillStyle = "#000"; y = 140;
   ctr(`${typ}${o.test ? " · تجريبي" : ""}`, 44, 900);
   const d = new Date(o.ts); ctr(`${hm(o.ts)} · ${pad(d.getDate())}/${pad(d.getMonth() + 1)} · ${o.cashierName}`, 24, 500);
+  if (o.addOn) { y += 8; g.fillRect(M, y, W - 2 * M, 56); g.fillStyle = "#fff"; y -= 6; ctr("إضافة على الطلب", 40, 900); g.fillStyle = "#000"; y += 10; }
   if (o.via === "phone") { ctr(`طلب اتصال · ${o.name ? o.name + " · " : ""}${o.phone}`, 28, 800); if (o.status === "open") ctr("الدفع عند الاستلام", 26, 700); }
   if (o.via === "delivery") { ctr(`توصيل بالمندوب${o.driver ? " · " + o.driver : ""}`, 28, 800); if (o.name || o.phone) ctr([o.name, o.phone].filter(Boolean).join(" · "), 24, 700); }
   hr();

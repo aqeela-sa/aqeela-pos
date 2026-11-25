@@ -32,12 +32,13 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
     // the cashier device creates orders, and later may only pay, void, change the type or the preparation state:
-    // what was sold, its amount, its day and its shift never change once saved
+    // what was sold, its amount, its day and its shift never change once saved. The one exception: an order not paid yet
+    // (phone or driver, status open) may get items added while the customer is still to pay
     match /orders/{id} {
       allow read: if isAdmin() || isCashier() || isPartner() || may(['pos', 'platforms', 'kitchen', 'ops']);
       allow create: if isAdmin() || isCashier();
-      allow update: if isAdmin() || (isCashier() && same('total') && same('subtotal') && same('lines') && same('discount')
-                                     && same('day') && same('no') && same('shiftId') && same('test') && same('ts') && same('device'));
+      allow update: if isAdmin() || (isCashier() && same('day') && same('no') && same('shiftId') && same('test') && same('ts') && same('device')
+                                     && ((same('total') && same('subtotal') && same('lines') && same('discount')) || resource.data.status == 'open'));
       allow delete: if isAdmin();
     }
     // manager approvals: the cashier device asks (or logs a PIN / one-time code approval); only the owner decides,
