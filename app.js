@@ -4,7 +4,7 @@
 import * as F from "./fb.js";
 import { firebaseConfig } from "./firebase-config.js";
 
-const VERSION = "2.9.8";
+const VERSION = "2.9.9";
 const ADMIN_EMAIL = "abuabraj@gmail.com";
 const DEVICE_EMAIL = "cashier@aqeela-pos.app";
 const APP_NAME = `<span dir="ltr">Cashier AQ</span>`;
@@ -1054,7 +1054,8 @@ async function drawOrdersList() {
   if (!$("#orders-list")) return;
   const F1 = all.filter(o => (!RP.type || o.type === RP.type) && (!RP.method || hasM(o, RP.method)));
   const paid = F1.filter(o => o.status === "paid"), voids = F1.filter(o => o.status === "void"), unp = F1.filter(isUnpaid);
-  const sum = a => r2(a.reduce((s, o) => s + o.total, 0)), net = sum(paid);
+  /* a split order counts under each method by the part paid that way; filtered by a method, a paid order counts by that part only */
+  const sum = a => r2(a.reduce((s, o) => s + (RP.method && o.status === "paid" ? paidBy(o, RP.method) : o.total), 0)), net = sum(paid);
   const head = `${S.device.test ? `<div class="note warn" style="margin-bottom:12px">الجهاز في الوضع التجريبي: الأرقام للطلبات <b>التجريبية</b> فقط.</div>` : ""}<p class="rp-per">${RP.per === "shift" && S.shift ? `الوردية منذ <span class="num">${hm(S.shift.openedAt)}</span> · فتحها ${esc(S.shift.openedBy?.name || "")}` : ra === rb ? `يوم <span class="num">${dmy(ra)}</span>` : `من <span class="num">${dmy(ra)}</span> إلى <span class="num">${dmy(rb)}</span> · <span class="num">${Math.round((new Date(rb) - new Date(ra)) / 864e5) + 1}</span> يوم`}</p>`;
   if (RP.tab === "sum") {
     const by = (arr, key, names) => Object.entries(names).map(([k, l]) => { const g = arr.filter(o => o[key] === k); return [l, g.length, sum(g)]; }).filter(r => r[1]);
@@ -1071,7 +1072,7 @@ async function drawOrdersList() {
       <div class="kpi"><span>الخصومات</span><b>${money(sum(disc.map(o => ({ total: o.discount.amount }))))}</b><span><span class="num">${disc.length}</span> طلب</span></div>
       <div class="kpi bad"><span>الإلغاءات</span><b>${money(sum(voids))}</b><span><span class="num">${voids.length}</span> طلب${voids.some(o => o.void?.unpaid) ? ` · منها <span class="num">${voids.filter(o => o.void?.unpaid).length}</span> لم يُدفع` : ""}</span></div>
       <div class="kpi warn"><span>بانتظار الدفع</span><b>${money(sum(unp))}</b><span><span class="num">${unp.length}</span> طلب</span></div></div>
-      <div class="rp-grid">${tbl("حسب طريقة الدفع", by(paid, "method", METHODS))}${tbl("حسب نوع الطلب", by(paid, "type", Object.fromEntries(TYPES)))}</div>
+      <div class="rp-grid">${tbl("حسب طريقة الدفع", Object.entries(METHODS).filter(([k]) => !RP.method || k === RP.method).map(([k, l]) => { const g = paid.filter(o => hasM(o, k)); return [l, g.length, r2(g.reduce((s, o) => s + paidBy(o, k), 0))]; }).filter(r => r[1]))}${tbl("حسب نوع الطلب", by(paid, "type", Object.fromEntries(TYPES)))}</div>
       ${hk.length && paid.length ? `<div class="rp-card"><h4>${multi ? "المبيعات حسب اليوم" : "المبيعات حسب الساعة"}</h4><div class="rp-hrs ${hk.length > 16 ? "dense" : ""}">${hk.map(h => `<div title="${hl(h)}: ${m2(hrs[h])}"><i style="height:${hrs[h] ? Math.max(3, hrs[h] / hm2 * 100) : 0}%"></i><b class="num">${hrs[h] ? Math.round(hrs[h]) : ""}</b><span class="num">${hl(h)}</span></div>`).join("")}</div></div>` : ""}`;
   }
   if (RP.tab === "orders") {
@@ -1084,7 +1085,7 @@ async function drawOrdersList() {
       <label class="srch rp-q">${ic("search")}<input id="rq" type="search" placeholder="رقم الطلب أو الجوال أو رمز التحقق" value="${esc(RP.q)}" autocomplete="off"></label></div>
       <p class="rp-sum"><b class="num">${L.length}</b> طلب · مكتمل <b class="num">${okL.length}</b> بمبلغ <b class="num">${m2(sum(okL))}</b> ر.س</p>
       <div class="list">${L.length ? L.slice(0, RP.lim || 100).map(o => `<button class="row ${o.status === "void" ? "void" : ""}" data-o="${esc(o.id)}"><span class="no num">${(o.no ?? "")}</span>
-      <span><b>${o.lines.map(l => `${l.qty}× ${esc(l.name)}`).join("، ")}</b><br><span class="meta"><span class="num">${hm(o.ts)}</span> · ${esc(o.cashierName)} · ${TYPES.find(t => t[0] === o.type)?.[1] || ""} · ${o.method ? METHODS[o.method] : "لم يُدفع"}
+      <span><b>${o.lines.map(l => `${l.qty}× ${esc(l.name)}`).join("، ")}</b><br><span class="meta"><span class="num">${hm(o.ts)}</span> · ${esc(o.cashierName)} · ${TYPES.find(t => t[0] === o.type)?.[1] || ""} · ${mLabel(o)}
       ${o.status === "void" ? ` <span class="chip bad">${o.void?.unpaid ? "ملغي — لم يُدفع" : "ملغي"}</span>` : ""}${isUnpaid(o) ? ` <span class="chip warn">بانتظار الدفع · <span class="num">${esc(o.phone || "")}</span></span>` : ""}${o.discount ? ` <span class="chip warn">خصم</span>` : ""}${o.test ? ` <span class="chip test">تجريبي</span>` : ""}${o._pending ? ` <span class="chip warn">لم يُرسل بعد</span>` : ""}</span></span>
       <span class="money" style="font-weight:800;font-size:18px">${m2(o.total)}</span></button>`).join("") : `<div class="empty" style="padding:40px">لا توجد طلبات مطابقة</div>`}</div>
       ${L.length > (RP.lim || 100) ? `<button class="btn ghost block" id="rmore" style="margin-top:12px">عرض المزيد (<span class="num">${L.length - (RP.lim || 100)}</span> طلب متبقٍ)</button>` : ""}`;
