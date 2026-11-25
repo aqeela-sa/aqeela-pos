@@ -4,7 +4,7 @@
 import * as F from "./fb.js";
 import { firebaseConfig } from "./firebase-config.js";
 
-const VERSION = "2.9.9";
+const VERSION = "2.10.0";
 const ADMIN_EMAIL = "abuabraj@gmail.com";
 const DEVICE_EMAIL = "cashier@aqeela-pos.app";
 const APP_NAME = `<span dir="ltr">Cashier AQ</span>`;
@@ -267,6 +267,7 @@ function drawPin() {
     <div class="dots" id="dots">${"<i></i>".repeat(4)}</div>
     <div class="pad">${[1, 2, 3, 4, 5, 6, 7, 8, 9].map(k => `<button data-k="${k}">${k}</button>`).join("")}<button class="fn" data-k="c">مسح</button><button data-k="0">0</button><button class="fn" data-k="b">⌫</button></div>
     <div style="display:flex;justify-content:space-between;margin-top:14px">${isAdmin() ? `<button class="link" id="toadm">لوحة المدير</button>` : `<button class="link" id="pdev" style="display:inline-flex;align-items:center;gap:6px">${ic("gear")}إعدادات الجهاز</button>`}<button class="link" id="lo" style="color:var(--mut)">خروج الجهاز</button></div>
+    <div style="text-align:center;margin-top:10px"><button class="link" id="pup" style="color:var(--mut);font-size:13px">${ic("refresh")} تحديث الكاشير · الإصدار <span class="num">${VERSION}</span></button></div>
   </div></div>`;
   const dots = () => $$("#dots i").forEach((d, i) => d.classList.toggle("on", i < pin.length));
   const sel = () => $$("[data-c]").forEach(b => b.classList.toggle("on", b.dataset.c === who)); sel();
@@ -282,6 +283,7 @@ function drawPin() {
   /* لوحة مفاتيح خارجية: الأرقام والحذف */
   S.pinKey = k => { if (/^\d$/.test(k) && pin.length < 4) { pin += k; dots(); if (pin.length === 4) check(); } else if (k === "Backspace") { pin = pin.slice(0, -1); dots(); } };
   $("#pdev") && ($("#pdev").onclick = () => askManager("إعدادات الجهاز", openDevice));
+  $("#pup") && ($("#pup").onclick = async () => { try { const r = await navigator.serviceWorker?.getRegistration(); await r?.update(); } catch {} location.reload(); });
   $("#lo").onclick = () => { if (S.shift) return toast("قفّل الوردية المفتوحة أولاً", true); askManager("خروج الجهاز من الحساب", () => F.signOut(auth)); };
   if ($("#toadm")) $("#toadm").onclick = openAdmin;
 }
