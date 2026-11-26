@@ -265,3 +265,7 @@ a.cx-ni{text-decoration:none;box-sizing:border-box}
 .cx-hr{min-height:44px;border:1px solid #D4D4DA;border-radius:9px;background:#fff;color:var(--ink);font-size:15px;font-weight:600}
 .cx-hr.on{border-color:var(--acc);background:var(--acc);color:#fff}
 @media (max-width:820px){.cx-hrs{grid-template-columns:repeat(6,minmax(0,1fr))}}
+/* home-screen app (standalone, translucent status bar): keep the top bar and the side menu below the clock and the notch */
+.cx-top{height:calc(72px + env(safe-area-inset-top));padding-top:env(safe-area-inset-top)}
+.cx-side{padding-top:env(safe-area-inset-top)}
+@media (max-width:920px){.cx-top{height:calc(64px + env(safe-area-inset-top));padding-top:env(safe-area-inset-top)}}
