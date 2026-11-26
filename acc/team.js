@@ -258,7 +258,7 @@ function teamInbox(){
     if (ps.length) out.push(["warn", `<b>${ps.length} طلب شراء بانتظار موافقتك</b> (اعتمده المالك) بإجمالي <span class="num">${fmt(sumBy(ps, p => n(p.est)))}</span>`, "po", "مراجعتها"]);
   }
   if (!out.length) return "";
-  return `<div class="card" style="margin-bottom:14px"><h3 style="margin:0 0 8px;font-size:16px">بانتظار قرارك</h3>${out.map(([k, t, tab, l]) => `<div class="note ${k}" style="margin:6px 0;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap"><span>${t}</span><a class="btn ghost sm" href="#kitchen" data-ktgo="${tab}">${l}</a></div>`).join("")}</div>`;
+  return `<div class="card inbox" style="margin-bottom:14px"><h3 style="margin:0 0 8px;font-size:16px">بانتظار قرارك</h3>${out.map(([k, t, tab, l]) => `<div class="note ${k}" style="margin:6px 0;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap"><span>${t}</span><a class="btn ghost sm" href="#kitchen" data-ktgo="${tab}">${l}</a></div>`).join("")}</div>`;
 }
 document.addEventListener("click", e => { const a = e.target.closest && e.target.closest("[data-ktgo]"); if (a) S.ktTab = a.dataset.ktgo; }, true);
 

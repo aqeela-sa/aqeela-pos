@@ -167,3 +167,67 @@
 [data-pro="1"] .mgc .tm button{background:var(--card);border-color:var(--line);color:var(--ink)}
 @media (prefers-color-scheme:dark){:root[data-pro="1"]:not([data-theme="light"]) .mgc.on{background:color-mix(in srgb,#2E7D32 16%,var(--card))}}
 :root[data-pro="1"][data-theme="dark"] .mgc.on{background:color-mix(in srgb,#2E7D32 16%,var(--card))}
+
+/* ---------- tables: long text wraps (a long name or note never stretches a column across the page); numbers stay on one line ---------- */
+[data-pro="1"] td{white-space:normal;max-width:340px;word-break:keep-all;overflow-wrap:break-word}
+[data-pro="1"] td.n,[data-pro="1"] td.num,[data-pro="1"] td .num,[data-pro="1"] td .chip,[data-pro="1"] td .pill,[data-pro="1"] td .btn{white-space:nowrap;overflow-wrap:normal}
+[data-pro="1"] td:first-child{white-space:nowrap}
+[data-pro="1"] .card .tw{box-shadow:none!important;border-radius:10px!important}
+
+/* ---------- dashboard ---------- */
+.pd{display:grid;gap:22px}
+.pd-sec{display:grid;gap:10px}
+.pd-h{font-size:12.5px;font-weight:600;color:var(--muted);padding:0 2px}
+.pd-main{display:grid;grid-template-columns:minmax(0,1fr) 372px;gap:22px;align-items:start}
+.pd-col,.pd-side{display:grid;gap:22px;min-width:0;align-content:start}
+@media (max-width:1320px){.pd-main{grid-template-columns:minmax(0,1fr)}.pd-side{grid-template-columns:repeat(auto-fit,minmax(320px,1fr))}}
+[data-pro="1"] .pd .grid{gap:16px}
+[data-pro="1"] .pd .kpi .v{font-size:23px}
+[data-pro="1"] .pd .kpi .small{line-height:1.55}
+[data-pro="1"] .pd .chart svg{max-height:300px}
+/* the cashier controls, compact in the side column */
+[data-pro="1"] #mgrcard{display:grid!important;grid-template-columns:minmax(0,1fr) auto;gap:6px 14px;align-items:start;margin:0!important;padding:18px}
+[data-pro="1"] #mgrcard>div:first-child h3{font-size:15px!important;margin:0 0 4px!important}
+[data-pro="1"] #mgrcard>div:first-child p{font-size:12.5px;line-height:1.6}
+[data-pro="1"] #mgrcard>div:nth-child(2){text-align:center;background:var(--head);border:1px solid var(--line);border-radius:12px;padding:8px 12px}
+[data-pro="1"] #mgcode{font-size:24px!important;letter-spacing:3px!important;font-weight:700!important;line-height:1.2}
+[data-pro="1"] #mgleft{font-size:11.5px}
+[data-pro="1"] #mgcopy{height:26px;padding:0 10px;font-size:12px;margin-top:6px!important}
+[data-pro="1"] #mgopen{grid-column:1/-1;border-top:1px solid var(--line)!important;padding-top:12px!important;margin-top:6px}
+[data-pro="1"] .pd-side .mgt{grid-template-columns:1fr!important;gap:10px!important}
+[data-pro="1"] .mgc{border-width:1px!important;border-radius:12px!important;padding:12px 14px!important;gap:12px!important;align-items:center!important}
+[data-pro="1"] .mgc .ic{width:34px!important;height:34px!important;border-radius:10px!important;font-size:16px!important}
+[data-pro="1"] .mgc .tt{font-size:14px!important;font-weight:700!important}
+[data-pro="1"] .mgc .pill{font-size:11px!important;padding:1px 8px!important;font-weight:700!important}
+[data-pro="1"] .mgc .ds{font-size:12px!important;margin-top:2px!important}
+[data-pro="1"] .mgsw{width:46px!important;height:26px!important;margin-top:0!important}
+[data-pro="1"] .mgsw::after{width:20px!important;height:20px!important}
+[data-pro="1"] .mgsw.on::after{inset-inline-end:23px!important}
+[data-pro="1"] .mgc.on{border-color:color-mix(in srgb,#2E7D32 45%,var(--line))!important}
+[data-pro="1"] .pd-side .bal .big{font-size:28px!important}
+.pd-col,.pd-side{grid-template-columns:minmax(0,1fr)}
+.pd-col>*,.pd-side>*{min-width:0}
+@media (max-width:1320px){.pd-side{grid-template-columns:repeat(auto-fit,minmax(320px,1fr))}}
+.pd-two{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:22px;align-items:start}
+@media (max-width:760px){.pd-two{grid-template-columns:minmax(0,1fr)}}
+[data-pro="1"] .mgc .tm{gap:6px!important;margin-top:6px!important}
+[data-pro="1"] .mgc .tm button{padding:2px 9px!important;font-size:11.5px}
+@media (max-width:1679px){.pd-two{grid-template-columns:minmax(0,1fr)}}
+/* «بانتظار قرارك»: a calm task list, the colour only on the edge */
+[data-pro="1"] .inbox{margin:0!important;padding:16px 18px}
+[data-pro="1"] .inbox h3{font-size:15px!important;margin:0 0 10px!important;display:flex;align-items:center;gap:8px}
+[data-pro="1"] .inbox h3::before{content:"";width:8px;height:8px;border-radius:50%;background:#E8590C;box-shadow:0 0 0 4px color-mix(in srgb,#E8590C 18%,transparent)}
+[data-pro="1"] .inbox .note{margin:8px 0 0!important;background:var(--head)!important;border:1px solid var(--line)!important;border-inline-start:3px solid #E8590C!important;border-radius:10px;padding:10px 14px;color:var(--ink)}
+[data-pro="1"] .inbox .note.bad{border-inline-start-color:var(--bad)!important}
+[data-pro="1"] .inbox .note .btn{height:30px}
+/* phones: number tiles two by two, so a screen holds the picture instead of one big number */
+@media (max-width:760px){
+  [data-pro="1"] .grid:has(>.kpi){grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:10px!important}
+  [data-pro="1"] .kpi{padding:12px 13px!important;gap:3px}
+  [data-pro="1"] .kpi .v{font-size:19px!important}
+  [data-pro="1"] .kpi .l{font-size:12px!important}
+  [data-pro="1"] .kpi .small{font-size:11px;line-height:1.5}
+  [data-pro="1"] .card{padding:16px}
+}
+#pxtop .status::before,#pxtop .status.ok::before{background:#22A06B!important;box-shadow:none}
+#pxtop .status:not(.ok)::before{background:#E8A33D!important}

@@ -952,8 +952,8 @@ nav.tabs a[hidden],.nav-more[hidden]{display:none!important}
 .acc-lg button:disabled{opacity:.6}
 .acc-lg-err{background:#FDECEE;color:#B3261E;border-radius:10px;padding:10px 12px;font-size:14px}
 </style>
-<link rel="stylesheet" href="pro.css?v=1">
-<script src="pro.js?v=1"></script>
+<link rel="stylesheet" href="pro.css?v=2">
+<script src="pro.js?v=2"></script>
 </head>
 <body>
 <header class="top">
@@ -1358,14 +1358,15 @@ function viewDashboard(){
 function renderDash(){
   const el = $("#dash"); if (!el) return;
   const rows = ledger(), b = balances(rows), st = monthStats(S.y,S.m);
-  let top = (typeof teamInbox === "function" ? teamInbox() : "") + (typeof mgrCard === "function" ? mgrCard() : "") + needStart();
+  const inbox = typeof teamInbox === "function" ? teamInbox() : "", mgr = typeof mgrCard === "function" ? mgrCard() : "", ns = needStart();
+  let top = inbox + mgr + ns, balG = "";
   if (b){
     const tr = b.todayRow, CUc = reconCum(rows, true), CUb = reconCum(rows, false);
     /* after an approved reconciliation the card shows the running difference since it (timing of withdrawals cancels out); before any, the last day's difference */
     const cumD = CU => CU.last ? (Math.abs(CU.cum) < 0.005 ? 0 : CU.cum) : 0;
     const dC = CUc.anchor ? cumD(CUc) : b.lastCash ? b.lastCash.cDiff : null, dB = CUb.anchor ? cumD(CUb) : b.lastBank ? b.lastBank.bDiff : null;
     const since = CU => CU.anchor ? ` · الفرق التراكمي منذ اعتماد <span class="num">${dmy(CU.anchor.date)}</span>` : "";
-    top += `<div class="grid g3">
+    balG = `<div class="grid g3">
       ${balCard("cash","الخزنة", b.cash,
         b.lastCash ? `حسب آخر جرد للخزنة: <span class="num">${dmy(b.lastCash.date)}</span>` : "لا يوجد جرد بعد، المعروض هو الرصيد الدفتري",
         `الدفتري اليوم: <span class="num">${fmt(tr.cashExp)}</span>${since(CUc)}`, dC)}
@@ -1374,6 +1375,7 @@ function renderDash(){
         `الدفتري اليوم: <span class="num">${fmt(tr.bankExp)}</span>${since(CUb)}`, dB)}
       ${balCard("tot","إجمالي السيولة", b.cash + b.bank, "الخزنة + البنك", `الدفتري اليوم: <span class="num">${fmt(tr.cashExp + tr.bankExp)}</span>`, null)}
     </div>`;
+    top += balG;
   }
   const cb = custodyBalances(), cusLeft = cb.reduce((t,x)=>t+x.left,0), ar = appReceivable();
   const pv = st.prodPct*100, prodLv = pv < 40 ? ["lv1","ممتازة"] : pv < 45 ? ["lv2","جيدة"] : pv < 47 ? ["lv3","مقبولة"] : ["lv4","سيئة"];
@@ -1431,6 +1433,19 @@ function renderDash(){
       ${ar.late > 0.009 ? `<div class="small neg">منه متأخر عن موعده: <b class="num">${fmt(ar.late)}</b></div>` : ""}
       <div class="actions"><button class="btn sm" type="button" id="d_app" ${S.canWrite?"":"disabled"}>تسجيل تحويل من التطبيقات</button><a class="small" href="${ar.byContract ? "#platforms" : "#apps"}">${ar.byContract ? "التفاصيل حسب التطبيق" : "كل التحويلات"}</a></div></div></div>
   </div>`;
+  /* AQ Pro: one reading order — decisions, money now, the month, then the detail; the cashier controls move to the side column */
+  if (document.documentElement.dataset.pro === "1"){
+    const parts = tables.match(/<div class="card">[\s\S]*?<\/table><\/div><\/div>/g) || [];
+    el.innerHTML = `<div class="pd">${inbox}${ns}
+      <section class="pd-sec">${balG}</section>
+      <section class="pd-sec"><div class="pd-h">${MONTHS[S.m-1]} ${S.y}</div>${kpis}</section>
+      <div class="pd-main"><div class="pd-col">${year.replace('<div class="grid g2">', '').replace(/<\/div>\s*$/, '')}${bgDashCard()}<div class="pd-two">${parts[0] || ""}${parts[1] || ""}</div>${parts[2] || ""}</div>
+        <aside class="pd-side">${row2.replace('<div class="grid g2">', '').replace(/<\/div>\s*$/, '')}${mgr}</aside></div>
+      <p class="small muted" style="margin:0">الصافي تقديري: لا يشمل تكلفة المخزون الفعلية ولا الاستهلاكات. المصروفات = الفواتير (عدا المدفوعة من العهدة، ومسحوبات الشركاء، وشراء المعدات، وسداد التزامات سابقة كالرواتب المستحقة والضريبة) + صرف العهد + الرواتب المعتمدة + حصة الأيام من الإيجار والرخصة والإقامات المدفوعة مقدماً + التغليف المطبوع المستهلك. المبيعات الفعلية = إجمالي المبيعات بعد خصم عمولة تطبيقات التوصيل. نسبة الإنتاج = فواتير «مصاريف إنتاج» والتغليف المستهلك ÷ المبيعات الفعلية.${yr.some(r => r.man) ? " (*) أشهر أو أيام قبل بدء البرنامج تؤخذ من الملخصات الشهرية اليدوية؛ مصروفاتها محاسبية (تشمل الإهلاك والاستحقاقات) ونسبة إنتاجها تقديرية، لذلك قد يختلف الشهر الذي بدأ فيه البرنامج عن بطاقات أعلى الصفحة التي تعرض بيانات البرنامج فقط." : ""}</p></div>`;
+    const b3 = $("#d_app"); if (b3) b3.onclick = () => openApp();
+    if (typeof mgrTick === "function") mgrTick(); if (typeof mgrOpenDraw === "function") mgrOpenDraw();
+    return;
+  }
   el.innerHTML = `<div class="grid" style="gap:16px">${top}${row2}${kpis}${bgDashCard()}${tables}${year}<p class="small muted" style="margin:0">الصافي تقديري: لا يشمل تكلفة المخزون الفعلية ولا الاستهلاكات. المصروفات = الفواتير (عدا المدفوعة من العهدة، ومسحوبات الشركاء، وشراء المعدات، وسداد التزامات سابقة كالرواتب المستحقة والضريبة) + صرف العهد + الرواتب المعتمدة + حصة الأيام من الإيجار والرخصة والإقامات المدفوعة مقدماً + التغليف المطبوع المستهلك. المبيعات الفعلية = إجمالي المبيعات بعد خصم عمولة تطبيقات التوصيل. نسبة الإنتاج = فواتير «مصاريف إنتاج» والتغليف المستهلك ÷ المبيعات الفعلية.${yr.some(r => r.man) ? " (*) أشهر أو أيام قبل بدء البرنامج تؤخذ من الملخصات الشهرية اليدوية؛ مصروفاتها محاسبية (تشمل الإهلاك والاستحقاقات) ونسبة إنتاجها تقديرية، لذلك قد يختلف الشهر الذي بدأ فيه البرنامج عن بطاقات أعلى الصفحة التي تعرض بيانات البرنامج فقط." : ""}</p></div>`;
   const b2 = $("#d_app"); if (b2) b2.onclick = () => openApp();
 }
@@ -6977,7 +6992,7 @@ if (window.__accHost) window.__accStart = connect; else connect();
 <script src="apps.js?v=10"></script>
 <script src="kitchen.js?v=8"></script>
 <script src="purchase.js?v=5"></script>
-<script src="team.js?v=1"></script>
+<script src="team.js?v=2"></script>
 <script src="mgr.js?v=4"></script>
 <script type="module" src="acc-fb.js?v=14"></script>
 <script>
