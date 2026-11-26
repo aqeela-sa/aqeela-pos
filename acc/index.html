@@ -44,6 +44,8 @@ body{background:var(--paper);color:var(--ink);font-family:var(--font);font-size:
 button,input,select,textarea{font:inherit;color:inherit}
 a{color:var(--red-ink)}
 .num{font-variant-numeric:tabular-nums;direction:ltr;unicode-bidi:isolate}
+/* Chrome draws the Arabic «يوم/شهر/سنة» of an empty date field letter-reversed: an empty field shows our own hint instead */
+input[type=date].dt-empty:not(:focus)::-webkit-datetime-edit{color:transparent}
 
 /* header */
 header.top{position:sticky;top:0;z-index:20;background:var(--red);color:#fff;box-shadow:0 2px 10px rgba(0,0,0,.12)}
@@ -988,7 +990,11 @@ nav.tabs a[hidden],.nav-more[hidden]{display:none!important}
 <script>
 "use strict";
 /* ---------- constants ---------- */
-const PAY = ["كاش","مدى/بطاقة","تحويل بنكي","من العهدة"];
+const PAY = ["كاش","مدى/بطاقة","تحويل بنكي","من العهدة","مقسّمة"];
+/* the parts of a paid invoice: a split one («مقسّمة») by its parts, any other its whole total on its one method */
+const invParts = x => x.pay === "مقسّمة" && Array.isArray(x.pays) && x.pays.length ? x.pays.map(p => ({m:p.m, a:n(p.a)})) : [{m:x.pay, a:invTotal(x)}];
+const invHas = (x, m) => invParts(x).some(p => p.m === m && p.a > 0);
+const payLabel = x => x.pay === "مقسّمة" && Array.isArray(x.pays) ? x.pays.filter(p => n(p.a) > 0).map(p => `${p.m === "مدى/بطاقة" ? "مدى" : p.m === "تحويل بنكي" ? "تحويل" : p.m} ${fmt(n(p.a))}`).join(" + ") : (x.pay || "");
 const STATUS = ["مدفوعة","غير مدفوعة"];
 const CTYPES = ["استلام عهدة","صرف من العهدة","إرجاع للصندوق"];
 const SOURCES = ["كاش","تحويل بنكي"];
@@ -1080,8 +1086,7 @@ function ledger(){
   for (const x of S.invoices){
     if (x.status === "غير مدفوعة") continue;
     const cd = invCashDate(x);
-    if (x.pay === "كاش") get(inv,cd).cash += invTotal(x);
-    else if (x.pay === "مدى/بطاقة" || x.pay === "تحويل بنكي") get(inv,cd).bank += invTotal(x);
+    for (const p of invParts(x)){ if (p.m === "كاش") get(inv,cd).cash += p.a; else if (p.m === "مدى/بطاقة" || p.m === "تحويل بنكي") get(inv,cd).bank += p.a; }
   }
   for (const p of S.payments){ if (p.pay === "كاش") get(inv,p.date).cash += n(p.amount); else get(inv,p.date).bank += n(p.amount); }
   for (const m of payrollMoves()) get(inv,m.date)[m.bank ? "bank" : "cash"] += m.amount;
@@ -1514,6 +1519,9 @@ function viewInvoices(){
       <div class="f" id="i_vatWrap" ${vatReg() ? "" : "hidden"}><label for="i_vat">ضريبة القيمة المضافة</label><div class="actions" style="flex-wrap:nowrap"><input id="i_vat" type="number" step="0.01" min="0" inputmode="decimal"><button type="button" class="btn ghost sm" id="i_15" title="احسب 15% من المبلغ">15%</button></div></div>
       <div class="f"><label for="i_qty">الكمية <span class="muted" style="font-weight:400">(اختياري)</span></label><div class="actions" style="flex-wrap:nowrap"><input id="i_qty" type="number" step="0.001" min="0" inputmode="decimal" placeholder="مثل 20" style="min-width:0"><input id="i_unit" type="text" list="units" placeholder="الوحدة" style="max-width:96px;min-width:0"><datalist id="units">${UNITS.map(u => `<option value="${u}">`).join("")}</datalist></div><span class="by" id="i_up"></span></div>
       <div class="f"><label for="i_pay">طريقة الدفع</label><select id="i_pay">${opts(PAY,"كاش")}</select></div>
+      <div class="f" id="i_psw" hidden style="grid-column:1/-1"><label>تقسيم المبلغ <span class="muted" style="font-weight:400">(اكتب كم دُفع بكل طريقة)</span></label>
+        <div class="actions" style="gap:10px;flex-wrap:wrap">${[["c","كاش"],["m","مدى/بطاقة"],["t","تحويل بنكي"]].map(([k,l]) => `<label class="small" style="display:flex;gap:6px;align-items:center">${l}<input id="i_ps_${k}" type="number" step="0.01" min="0" inputmode="decimal" style="width:120px"></label>`).join("")}</div>
+        <span class="by" id="i_ps_h"></span></div>
       <div class="f" id="i_cdw"><label for="i_cdate">تاريخ الصرف من الخزنة <span class="muted" style="font-weight:400">(اختياري)</span></label><input id="i_cdate" type="date"><span class="by">إذا خرج المبلغ من الدرج أو البنك بعد تاريخ الفاتورة، مثلاً تعويض المشتري بعد الجرد</span></div>
       <div class="f"><label for="i_st">الدفع</label><select id="i_st"><option value="مدفوعة">مدفوعة الآن</option><option value="غير مدفوعة">آجلة (تُسدد لاحقاً)</option></select></div>
       <div class="f"><span class="small muted" style="font-weight:700">الوسم</span><label class="tag" for="i_prod"><input id="i_prod" type="checkbox"> مصاريف إنتاج</label></div>
@@ -1599,7 +1607,17 @@ function bindInvoices(){
   $("#i_cat").addEventListener("change", () => { autoProd(); pgUi(); if (!$("#i_unit").value) $("#i_unit").value = unitGuess($("#i_cat").value, $("#i_sup").value); calc(); }); $("#i_prod").addEventListener("change", () => { S.prodTouched = true; pgUi(); });
   const att = attachController("i_att");
   const payVis = () => { const cr = $("#i_st").value === "غير مدفوعة"; $("#i_pay").disabled = cr; if (cr && $("#i_pay").value === "من العهدة") $("#i_pay").value = "كاش";
-    $("#i_cdw").hidden = cr || $("#i_pay").value === "من العهدة"; $("#i_cdate").min = $("#i_date").value || ""; };
+    $("#i_cdw").hidden = cr || $("#i_pay").value === "من العهدة"; $("#i_cdate").min = $("#i_date").value || "";
+    $("#i_psw").hidden = cr || $("#i_pay").value !== "مقسّمة"; psHint(); };
+  /* split payment: what is left to place */
+  const PS = [["كاش","#i_ps_c"],["مدى/بطاقة","#i_ps_m"],["تحويل بنكي","#i_ps_t"]];
+  const psHint = () => { const h = $("#i_ps_h"); if (!h || $("#i_psw").hidden) return;
+    const t = r2(n($("#i_bt").value) + n($("#i_vat").value)), s = r2(sumBy(PS, ([, q]) => n($(q).value))), d = r2(t - s);
+    h.innerHTML = !t ? "اكتب مبلغ الفاتورة أولاً" : Math.abs(d) < 0.005 ? '<b style="color:#2E7D32">مطابق لإجمالي الفاتورة ✓</b>' : d > 0 ? `المتبقي: <b class="num">${fmt(d)}</b> من <span class="num">${fmt(t)}</span>` : `<b style="color:#C62828">الأجزاء أكثر من الإجمالي بـ <span class="num">${fmt(-d)}</span></b>`; };
+  PS.forEach(([, q]) => { $(q).addEventListener("input", psHint);
+    /* entering an empty part offers what is left (selected, so typing replaces it) */
+    $(q).addEventListener("focus", () => { if ($(q).value !== "") return; const t = r2(n($("#i_bt").value) + n($("#i_vat").value)), rest = r2(t - sumBy(PS, ([, z]) => n($(z).value)));
+      if (t && rest > 0 && PS.some(([, z]) => z !== q && n($(z).value) > 0)){ $(q).value = rest; $(q).select(); psHint(); } }); });
   $("#i_st").addEventListener("change", payVis); $("#i_pay").addEventListener("change", payVis); $("#i_date").addEventListener("change", payVis);
   const supHint = () => { const s = supplierOf($("#i_sup").value), el = $("#i_suphint");
     if (!$("#i_sup").value.trim()){ el.textContent = ""; return; }
@@ -1608,10 +1626,10 @@ function bindInvoices(){
     if (!S.editInv){ if (s.category && !$("#i_cat").value){ ensureOpt($("#i_cat"), s.category); $("#i_cat").value = s.category; autoProd(); pgUi(); } if (s.terms === "آجل"){ $("#i_st").value = "غير مدفوعة"; payVis(); } } };
   $("#i_sup").addEventListener("change", supHint); $("#i_sup").addEventListener("blur", supHint);
   const reset = () => { S.editInv = null; S.cdAns = null; if ($("#i_cdask")) $("#i_cdask").hidden = true; f.reset(); S.prodTouched = false; $("#i_prod").checked = false; $("#i_date").value = today(); $("#i_pay").value = "كاش"; $("#i_st").value = "مدفوعة";
-    $("#fiTitle").textContent = "فاتورة جديدة"; $("#i_save").textContent = "إضافة الفاتورة"; $("#i_cancel").hidden = $("#i_del").hidden = true; disarm($("#i_del")); f.classList.remove("editing"); att.reset(); $("#i_suphint").textContent = ""; S.invSplit = null; S.invItems = null; itDraw(); poDraw(""); payVis(); pgUi(""); calc(); };
+    $("#fiTitle").textContent = "فاتورة جديدة"; $("#i_save").textContent = "إضافة الفاتورة"; $("#i_cancel").hidden = $("#i_del").hidden = true; disarm($("#i_del")); f.classList.remove("editing"); att.reset(); $("#i_suphint").textContent = ""; S.invSplit = null; S.invItems = null; PS.forEach(([, q]) => $(q).value = ""); itDraw(); poDraw(""); payVis(); pgUi(""); calc(); };
   S.loadInv = id => { const x = S.invoices.find(v => v.id === id); if (!x) return; S.editInv = id; S.cdAns = null; if ($("#i_cdask")) $("#i_cdask").hidden = true;
     $("#i_date").value = x.date||""; $("#i_no").value = x.no||""; $("#i_sup").value = x.supplier||""; ensureOpt($("#i_cat"), x.category); $("#i_cat").value = x.category||"";
-    $("#i_bt").value = has(x.beforeTax)?x.beforeTax:""; $("#i_vat").value = has(x.vat)?x.vat:""; if ($("#i_vatWrap")) $("#i_vatWrap").hidden = !vatReg() && !(n(x.vat) > 0); $("#i_pay").value = x.pay||"كاش"; $("#i_st").value = x.status||"مدفوعة"; $("#i_notes").value = x.notes||""; $("#i_buy").value = x.buyer||""; $("#i_cdate").value = x.cashDate||""; $("#i_qty").value = x.qty ?? ""; $("#i_unit").value = x.unit || ""; $("#i_prod").checked = isProd(x); S.prodTouched = true; S.invSplit = Array.isArray(x.lines) && x.lines.length ? x.lines.map(l => ({d:l.d || "", q: has(l.q) ? l.q : "", u:l.u || "", k: PG_BY[l.k] ? l.k : "food", a:n(l.a), ing:l.ing || ""})) : Array.isArray(x.split) && x.split.length > 1 ? x.split.map(l => ({k:l.k, a:n(l.amount), d:"", q:"", u:""})) : null; pgUi(x.pgroup || "");
+    $("#i_bt").value = has(x.beforeTax)?x.beforeTax:""; $("#i_vat").value = has(x.vat)?x.vat:""; if ($("#i_vatWrap")) $("#i_vatWrap").hidden = !vatReg() && !(n(x.vat) > 0); $("#i_pay").value = x.pay||"كاش"; PS.forEach(([m, q]) => { const p = (x.pays || []).find(z => z.m === m); $(q).value = p ? p.a : ""; }); $("#i_st").value = x.status||"مدفوعة"; $("#i_notes").value = x.notes||""; $("#i_buy").value = x.buyer||""; $("#i_cdate").value = x.cashDate||""; $("#i_qty").value = x.qty ?? ""; $("#i_unit").value = x.unit || ""; $("#i_prod").checked = isProd(x); S.prodTouched = true; S.invSplit = Array.isArray(x.lines) && x.lines.length ? x.lines.map(l => ({d:l.d || "", q: has(l.q) ? l.q : "", u:l.u || "", k: PG_BY[l.k] ? l.k : "food", a:n(l.a), ing:l.ing || ""})) : Array.isArray(x.split) && x.split.length > 1 ? x.split.map(l => ({k:l.k, a:n(l.amount), d:"", q:"", u:""})) : null; pgUi(x.pgroup || "");
     $("#fiTitle").textContent = "تعديل فاتورة"; $("#i_save").textContent = "حفظ التعديل"; $("#i_cancel").hidden = false; $("#i_del").hidden = !S.canWrite; disarm($("#i_del"));
     S.invItems = Array.isArray(x.items) && x.items.length ? x.items.map(l => ({ing:l.ing, q:l.q, a:l.a})) : null; itDraw(); poDraw(x.po || "");
     f.classList.add("editing"); att.load("invoices/" + id); supHint(); payVis(); calc(); f.scrollIntoView({behavior:"smooth",block:"start"}); };
@@ -1626,7 +1644,7 @@ function bindInvoices(){
     $("#i_bt").value = num(J.beforeTax); $("#i_vat").value = num(J.vat);
     if ($("#i_vatWrap") && n(J.vat) > 0) $("#i_vatWrap").hidden = false;
     if (J.qty) $("#i_qty").value = J.qty; if (J.unit) $("#i_unit").value = J.unit;
-    $("#i_st").value = J.status === "غير مدفوعة" ? "غير مدفوعة" : "مدفوعة"; if (PAY.includes(J.pay)) $("#i_pay").value = J.pay;
+    $("#i_st").value = J.status === "غير مدفوعة" ? "غير مدفوعة" : "مدفوعة"; if (PAY.includes(J.pay)) $("#i_pay").value = J.pay; PS.forEach(([m, q]) => { const p = (Array.isArray(J.pays) ? J.pays : []).find(z => z.m === m); $(q).value = p ? p.a : ""; });
     $("#i_notes").value = J.notes || "";
     supHint(); if (J.category && cats.includes(J.category)) $("#i_cat").value = J.category;
     const tot = r2(n(J.beforeTax) + n(J.vat));
@@ -1669,6 +1687,12 @@ function bindInvoices(){
       if (r2(sumBy(L, l => l.a)) > r2(n(data.beforeTax) + n(data.vat)) + 0.005){ toast("مبالغ أصناف المخزون أكبر من إجمالي الفاتورة"); return; }
       data.items = L.length ? L : null; }
     data.po = $("#i_po") && $("#i_po").value ? $("#i_po").value : null;
+    data.pays = null;
+    if (data.pay === "مقسّمة" && data.status !== "غير مدفوعة"){
+      const P = PS.map(([m, q]) => ({m, a:r2(n($(q).value))})).filter(p => p.a > 0), t = r2(invTotal(data)), sm = r2(sumBy(P, p => p.a));
+      if (P.length < 2){ toast("الدفع المقسّم يحتاج مبلغين على الأقل (مثل كاش ومدى)، أو اختر طريقة دفع واحدة"); $("#i_ps_c").focus(); return; }
+      if (Math.abs(sm - t) > 0.005){ toast(`مجموع الأجزاء ${fmt(sm)} لا يساوي إجمالي الفاتورة ${fmt(t)}`); $("#i_ps_c").focus(); return; }
+      data.pays = P; }
     { const cd = $("#i_cdate").value;
       if (cd && data.status !== "غير مدفوعة" && data.pay !== "من العهدة"){
         if (cd < data.date){ toast("تاريخ الصرف من الخزنة لا يكون قبل تاريخ الفاتورة"); $("#i_cdate").focus(); return; }
@@ -1676,9 +1700,9 @@ function bindInvoices(){
     /* a cash invoice dated on or before a drawer count: the count already reflects it only if the money left before the count.
        Ask once, so money refunded from the drawer after the count never shows as a false shortage. */
     { const old = S.editInv ? S.invoices.find(v => v.id === S.editInv) : null, box = $("#i_cdask");
-      const changed = !old || old.date !== data.date || old.pay !== data.pay || old.status !== data.status;
+      const changed = !old || old.date !== data.date || payLabel(old) !== payLabel(data) || old.status !== data.status;
       const K = [...S.recon.entries()].filter(([d, r]) => has(r.actualCash) && d >= data.date).map(([d]) => d).sort().pop();
-      if (data.pay === "كاش" && data.status !== "غير مدفوعة" && !data.cashDate && changed && K){
+      if (invHas(data, "كاش") && data.status !== "غير مدفوعة" && !data.cashDate && changed && K){
         if (S.cdAns !== K + "|" + data.date){
           box.hidden = false;
           box.innerHTML = `<div class="note warn"><b>تاريخ هذه الفاتورة قبل جرد الخزنة المسجّل يوم <span class="num">${dmy(K)}</span> أو في يومه.</b> متى خرج المبلغ من درج الخزنة؟
@@ -1738,7 +1762,7 @@ function renderInvList(){
   const fOn = F.today || F.pay || F.buyer;
   const PAYF = [["","كل طرق الدفع"],["cash","كاش"],["bank","بنك (مدى + تحويل)"],["mada","مدى/بطاقة"],["transfer","تحويل بنكي"],["custody","من العهدة"],["credit","آجل (غير مدفوعة)"]];
   const payOk = x => { const p = F.pay, cr = isCredit(x); if (!p) return true; if (p === "credit") return cr; if (cr) return false;
-    return p === "cash" ? x.pay === "كاش" : p === "mada" ? x.pay === "مدى/بطاقة" : p === "transfer" ? x.pay === "تحويل بنكي" : p === "bank" ? (x.pay === "مدى/بطاقة" || x.pay === "تحويل بنكي") : p === "custody" ? x.pay === "من العهدة" : true; };
+    return p === "cash" ? invHas(x, "كاش") : p === "mada" ? invHas(x, "مدى/بطاقة") : p === "transfer" ? invHas(x, "تحويل بنكي") : p === "bank" ? (invHas(x, "مدى/بطاقة") || invHas(x, "تحويل بنكي")) : p === "custody" ? x.pay === "من العهدة" : true; };
   const buyOk = x => !F.buyer ? true : F.buyer === "__none" ? !String(x.buyer || "").trim() : buyerKey(x.buyer) === buyerKey(F.buyer);
   const rows = S.invoices.filter(x => (F.today ? invEntDay(x) === td : inR(x.date,R)) && payOk(x) && buyOk(x))
     .sort(F.today ? (a,b) => invEntAt(a) < invEntAt(b) ? -1 : 1 : (a,b)=> a.date<b.date?-1:a.date>b.date?1:(a.updatedAt||"")<(b.updatedAt||"")?-1:1);
@@ -1753,7 +1777,7 @@ function renderInvList(){
   /* not VAT-registered: the amount typed is the full paid amount, so the VAT columns are left out */
   const nv = !vatReg() && !rows.some(x => n(x.vat) > 0);
   el.innerHTML = fbar + `<div class="tw stick"><table><thead><tr><th>التاريخ</th><th>رقم الفاتورة</th><th>المورد / الجهة</th><th>التصنيف</th>${nv ? "" : '<th class="n">قبل الضريبة</th><th class="n">الضريبة</th>'}<th class="n">${nv ? "المبلغ" : "الإجمالي"}</th><th>طريقة الدفع</th><th>الحالة</th><th>الوسم</th><th>مرفق</th><th>ملاحظات</th></tr></thead><tbody>
-    ${rows.length ? rows.map(x=>{ const stt = invStatus(x); return `<tr class="click ${stt[1]==="bad"?"unpaid":""}" data-id="${esc(x.id)}"><td class="num">${dmy(x.date)}${who(x.by)}${F.today ? `<div class="by">أُدخلت ${invEntTime(x)}</div>` : ""}</td><td>${esc(x.no)}</td><td>${esc(x.supplier)}${supplierOf(x.supplier) && supplierOf(x.supplier).name !== normName(x.supplier) ? `<div class="by">${esc(supplierOf(x.supplier).name)}</div>` : ""}${x.buyer ? `<div class="by">المشتري: ${esc(x.buyer)}</div>` : ""}${invLinesTxt(x)}</td><td>${esc(x.category)}</td>${nv ? "" : `<td class="n">${money(n(x.beforeTax))}</td><td class="n">${money(n(x.vat))}</td>`}<td class="n"><b>${money(invTotal(x))}</b></td><td>${isCredit(x) ? "آجل" : esc(x.pay)}${invCashDate(x) !== x.date ? `<div class="by">صُرفت ${dmy(invCashDate(x))}</div>` : ""}</td><td><span class="chip ${stt[1]}">${esc(stt[0])}</span>${stt[1]==="bad" && S.canWrite ? ` <button type="button" class="btn sm" data-payinv="${esc(x.id)}">سداد</button>` : ""}</td><td>${isProd(x)?`<span class="chip prod">إنتاج · ${pgIsSplit(x) ? `مقسّمة على ${pgParts(x).length} أقسام` : esc(PG_BY[pgOf(x)].name)}</span>`:""}</td><td>${x.att ? `<span class="chip info">${x.att} ${x.att > 1 ? "مرفقات" : "مرفق"}</span>` : ""}</td><td>${esc(x.notes)}</td></tr>`; }).join("")
+    ${rows.length ? rows.map(x=>{ const stt = invStatus(x); return `<tr class="click ${stt[1]==="bad"?"unpaid":""}" data-id="${esc(x.id)}"><td class="num">${dmy(x.date)}${who(x.by)}${F.today ? `<div class="by">أُدخلت ${invEntTime(x)}</div>` : ""}</td><td>${esc(x.no)}</td><td>${esc(x.supplier)}${supplierOf(x.supplier) && supplierOf(x.supplier).name !== normName(x.supplier) ? `<div class="by">${esc(supplierOf(x.supplier).name)}</div>` : ""}${x.buyer ? `<div class="by">المشتري: ${esc(x.buyer)}</div>` : ""}${invLinesTxt(x)}</td><td>${esc(x.category)}</td>${nv ? "" : `<td class="n">${money(n(x.beforeTax))}</td><td class="n">${money(n(x.vat))}</td>`}<td class="n"><b>${money(invTotal(x))}</b></td><td>${isCredit(x) ? "آجل" : esc(payLabel(x))}${invCashDate(x) !== x.date ? `<div class="by">صُرفت ${dmy(invCashDate(x))}</div>` : ""}</td><td><span class="chip ${stt[1]}">${esc(stt[0])}</span>${stt[1]==="bad" && S.canWrite ? ` <button type="button" class="btn sm" data-payinv="${esc(x.id)}">سداد</button>` : ""}</td><td>${isProd(x)?`<span class="chip prod">إنتاج · ${pgIsSplit(x) ? `مقسّمة على ${pgParts(x).length} أقسام` : esc(PG_BY[pgOf(x)].name)}</span>`:""}</td><td>${x.att ? `<span class="chip info">${x.att} ${x.att > 1 ? "مرفقات" : "مرفق"}</span>` : ""}</td><td>${esc(x.notes)}</td></tr>`; }).join("")
       : `<tr><td colspan="${nv ? 10 : 12}" class="empty">${F.today ? "لم تُدخل أي فاتورة اليوم" : `لا توجد فواتير في ${rgShort()}`}${(F.pay || F.buyer) ? " بهذه الفلاتر" : ""}</td></tr>`}
     <tr class="tot"><td colspan="4">${F.today ? "إجمالي ما أُدخل اليوم" : fOn ? "إجمالي النتائج" : "إجمالي الفترة"} (${rows.length} فاتورة)</td>${nv ? "" : `<td class="n">${money(sum("beforeTax"))}</td><td class="n">${money(sum("vat"))}</td>`}<td class="n">${money(rows.reduce((t,x)=>t+invTotal(x),0))}</td><td colspan="5" class="small">منها مصاريف إنتاج: <span class="num">${fmt(rows.filter(isProd).reduce((t,x)=>t+invTotal(x),0))}</span></td></tr>
   </tbody></table></div><p class="small muted">اضغط على أي فاتورة لتعديلها أو حذفها.</p>`;
@@ -1940,7 +1964,7 @@ async function exportXlsx(){
     {"البند":"مصاريف الإنتاج","القيمة":r2(st.prod)},
     {"البند":"نسبة الإنتاج","القيمة":st.netSales ? r2(st.prodPct*100) + "%" : "—"}]);
   add("المبيعات", [...S.sales.values()].sort(sortD).map(s => ({"التاريخ":s.date,"اليوم":dayName(s.date),"كاش":n(s.cash),"مدى":n(s.mada),"فيزا / ماستركارد":n(s.visa),"تطبيقات التوصيل":n(s.delivery),"تحويل بنكي":n(s.transfer),"آجل":n(s.credit),"الإجمالي":r2(saleTotal(s)),"الفعلي بعد العمولة":r2(netSale(s)),"عدد الفواتير":has(s.count)?n(s.count):"","ملاحظات":s.notes||"","أدخلها":nm(s.by)})));
-  add("الفواتير", [...S.invoices].sort(sortD).map(x => ({"التاريخ":x.date,"رقم الفاتورة":x.no||"","المورد / الجهة":x.supplier||"","التصنيف":x.category||"","قبل الضريبة":n(x.beforeTax),"الضريبة":n(x.vat),"الإجمالي":r2(invTotal(x)),"طريقة الدفع":isCredit(x)?"آجل":(x.pay||""),"الحالة":invStatus(x)[0],"المتبقي":r2(apState().byInv.get(x.id)?.remain||0),"المشتري":x.buyer||"","الأصناف":(Array.isArray(x.lines) ? x.lines.map(l => `${normName(l.d || "")}${n(l.q) > 0 ? " " + n(l.q) + " " + (l.u || "") : ""} = ${r2(n(l.a))}`).join(" | ") : ""),"الكمية":hasQty(x)?n(x.qty):"","الوحدة":hasQty(x)?x.unit:"","سعر الوحدة":hasQty(x)?r2(unitPrice(x)):"","مصاريف إنتاج":isProd(x)?"نعم":"","قسم الإنتاج":isProd(x)?pgLabel(x):"","ملاحظات":x.notes||"","أدخلها":nm(x.by)})));
+  add("الفواتير", [...S.invoices].sort(sortD).map(x => ({"التاريخ":x.date,"رقم الفاتورة":x.no||"","المورد / الجهة":x.supplier||"","التصنيف":x.category||"","قبل الضريبة":n(x.beforeTax),"الضريبة":n(x.vat),"الإجمالي":r2(invTotal(x)),"طريقة الدفع":isCredit(x)?"آجل":payLabel(x),"الحالة":invStatus(x)[0],"المتبقي":r2(apState().byInv.get(x.id)?.remain||0),"المشتري":x.buyer||"","الأصناف":(Array.isArray(x.lines) ? x.lines.map(l => `${normName(l.d || "")}${n(l.q) > 0 ? " " + n(l.q) + " " + (l.u || "") : ""} = ${r2(n(l.a))}`).join(" | ") : ""),"الكمية":hasQty(x)?n(x.qty):"","الوحدة":hasQty(x)?x.unit:"","سعر الوحدة":hasQty(x)?r2(unitPrice(x)):"","مصاريف إنتاج":isProd(x)?"نعم":"","قسم الإنتاج":isProd(x)?pgLabel(x):"","ملاحظات":x.notes||"","أدخلها":nm(x.by)})));
   add("العهد", [...S.custody].sort(sortD).map(x => ({"التاريخ":x.date,"الموظف":x.employee||"","نوع الحركة":x.type||"","المبلغ":n(x.amount),"المصدر":x.source||"","البيان":x.desc||"","التصنيف":x.category||"","المرجع":x.ref||"","ملاحظات":x.notes||"","أدخلها":nm(x.by)})));
   add("أرصدة العهد", custodyBalances().map(x => ({"الموظف":x.name,"المستلم":r2(x.rec),"المصروف":r2(x.spent),"المُرجَع":r2(x.ret),"المتبقي":r2(x.left)})));
   add("تحويلات التطبيقات", [...S.apps].sort(sortD).map(x => ({"تاريخ الوصول":x.date,"التطبيق":x.app||"","المبلغ":n(x.amount),"من":x.from||"","إلى":x.to||"","ملاحظات":x.notes||"","أدخلها":nm(x.by)})));
@@ -2043,8 +2067,9 @@ function renderReconList(){
 /* what makes up a day's «مصروفات وعهد» in the reconciliation: the same items the ledger sums, one by one (and the cash side too) */
 function dayOutItems(d){
   const out = {cash:[], bank:[]}, put = (k, label, amt, go) => out[k].push({label, amt:r2(amt), go});
-  for (const x of S.invoices){ if (x.status === "غير مدفوعة" || invCashDate(x) !== d) continue; const k = x.pay === "كاش" ? "cash" : (x.pay === "مدى/بطاقة" || x.pay === "تحويل بنكي") ? "bank" : null;
-    if (k) put(k, `فاتورة ${x.supplier || ""}${x.no ? " رقم " + x.no : ""} · ${x.pay}${x.date !== d ? ` (بتاريخ ${dmy(x.date)})` : ""}`, invTotal(x), "inv:" + x.id); }
+  for (const x of S.invoices){ if (x.status === "غير مدفوعة" || invCashDate(x) !== d) continue;
+    for (const p of invParts(x)){ const k = p.m === "كاش" ? "cash" : (p.m === "مدى/بطاقة" || p.m === "تحويل بنكي") ? "bank" : null;
+      if (k && p.a) put(k, `فاتورة ${x.supplier || ""}${x.no ? " رقم " + x.no : ""} · ${p.m}${x.pay === "مقسّمة" ? " (جزء من " + fmt(invTotal(x)) + ")" : ""}${x.date !== d ? ` (بتاريخ ${dmy(x.date)})` : ""}`, p.a, "inv:" + x.id); } }
   for (const p of S.payments) if (p.date === d) put(p.pay === "كاش" ? "cash" : "bank", `سداد للمورد ${p.supplier || ""}`, n(p.amount));
   const sd = S.settings.startDate;
   if (!sd || d >= sd){
@@ -2390,9 +2415,9 @@ const REPORTS = {
       `</div>` +
       (s.unpaid.length ? rpSec("الفواتير الآجلة غير المسددة", rpTable(["التاريخ","المورد","التصنيف","رقم الفاتورة","الإجمالي","المتبقي"], s.unpaid.map(x => [`<span class="num">${dmy(x.date)}</span>`, esc(supKey(x.supplier)), esc(x.category), esc(x.no), M(invTotal(x)), `<b>${M(apState().byInv.get(x.id).remain)}</b>`]), ["الإجمالي","","","", M(sumBy(s.unpaid, invTotal)), M(sumBy(s.unpaid, x => apState().byInv.get(x.id).remain))])) : "") +
       (!vatReg() && !s.invs.some(x => n(x.vat) > 0)
-        ? rpSec("سجل الفواتير", rpTable(["التاريخ","المورد","التصنيف","المبلغ","الدفع","إنتاج"], s.invs.map(x => [`<span class="num">${dmy(x.date)}</span>`, esc(x.supplier), esc(x.category), `<b>${M(invTotal(x))}</b>`, (isCredit(x) ? '<span class="rp-neg">آجل</span>' : esc(x.pay)), isProd(x) ? "✓" : ""]),
+        ? rpSec("سجل الفواتير", rpTable(["التاريخ","المورد","التصنيف","المبلغ","الدفع","إنتاج"], s.invs.map(x => [`<span class="num">${dmy(x.date)}</span>`, esc(x.supplier), esc(x.category), `<b>${M(invTotal(x))}</b>`, (isCredit(x) ? '<span class="rp-neg">آجل</span>' : esc(payLabel(x))), isProd(x) ? "✓" : ""]),
             ["الإجمالي","","", M(s.invTotal), "", ""], ["13%","25%","25%","15%","15%","7%"]))
-        : rpSec("سجل الفواتير", rpTable(["التاريخ","المورد","التصنيف","قبل الضريبة","الضريبة","الإجمالي","الدفع","إنتاج"], s.invs.map(x => [`<span class="num">${dmy(x.date)}</span>`, esc(x.supplier), esc(x.category), M(n(x.beforeTax)), M(n(x.vat)), `<b>${M(invTotal(x))}</b>`, (isCredit(x) ? '<span class="rp-neg">آجل</span>' : esc(x.pay)), isProd(x) ? "✓" : ""]),
+        : rpSec("سجل الفواتير", rpTable(["التاريخ","المورد","التصنيف","قبل الضريبة","الضريبة","الإجمالي","الدفع","إنتاج"], s.invs.map(x => [`<span class="num">${dmy(x.date)}</span>`, esc(x.supplier), esc(x.category), M(n(x.beforeTax)), M(n(x.vat)), `<b>${M(invTotal(x))}</b>`, (isCredit(x) ? '<span class="rp-neg">آجل</span>' : esc(payLabel(x))), isProd(x) ? "✓" : ""]),
             ["الإجمالي","","", M(sumBy(s.invs, x => n(x.beforeTax))), M(sumBy(s.invs, x => n(x.vat))), M(s.invTotal), "", ""], ["12%","19%","19%","12%","9%","12%","12%","5%"]))) + rpFoot()};
   },
   production(a,b){
@@ -2412,7 +2437,7 @@ const REPORTS = {
       rpSec("حسب التصنيف", rpTable(["التصنيف","المبلغ","من المبيعات",""], s.prodCats.map(x => [esc(x.k), M(x.v), s.netSales ? P(x.v/s.netSales) : "—", rpBar(x.v, maxPC)]), null, ["36%","22%","18%","24%"])) +
       rpSec("حسب المورد", rpTable(["المورد","الفواتير","المبلغ"], s.prodSups.slice(0,12).map(x => [esc(x.k), `<span class="num">${x.c}</span>`, M(x.v)]), null, ["52%","18%","30%"])) +
       `</div>` +
-      rpSec("فواتير الإنتاج", rpTable(["التاريخ","المورد","التصنيف","القسم","الدفع","المبلغ"], s.prodInv.map(x => [`<span class="num">${dmy(x.date)}</span>`, esc(x.supplier), esc(x.category), esc(pgLabel(x)), esc(x.pay), M(invTotal(x))]), ["الإجمالي","","","","", M(s.prodInv.reduce((t,x)=>t+invTotal(x),0))], ["13%","24%","24%","14%","11%","14%"])) + rpFoot()};
+      rpSec("فواتير الإنتاج", rpTable(["التاريخ","المورد","التصنيف","القسم","الدفع","المبلغ"], s.prodInv.map(x => [`<span class="num">${dmy(x.date)}</span>`, esc(x.supplier), esc(x.category), esc(pgLabel(x)), esc(payLabel(x)), M(invTotal(x))]), ["الإجمالي","","","","", M(s.prodInv.reduce((t,x)=>t+invTotal(x),0))], ["13%","24%","24%","14%","11%","14%"])) + rpFoot()};
   },
   recon(a,b){
     const rows = ledger().filter(r => inR(r.date, [a,b]));
@@ -2802,11 +2827,12 @@ function accJournal(){
   for (const x of S.invoices){
     if (x.pay === "من العهدة") continue;
     const tot = invTotal(x), acc = catAccount(x.category), vin = vatOn(x.date) && n(x.vat) > 0 ? n(x.vat) : 0;
-    const credit = x.status === "غير مدفوعة" ? "2101" : x.pay === "كاش" ? "1101" : "1102", cd = invCashDate(x), late = cd !== x.date;
+    /* paid: cash to the safe (1101), card or transfer to the bank (1102), a split invoice part by part */
+    const cr = x.status === "غير مدفوعة" ? [{acc:"2101", cr: tot}] : invParts(x).filter(p => p.a).map(p => ({acc: p.m === "كاش" ? "1101" : "1102", cr: p.a})), cd = invCashDate(x), late = cd !== x.date;
     add(x.date, "invoices", x.id, `فاتورة ${x.supplier || ""}${x.no ? " رقم " + x.no : ""} · ${x.category || ""}`, [
-      {acc, dr: tot - vin}, {acc:"1501", dr: vin}, {acc: late ? "2102" : credit, cr: tot}]);
+      {acc, dr: tot - vin}, {acc:"1501", dr: vin}, ...(late ? [{acc:"2102", cr: tot}] : cr)]);
     /* paid out later than the invoice date: owed (to the buyer) until the day it left the drawer or the bank */
-    if (late) add(cd, "invoices", x.id + ":cd", `صرف قيمة فاتورة ${x.supplier || ""}${x.no ? " رقم " + x.no : ""}${x.buyer ? " (لـ" + x.buyer + ")" : ""}`, [{acc:"2102", dr: tot}, {acc:credit, cr: tot}]);
+    if (late) add(cd, "invoices", x.id + ":cd", `صرف قيمة فاتورة ${x.supplier || ""}${x.no ? " رقم " + x.no : ""}${x.buyer ? " (لـ" + x.buyer + ")" : ""}`, [{acc:"2102", dr: tot}, ...cr]);
   }
   // custody
   for (const x of S.custody){
@@ -3760,7 +3786,7 @@ function renderPayroll(){
         const out = newPayrollLines(ym).filter(f => !L.some(l => staffKey(l) === staffKey(f)));
         return out.length ? `<div class="note" style="margin-top:10px">${appr ? "غير مشمولين في هذا المسير" : "مستبعدون من هذا المسير"}: ${out.map(f => `<b>${esc(f.name)}</b>${S.canWrite ? ` <button class="btn ghost sm" type="button" data-prin="${esc(staffKey(f))}">${edit ? "إرجاع" : "إضافة للمسير"}</button>` : ""}`).join(" · ")}<div class="small muted" style="margin-top:4px">لا يُحسب راتبهم في مصروف هذا الشهر ولا تُخصم سلفهم، ويبقون في ملفات الموظفين كما هم.${appr && S.canWrite ? " «إضافة للمسير» تضيف الموظف براتبه الأساسي وخصم سلفته، وتدخل في استحقاق الشهر مباشرة، ثم يُصرف له كالباقين." : ""}</div></div>` : ""; })()}
       ${L.some(l => (l.pays || []).length) ? `<details style="margin-top:10px"><summary class="small" style="cursor:pointer;font-weight:700">سجل الصرف</summary><div class="tw" style="margin-top:6px"><table><thead><tr><th>التاريخ</th><th>الموظف</th><th class="n">المبلغ</th><th>الطريقة</th><th></th></tr></thead><tbody>
-        ${L.flatMap((l,i) => (l.pays || []).map((x,j) => `<tr><td class="num">${dmy(x.date)}${who(x.by)}</td><td>${esc(l.name)}</td><td class="n">${money(n(x.amount))}</td><td>${esc(x.pay)}</td><td>${S.canWrite ? `<button class="btn danger sm" type="button" data-unpay="${i}|${j}">إلغاء</button>` : ""}</td></tr>`)).join("")}</tbody></table></div></details>` : ""}
+        ${L.flatMap((l,i) => (l.pays || []).map((x,j) => `<tr><td class="num">${dmy(x.date)}${who(x.by)}</td><td>${esc(l.name)}</td><td class="n">${money(n(x.amount))}</td><td>${esc(payLabel(x))}</td><td>${S.canWrite ? `<button class="btn danger sm" type="button" data-unpay="${i}|${j}">إلغاء</button>` : ""}</td></tr>`)).join("")}</tbody></table></div></details>` : ""}
     </div>`;
   }
   const staffT = `<div class="card" style="margin-top:14px"><h3>الموظفون</h3><div class="tw"><table><thead><tr><th>الموظف</th><th>النوع</th><th class="n">الراتب الشهري</th><th>طريقة الصرف</th><th>بداية العمل</th><th class="n">سلف قائمة</th><th>الحالة</th><th></th></tr></thead><tbody>
@@ -3826,7 +3852,7 @@ Object.assign(REPORTS, {
     return {title:"مسير الرواتب", orient:"landscape", fit:true, html: rpHead("مسير الرواتب", a, b) +
       rpKpis([["مصروف الرواتب", M(all.expense)], ["صافي المستحق للموظفين", M(all.net)], ["المصروف فعلياً", M(all.paid)], ["المتبقي", `<b class="${all.remain > 0.004 ? "rp-neg" : ""}">${M(all.remain)}</b>`]]) +
       (secs.join("") || rpSec("المسيرات", rpTable(["الموظف"], [], null))) +
-      (advs.length ? rpSec("السلف المصروفة في الفترة", rpTable(["التاريخ","الموظف","المبلغ","صُرفت من","ملاحظات"], advs.map(x => [`<span class="num">${dmy(x.date)}</span>`, esc(x.name), M(n(x.amount)), esc(x.pay), esc(x.notes || "")]), ["الإجمالي","",M(sumBy(advs, x => n(x.amount))),"",""], ["14%","26%","16%","16%","28%"])) : "") + rpFoot()};
+      (advs.length ? rpSec("السلف المصروفة في الفترة", rpTable(["التاريخ","الموظف","المبلغ","صُرفت من","ملاحظات"], advs.map(x => [`<span class="num">${dmy(x.date)}</span>`, esc(x.name), M(n(x.amount)), esc(payLabel(x)), esc(x.notes || "")]), ["الإجمالي","",M(sumBy(advs, x => n(x.amount))),"",""], ["14%","26%","16%","16%","28%"])) : "") + rpFoot()};
   },
   payslip(a, b, key){
     const s = S.staff.find(v => v.id === key) || S.staff[0];
@@ -3837,7 +3863,7 @@ Object.assign(REPORTS, {
       const rows = [["الراتب الأساسي", M(c.base), ""], ...(c.absentAmt ? [[`خصم غياب (<span class="num">${n(l.absent)}</span> يوم)`, "", M(c.absentAmt)]] : []), ...(n(l.extra) ? [[`إضافي / مكافأة${l.extraNote ? " · " + esc(l.extraNote) : ""}`, M(n(l.extra)), ""]] : []),
         ...(n(l.deduct) ? [[`خصومات${l.deductNote ? " · " + esc(l.deductNote) : ""}`, "", M(n(l.deduct))]] : []), ...(n(l.advance) ? [["خصم سلفة", "", M(n(l.advance))]] : [])];
       return rpSec(`راتب ${ymLabel(p.id)}${prApproved(p) ? "" : " (مسودة)"}`, rpTable(["البند","استحقاق","خصم"], rows, ["صافي الراتب", `<b>${M(c.net)}</b>`, ""], ["56%","22%","22%"]) + `<div style="height:calc(10px*var(--rk,1))"></div>` +
-        rpTable(["تاريخ الصرف","المبلغ","الطريقة"], (l.pays || []).map(x => [`<span class="num">${dmy(x.date)}</span>`, M(n(x.amount)), esc(x.pay)]), ["المتبقي", c.remain > 0.004 ? `<b class="rp-neg">${M(c.remain)}</b>` : M(0), ""], ["40%","30%","30%"])); }).join("");
+        rpTable(["تاريخ الصرف","المبلغ","الطريقة"], (l.pays || []).map(x => [`<span class="num">${dmy(x.date)}</span>`, M(n(x.amount)), esc(payLabel(x))]), ["المتبقي", c.remain > 0.004 ? `<b class="rp-neg">${M(c.remain)}</b>` : M(0), ""], ["40%","30%","30%"])); }).join("");
     const advs = S.advances.filter(x => x.staffId === key && inR(x.date, [a,b]));
     return {title:`قسيمة راتب ${s.name}`, orient:"portrait", html: rpHead(`قسيمة راتب: ${esc(s.name)}`, a, b, `<div>${esc(s.kind || "")}${s.role ? " · " + esc(s.role) : ""} · الراتب الشهري ${M(n(s.salary))}</div>`) +
       rpKpis([["الراتب الأساسي", M(n(s.salary))], ["سلف مصروفة في الفترة", M(sumBy(advs, x => n(x.amount)))], ["رصيد السلف الحالي", M(advBalance(key))]]) +
@@ -5068,7 +5094,7 @@ Object.assign(REPORTS, {
       (mine.length ? rpSec("حسب التصنيف", rpTable(["التصنيف","الفواتير","المبلغ","النسبة",""], cats.map(x => [esc(x.k), `<span class="num">${x.c}</span>`, M(x.v), tot ? P(x.v / tot) : "—", rpBar(x.v, maxC, "#5F5E5A")]), ["الإجمالي", `<span class="num">${mine.length}</span>`, M(tot), P(1), ""], ["34%","14%","18%","14%","20%"])) +
         `<div class="rp-two">` + rpSec("حسب المورد", rpTable(["المورد","الفواتير","المبلغ"], sups.map(x => [esc(x.k), `<span class="num">${x.c}</span>`, M(x.v)]), null, ["50%","20%","30%"])) +
         rpSec("حسب طريقة الدفع", rpTable(["الطريقة","الفواتير","المبلغ"], pays.map(x => [esc(x.k), `<span class="num">${x.c}</span>`, M(x.v)]), null, ["50%","20%","30%"])) + `</div>` +
-        rpSec("سجل الفواتير", rpTable(["التاريخ","رقم الفاتورة","المورد","التصنيف","الدفع","إنتاج","الإجمالي"], mine.map(x => [`<span class="num">${dmy(x.date)}</span>`, esc(x.no || "—"), esc(supKey(x.supplier)), esc(x.category), esc(isCredit(x) ? "آجلة" : x.pay), isProd(x) ? "✓" : "", M(invTotal(x))]),
+        rpSec("سجل الفواتير", rpTable(["التاريخ","رقم الفاتورة","المورد","التصنيف","الدفع","إنتاج","الإجمالي"], mine.map(x => [`<span class="num">${dmy(x.date)}</span>`, esc(x.no || "—"), esc(supKey(x.supplier)), esc(x.category), esc(isCredit(x) ? "آجلة" : payLabel(x)), isProd(x) ? "✓" : "", M(invTotal(x))]),
           ["الإجمالي","","","","","", `<b>${M(tot)}</b>`], ["12%","13%","20%","20%","13%","7%","15%"]))
         : `<div class="rp-note">لا توجد فواتير ${ent ? "أُدخلت" : "مسجّلة"} باسم ${esc(who)} في هذه الفترة.</div>`) + rpFoot()};
   }
@@ -6900,5 +6926,10 @@ if (window.__accHost) window.__accStart = connect; else connect();
 <script src="team.js?v=1"></script>
 <script src="mgr.js?v=4"></script>
 <script type="module" src="acc-fb.js?v=14"></script>
+<script>
+(() => { const mark = () => document.querySelectorAll('input[type=date]').forEach(el => { const e = !el.value; if (el.classList.contains("dt-empty") !== e) el.classList.toggle("dt-empty", e); });
+  ["input", "change", "focusout"].forEach(t => document.addEventListener(t, e => { if (e.target && e.target.type === "date") mark(); }, true));
+  setInterval(mark, 500); mark(); })();
+</script>
 </body>
 </html>
