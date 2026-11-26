@@ -970,7 +970,7 @@ nav.tabs a[hidden],.nav-more[hidden]{display:none!important}
     <a href="#custody" data-v="custody">العهد</a>
     <a href="#pos" data-v="pos">مبيعات الكاشير</a>
     <a href="#platforms" data-v="platforms">التطبيقات</a>
-    <a href="#payroll" data-v="payroll" class="more">الموظفين</a>
+    <a href="#payroll" data-v="payroll" class="more">الموارد البشرية</a>
     <a href="#daily" data-v="daily" class="more">الملخص اليومي</a>
     <a href="#guide" data-v="guide" class="more">دليل العمل اليومي</a>
     <a href="#menu" data-v="menu" class="more">تكلفة الوجبات</a>
@@ -1219,7 +1219,7 @@ const findRaw = (coll, id) => id ? S.raw[KEY[coll]].find(x => x.id === id) : nul
    page's data opens to her account and a removed one closes. Owner-only controls inside pages (settings, journal edits, bank
    statement import, month locks, these permissions) stay with the owner. */
 const STAFF_PAGES = [["guide","دليل العمل اليومي"],["ops","التشغيل اليومي"],["buy","المشتريات"],["dashboard","لوحة التحكم"],["sales","المبيعات"],["invoices","الفواتير"],["prodcost","تكاليف الإنتاج"],["suppliers","الموردون"],
-  ["custody","العهد"],["pos","مبيعات الكاشير"],["platforms","التطبيقات"],["payroll","الموظفين والرواتب"],["daily","الملخص اليومي"],["menu","تكلفة الوجبات"],
+  ["custody","العهد"],["pos","مبيعات الكاشير"],["platforms","التطبيقات"],["payroll","الموارد البشرية والرواتب"],["daily","الملخص اليومي"],["menu","تكلفة الوجبات"],
   ["budget","الميزانية الشهرية"],["kitchen","الوصفات والمخزون"],["stock","مخزون التغليف"],["apps","تحويلات التطبيقات"],["recon","المطابقة اليومية"],["accounting","المحاسبة"],["reports","التقارير"],
   ["cfo","المدير المالي"],["history","السجل والأرشيف"],["setup","الإعدادات"]];
 /* collections closed to the employee unless the page that uses them is granted */
@@ -3814,16 +3814,17 @@ function openSalaryPay(ym, idx){
 
 /* ---------- payroll page ---------- */
 function viewPayroll(){
-  const t = S.hrTab || "staff";
-  return `<div class="bar"><h2>الموظفين</h2><div class="actions" id="pr_period" ${t === "payroll" ? "" : "hidden"}>${periodPicker()}</div></div>${readonlyNote()}
-    <div class="actions hr-tabs"><div class="seg" role="tablist" aria-label="أقسام الصفحة">${[["staff","ملفات الموظفين"],["payroll","مسير الرواتب"],["adv","السلف"]].map(([k, l]) => `<button type="button" role="tab" data-hrt="${k}" class="${t === k ? "on" : ""}" aria-selected="${t === k}">${l}</button>`).join("")}</div>
-      <span style="flex:1"></span><button class="btn" type="button" id="pr_staff" ${S.canWrite ? "" : "disabled"}>موظف جديد</button><button class="btn ghost" type="button" id="pr_adv" ${S.canWrite ? "" : "disabled"}>تسجيل سلفة</button></div>
+  const t = S.hrTab || (S.hrTab = typeof HX_TABS !== "undefined" ? "overview" : "staff");
+  return `<div class="bar"><h2>${typeof HX_TABS !== "undefined" ? "الموارد البشرية" : "الموظفين"}</h2><div class="actions"><span class="actions" id="pr_period" ${t === "payroll" || t === "perf" ? "" : "hidden"}>${periodPicker()}</span>${typeof HX_TABS !== "undefined" ? `<button class="btn ghost" type="button" id="pr_adv" ${S.canWrite ? "" : "disabled"}>تسجيل سلفة</button><button class="btn" type="button" id="pr_staff" ${S.canWrite ? "" : "disabled"}>موظف جديد</button>` : ""}</div></div>${readonlyNote()}
+    <div class="actions hr-tabs"><div class="seg" role="tablist" aria-label="أقسام الصفحة">${(typeof HX_TABS !== "undefined" ? HX_TABS : [["staff","ملفات الموظفين"],["payroll","مسير الرواتب"],["adv","السلف"]]).map(([k, l]) => `<button type="button" role="tab" data-hrt="${k}" class="${t === k ? "on" : ""}" aria-selected="${t === k}">${l}</button>`).join("")}</div>
+      ${typeof HX_TABS !== "undefined" ? "" : `<span style="flex:1"></span><button class="btn" type="button" id="pr_staff" ${S.canWrite ? "" : "disabled"}>موظف جديد</button><button class="btn ghost" type="button" id="pr_adv" ${S.canWrite ? "" : "disabled"}>تسجيل سلفة</button>`}</div>
     <div id="list"></div>`;
 }
 function bindPayroll(){ $("#pr_staff").onclick = () => openStaff(); $("#pr_adv").onclick = () => openAdvance();
-  document.querySelectorAll("[data-hrt]").forEach(b => b.onclick = () => { S.hrTab = b.dataset.hrt; document.querySelectorAll("[data-hrt]").forEach(x => { x.classList.toggle("on", x === b); x.setAttribute("aria-selected", x === b); }); $("#pr_period").hidden = S.hrTab !== "payroll"; renderPayroll(); }); }
+  document.querySelectorAll("[data-hrt]").forEach(b => b.onclick = () => { if (typeof hxTab === "function") return hxTab(b.dataset.hrt); S.hrTab = b.dataset.hrt; document.querySelectorAll("[data-hrt]").forEach(x => { x.classList.toggle("on", x === b); x.setAttribute("aria-selected", x === b); }); $("#pr_period").hidden = S.hrTab !== "payroll"; renderPayroll(); }); }
 function renderPayroll(){
   const el = $("#list"); if (!el) return;
+  if (typeof HX_NEW !== "undefined" && HX_NEW.includes(S.hrTab)){ if (document.activeElement && document.activeElement.closest && document.activeElement.closest(".hx-att,.hx-rota") && document.activeElement.matches("input[type=text],input:not([type]),input[type=time]")) return; return hxRender(el); }
   if (document.activeElement && document.activeElement.closest && document.activeElement.closest("#prTable") && S.prDirty) return; // don't wipe typing
   const ym = ymOf(S.y, S.m), p = prDoc(ym), t = p ? prTotals(p) : null, appr = prApproved(p);
   const R = monthRange(S.y, S.m), monthAdv = S.advances.filter(a => inR(a.date, R)).sort((a,b) => a.date < b.date ? -1 : 1);
@@ -6953,6 +6954,10 @@ async function connect(){
   sub("ingCounts","ingCounts", a => S.ingCounts = a);
   sub("purchaseOrders","purchaseOrders", a => S.purchaseOrders = a);
   sub("batches","batches", a => S.batches = a);
+  sub("attendance","attendance", a => S.attendance = a);
+  sub("rota","rota", a => S.rota = new Map(a.map(x => [x.id, x])));
+  sub("leaves","leaves", a => S.leaves = a);
+  sub("hrEvents","hrEvents", a => S.hrEvents = a);
   render();
   if (S.isOwner) setTimeout(fixAttFlags, 8000);
   staffFeeds();
@@ -7000,8 +7005,9 @@ if (window.__accHost) window.__accStart = connect; else connect();
 <script src="kitchen.js?v=8"></script>
 <script src="purchase.js?v=5"></script>
 <script src="team.js?v=2"></script>
+<script src="hr.js?v=1"></script>
 <script src="mgr.js?v=4"></script>
-<script type="module" src="acc-fb.js?v=15"></script>
+<script type="module" src="acc-fb.js?v=16"></script>
 <script>
 (() => { const mark = () => document.querySelectorAll('input[type=date]').forEach(el => { const e = !el.value; if (el.classList.contains("dt-empty") !== e) el.classList.toggle("dt-empty", e); });
   ["input", "change", "focusout"].forEach(t => document.addEventListener(t, e => { if (e.target && e.target.type === "date") mark(); }, true));

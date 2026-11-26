@@ -85,6 +85,11 @@ service cloud.firestore {
     match /acc_staff/{id}       { allow read, create, update: if isAdmin() || granted('payroll'); allow delete: if isAdmin(); }
     match /acc_advances/{id}    { allow read, create, update: if isAdmin() || granted('payroll'); allow delete: if isAdmin(); }
     match /acc_payroll/{id}     { allow read, create, update: if isAdmin() || granted('payroll'); allow delete: if isAdmin(); }
+    // human resources: attendance, the weekly rota, leaves, and discipline / rewards / reviews — with the page «الموارد البشرية»
+    match /acc_attendance/{id}  { allow read, create, update: if isAdmin() || granted('payroll'); allow delete: if isAdmin(); }
+    match /acc_rota/{id}        { allow read, create, update: if isAdmin() || granted('payroll'); allow delete: if isAdmin(); }
+    match /acc_leaves/{id}      { allow read, create, update: if isAdmin() || granted('payroll'); allow delete: if isAdmin(); }
+    match /acc_hrEvents/{id}    { allow read, create, update: if isAdmin() || granted('payroll'); allow delete: if isAdmin(); }
     match /acc_journal/{id}     { allow read: if isAdmin() || granted('accounting'); allow write: if isAdmin(); }
     match /acc_cfo/{id}         { allow read, create, update: if isAdmin() || granted('cfo'); allow delete: if isAdmin(); }
     match /acc_menuItems/{id}   { allow read, create, update: if isAdmin() || granted('menu'); allow delete: if isAdmin(); }
