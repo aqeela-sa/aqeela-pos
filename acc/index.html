@@ -2148,6 +2148,9 @@ function viewSetup(){
   ${S.isOwner ? `<div class="card" id="pc_card"><h3 style="margin:0 0 4px">بيانات الكاشير (التجارب)</h3>
     <p class="small muted" style="margin:0 0 12px">مسح طلبات وورديات من برنامج الكاشير. اضغط «فحص» أولاً لترى ما سيُمسح بالعدد والمبلغ، ثم اختر. المسح نهائي ولا يمس بيانات المحاسبة.</p>
     <div class="actions"><button class="btn ghost" type="button" id="pc_scan">فحص بيانات الكاشير</button></div><div id="pc_out"></div></div>` : ""}
+  ${S.isOwner && window.__accFb && window.__accFb.backup ? `<div class="card" id="sz_card"><h3 style="margin:0 0 4px">حجم البيانات في السحابة</h3>
+    <p class="small muted" style="margin:0 0 12px">كم تشغل بيانات البرامج الثلاثة من مساحة الخطة المجانية (1 جيجابايت). الحساب يقرأ كل البيانات مرة واحدة، فاستخدمه مرة في الشهر تقريباً.</p>
+    <div class="actions"><button class="btn ghost" type="button" id="sz_go">${S.szHtml ? "أعد الحساب" : "احسب حجم البيانات"}</button></div><div id="sz_out">${S.szHtml || ""}</div></div>` : ""}
   ${lockCard()}
   ${lock ? `<div class="note warn">الإعدادات يعدّلها مالك البرنامج أو المحرر فقط.</div>` : ""}
   <form class="card entry" id="fset"><h3>أرصدة البداية</h3>
@@ -2230,7 +2233,51 @@ async function importMigration(file, st){
       ${rows.map(([c, a, b]) => `<tr><td>${c}</td><td class="n num">${a}</td><td class="n num">${b}</td><td>${b >= a ? '<span class="chip ok">مطابق</span>' : '<span class="chip bad">ناقص</span>'}</td></tr>`).join("")}</tbody></table></div>`);
   };
 }
+/* Firestore's documented storage sizes: string = UTF-8 bytes + 1, number 8, boolean/null 1, map = its keys and values, document = name + fields + 32.
+   Every field is also indexed by default, so the stored total is estimated at the documents plus their index entries */
+function fsSize(v, cap){
+  if (v === null || v === undefined || typeof v === "boolean") return 1;
+  if (typeof v === "number") return 8;
+  if (typeof v === "string") return Math.min(cap || Infinity, new TextEncoder().encode(v).length) + 1;
+  if (Array.isArray(v)) return v.reduce((t, x) => t + fsSize(x, cap), 0);
+  if (typeof v === "object") return Object.entries(v).reduce((t, [k, x]) => t + new TextEncoder().encode(k).length + 1 + fsSize(x, cap), 0);
+  return 8;
+}
+const fsDocSize = (coll, id, data) => { const nm = new TextEncoder().encode(coll).length + 1 + new TextEncoder().encode(id).length + 1 + 16;
+  return nm + fsSize(data) + 32 + Object.keys(data || {}).length * (nm + 32) + fsSize(data, 1500); };
+const SZ_NAMES = {orders:"طلبات الكاشير", shifts:"ورديات الكاشير", menu:"منيو الكاشير", config:"إعدادات الكاشير", attachments:"صور الفواتير والمرفقات", invoices:"الفواتير", sales:"المبيعات", recon:"المطابقة اليومية",
+  bankTx:"كشوف البنك", platforms:"التطبيقات", users:"المستخدمون", appTransfers:"تحويلات التطبيقات", suppliers:"الموردون", payments:"سداد الموردين", staff:"الموظفون", advances:"السلف", stockItems:"أصناف المخزون", stockCounts:"جرد المخزون", cfo:"المدير المالي", menuItems:"أصناف المنيو", ingredients:"المكونات", recipes:"الوصفات", ingCounts:"جرد المكونات", purchaseOrders:"طلبات الشراء", batches:"دفعات التحضير", journal:"القيود", custody:"العهد", posDays:"ملخصات أيام الكاشير", itemSales:"تقارير أصناف فودكس", payroll:"الرواتب", settings:"الإعدادات"};
+async function storageSize(){
+  const btn = $("#sz_go"); btn.disabled = true; const say = t => { const o = $("#sz_out"); if (o) o.innerHTML = `<div class="small muted" style="margin-top:8px">${t}</div>`; }; say("جارٍ القراءة…");
+  try {
+    const d = await window.__accFb.backup.dump((i, all) => say(`جارٍ القراءة… ${i} من ${all}`));
+    const rows = [];
+    for (const [side, G] of [["acc", d.acc], ["pos", d.pos]]) for (const [c, L] of Object.entries(G || {})) {
+      if (!L.length) continue;
+      const b = L.reduce((t, x) => t + fsDocSize((side === "acc" ? "acc_" : "") + c, x.id, x.data), 0);
+      rows.push({c, side, k:L.length, b});
+    }
+    rows.sort((p, q) => q.b - p.b);
+    const est = rows.reduce((t, r) => t + r.b, 0), cap = 1024 ** 3, pct = est / cap * 100, docN = rows.reduce((t, r) => t + r.k, 0);
+    const mb = b => b >= 1024 ** 2 ? (b / 1024 ** 2).toFixed(2) + " ميجابايت" : b >= 1024 ? (b / 1024).toFixed(0) + " كيلوبايت" : "أقل من 1 كيلوبايت";
+    const ord = rows.find(r => r.side === "pos" && r.c === "orders"), att = rows.find(r => r.c === "attachments");
+    /* kept, so the page redrawing itself keeps the result on screen */
+    S.szHtml = `<div class="sum-tiles" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin:12px 0">
+        <div class="note"><div class="small muted">المستهلك (تقديري)</div><b style="font-size:20px" class="num">${mb(est)}</b></div>
+        <div class="note"><div class="small muted">المتبقي من 1 جيجابايت</div><b style="font-size:20px" class="num">${mb(Math.max(0, cap - est))}</b></div>
+        <div class="note"><div class="small muted">النسبة المستخدمة</div><b style="font-size:20px" class="num">${pct < 0.1 ? "أقل من 0.1" : pct.toFixed(1)}%</b></div></div>
+      <div style="height:10px;border-radius:99px;background:#eee;overflow:hidden;margin-bottom:12px"><i style="display:block;height:100%;width:${Math.min(100, Math.max(0.5, pct))}%;background:${pct > 70 ? "#C62828" : pct > 40 ? "#B26A00" : "#2E7D32"}"></i></div>
+      <div class="tw"><table><thead><tr><th>البيانات</th><th class="n">العدد</th><th class="n">الحجم</th></tr></thead><tbody>
+        ${rows.slice(0, 12).map(r => `<tr><td>${esc(SZ_NAMES[r.c] || r.c)}</td><td class="n">${r.k.toLocaleString("en")}</td><td class="n">${mb(r.b)}</td></tr>`).join("")}
+        ${rows.length > 12 ? `<tr><td class="muted">باقي البيانات (${rows.length - 12})</td><td class="n">${rows.slice(12).reduce((t, r) => t + r.k, 0).toLocaleString("en")}</td><td class="n">${mb(rows.slice(12).reduce((t, r) => t + r.b, 0))}</td></tr>` : ""}
+      </tbody></table></div>
+      <p class="small muted" style="margin:8px 0 0">${docN.toLocaleString("en")} سجلاً. الحجم تقديري بطريقة Firebase في الحساب، مع فهارس البحث. حُسب ${new Date().toLocaleString("ar-SA-u-nu-latn", {dateStyle:"short", timeStyle:"short"})}.${att ? ` الصور أكبر بند: كل صورة فاتورة حتى 230 كيلوبايت تقريباً.` : ""}${ord ? ` كل طلب كاشير حوالي <span class="num">${(ord.b / ord.k / 1024).toFixed(1)}</span> كيلوبايت.` : ""}</p>`;
+    const o2 = $("#sz_out"); if (o2) o2.innerHTML = S.szHtml;
+  } catch(e){ const o = $("#sz_out"); if (o) o.innerHTML = `<div class="note warn" style="margin-top:8px">تعذّر الحساب: ${esc(e.code || e.message || "")}</div>`; }
+  const b2 = $("#sz_go"); if (b2){ b2.disabled = false; b2.textContent = S.szHtml ? "أعد الحساب" : "احسب حجم البيانات"; }
+}
 function bindSetup(){
+  $("#sz_go") && ($("#sz_go").onclick = storageSize);
   bindLockCard(); bindBrandCard(); bindStaffPermCard(); if (typeof bindTeamCard === "function") bindTeamCard(); bindPosClean(); bindRestoreSettings(); if ($("#set_book")) $("#set_book").onclick = () => downloadBook($("#set_book"));
   document.querySelectorAll(".skin-opt").forEach(b => b.onclick = () => { const v = ["teal", "rose"].includes(b.dataset.sk) ? b.dataset.sk : "classic";
     document.documentElement.dataset.skin = v; try { localStorage.setItem("skin", v); } catch(e){}
