@@ -269,3 +269,6 @@ a.cx-ni{text-decoration:none;box-sizing:border-box}
 .cx-top{height:calc(72px + env(safe-area-inset-top));padding-top:env(safe-area-inset-top)}
 .cx-side{padding-top:env(safe-area-inset-top)}
 @media (max-width:920px){.cx-top{height:calc(64px + env(safe-area-inset-top));padding-top:env(safe-area-inset-top)}}
+/* home-screen app: the side sheet's header (with its close button) and footer clear the status bar and the home bar */
+.cx-drh{padding-top:calc(18px + env(safe-area-inset-top))}
+.cx-drf{padding-bottom:max(14px,env(safe-area-inset-bottom))}
