@@ -7,7 +7,7 @@
 try{document.documentElement.dataset.aq=localStorage.getItem("aq")??"1"}catch(e){document.documentElement.dataset.aq="1"}</script>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>AQ ACC · شاورما العقيلة</title>
+<title>AQ ACC</title>
 <meta name="apple-mobile-web-app-title" content="AQ ACC"><meta name="application-name" content="AQ ACC">
 <link rel="icon" href="../icons/icon-192.png?v=2"><link rel="apple-touch-icon" href="../icons/apple-touch-icon.png?v=2"><meta name="theme-color" content="#C1121F">
 <script>window.__accHost = true;</script>
@@ -1018,7 +1018,7 @@ const brandIsAqeela = () => /^al-?aqeela$/i.test(brandEn().trim());
 const brandWordmark = (cls, color, dot) => { const en = brandEn().trim(), t = en || brandShort();
   return `<span class="${cls}" style="${color ? `color:${color};` : ""}" ${en ? 'dir="ltr"' : ""}>${esc(t)}<i style="${dot ? `color:${dot}` : ""}">.</i></span>`; };
 function applyBrand(){
-  const B = brand(); document.title = brandIsAqeela() ? "AQ ACC · " + B.ar : "محاسبة " + B.ar;
+  const B = brand(); document.title = brandIsAqeela() ? "AQ ACC" : "محاسبة " + B.ar;
   const em = document.querySelector(".brand .emblem"); if (em){ em.setAttribute("aria-label", brandShort()); const h = em.querySelector("h1"); if (h) h.textContent = brandShort(); }
   const l2 = document.querySelector(".brand .logo2"); if (l2){ l2.setAttribute("aria-label", brandShort() + (brandEn() ? " " + brandEn() : ""));
     const svg = l2.querySelector("svg.wmk"); let tx = l2.querySelector(".wmk-t"); const own = brandIsAqeela(); document.documentElement.dataset.aq = own ? "1" : ""; try { localStorage.setItem("aq", own ? "1" : ""); } catch(e){}
