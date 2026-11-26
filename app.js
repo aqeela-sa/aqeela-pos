@@ -4,7 +4,7 @@
 import * as F from "./fb.js";
 import { firebaseConfig } from "./firebase-config.js";
 
-const VERSION = "2.11.3";
+const VERSION = "2.11.4";
 const ADMIN_EMAIL = "abuabraj@gmail.com";
 const DEVICE_EMAIL = "cashier@aqeela-pos.app";
 const APP_NAME = `<span dir="ltr">Cashier AQ</span>`;
@@ -1271,7 +1271,9 @@ function receiptCanvas(o) {
     while (g.measureText(name).width > maxW && name.length > 4) name = name.slice(0, -2) + "…";
     lr(name, m2(l.qty * l.price), 28, 700);
     for (const m of l.mods) lr(`    + ${m.name}${l.qty > 1 ? ` × ${l.qty}` : ""}`, m2(m.price * l.qty), 24, 500);
-    const nts = [...(l.notes || []), ...(l.note ? [l.note] : [])]; if (nts.length) lr(`    • ${nts.join("، ")}`.slice(0, 44), null, 21, 500);
+    const nts = [...(l.notes || []), ...(l.note ? [l.note] : [])];
+    if (nts.length) { font(21, 500); g.direction = "rtl"; g.textAlign = "right";
+      wrapLines(g, `• ${nts.join("، ")}`, W - 2 * M - 40).forEach((s, i) => { y += 21 * (i ? 1.12 : 1.25); g.fillText(s, W - M - 28 - (i ? 12 : 0), y); }); y += 21 * .3; }
   }
   hr();
   if (o.discount) { lr("المجموع", m2(o.subtotal), 26, 500); lr("خصم", "-" + m2(o.discount.amount), 26, 500); }
@@ -1392,13 +1394,29 @@ async function printJob(o, what, manual, quiet) {
   catch (e) { const m = "تعذّرت طباعة ورقة المطبخ: " + printErr(e, d.kitchenIp, "طابعة المطبخ"); if (!quiet) toast(m, true); return m; }
 }
 /* ورقة المطبخ: رقم الطلب كبير، النوع، الأصناف والإضافات والملاحظات، بدون أسعار */
+/* splits text into lines that fit maxW with the canvas's current font: by words, and a word longer than a line by letters */
+function wrapLines(g, text, maxW) {
+  const out = []; let cur = "";
+  for (const w of String(text).split(/\s+/).filter(Boolean)) {
+    const t = cur ? cur + " " + w : w;
+    if (g.measureText(t).width <= maxW) { cur = t; continue; }
+    if (cur) out.push(cur);
+    cur = w;
+    while (g.measureText(cur).width > maxW && cur.length > 1) { let k = cur.length - 1; while (k > 1 && g.measureText(cur.slice(0, k)).width > maxW) k--; out.push(cur.slice(0, k)); cur = cur.slice(k); }
+  }
+  if (cur || !out.length) out.push(cur);
+  return out;
+}
 function drawKitchen(o) {
   const W = 576, M = 16, FONT = `-apple-system,"SF Arabic","Geeza Pro",Tahoma,sans-serif`;
   const cv = document.createElement("canvas"); cv.width = W; cv.height = 3000; const g = cv.getContext("2d");
   g.fillStyle = "#fff"; g.fillRect(0, 0, W, cv.height); g.fillStyle = "#000"; let y = 10;
   const font = (px, w = 700) => g.font = `${w} ${px}px ${FONT}`;
   const ctr = (t, px, w) => { font(px, w); g.direction = "rtl"; g.textAlign = "center"; y += px * 1.2; g.fillText(t, W / 2, y); y += px * .25; };
-  const rt = (t, px, w, indent = 0) => { font(px, w); g.direction = "rtl"; g.textAlign = "right"; y += px * 1.25; g.fillText(t, W - M - indent, y); y += px * .25; };
+  /* a line that does not fit the paper's width goes on to the next line (word by word), so a long note is never cut */
+  const rt = (t, px, w, indent = 0, cont = 0) => { font(px, w); g.direction = "rtl"; g.textAlign = "right";
+    for (const [i, s] of wrapLines(g, String(t), W - 2 * M - indent - cont).entries()) { y += px * (i ? 1.12 : 1.25); g.fillText(s, W - M - indent - (i ? cont : 0), y); }
+    y += px * .25; };
   const hr = () => { y += 8; g.fillRect(M, y, W - 2 * M, 3); y += 12; };
   const typ = TYPES.find(t => t[0] === o.type)?.[1] || "";
   g.fillRect(0, y, W, 120); g.fillStyle = "#fff"; y -= 4; ctr(`طلب ${(o.no ?? "")}`, 64, 900); g.fillStyle = "#000"; y = 140;
@@ -1412,8 +1430,8 @@ function drawKitchen(o) {
   for (const l of o.lines) {
     n += l.qty; rt(`${l.qty} × ${l.name}`, 40, 900);
     for (const m of l.mods) rt(`+ ${m.name}`, 30, 700, 30);
-    for (const t of l.notes || []) rt(`● ${t}`, 32, 800, 30);
-    if (l.note) rt(`● ${l.note}`.slice(0, 32), 32, 800, 30);
+    for (const t of l.notes || []) rt(`● ${t}`, 32, 800, 30, 34);
+    if (l.note) rt(`● ${l.note}`, 32, 800, 30, 34);
     y += 6;
   }
   hr(); ctr(`عدد الأصناف: ${n}`, 30, 800);
