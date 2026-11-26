@@ -4,7 +4,7 @@
 import * as F from "./fb.js";
 import { firebaseConfig } from "./firebase-config.js";
 
-const VERSION = "2.11.4";
+const VERSION = "2.11.5";
 const ADMIN_EMAIL = "abuabraj@gmail.com";
 const DEVICE_EMAIL = "cashier@aqeela-pos.app";
 const APP_NAME = `<span dir="ltr">Cashier AQ</span>`;
@@ -1377,6 +1377,16 @@ function showReceipt(cvs, msg) {
   modal(`${mh(cvs.length > 1 ? "الإيصال وورقة المطبخ" : cvs[0]?.dataset?.kind === "kitchen" ? "ورقة المطبخ" : "الإيصال")}<div class="mdl-b">${msg ? `<div class="note warn" style="margin-bottom:10px">${esc(msg)}</div>` : ""}<div style="display:flex;gap:16px;flex-wrap:wrap;justify-content:center;align-items:flex-start">${cvs.map(cv => `<img class="rcpt" src="${cv.toDataURL("image/png")}" alt="" style="width:280px;margin:0">`).join("")}</div></div>
     <div class="mdl-f"><button class="btn" data-close>إغلاق</button></div>`);
 }
+/* the kitchen ticket and/or receipt of an order on screen exactly as they print, with a print button; used by the manager's
+   order sheet (from a phone there is often no printer). Modals sit above the console's side sheet (.ov z-index). */
+async function previewJob(o, what) {
+  const cvs = [];
+  try { if (what.receipt) cvs.push(logoReady() ? receiptCanvas(o) : await drawReceipt(o)); if (what.kitchen) cvs.push(drawKitchen(o)); }
+  catch (e) { console.error(e); return toast("تعذّر تجهيز المعاينة", true); }
+  modal(`${mh(what.kitchen && !what.receipt ? "ورقة المطبخ" : "الإيصال")}<div class="mdl-b" style="background:#F4F4F5"><div style="display:flex;gap:16px;flex-wrap:wrap;justify-content:center;align-items:flex-start">${cvs.map(cv => `<img class="rcpt" src="${cv.toDataURL("image/png")}" alt="" style="width:min(300px,100%);margin:0;background:#fff;box-shadow:0 2px 10px rgba(0,0,0,.12)">`).join("")}</div></div>
+    <div class="mdl-f"><button class="btn" id="pvp">${ic("print")} طباعة</button><button class="btn ghost" data-close>إغلاق</button></div>`);
+  $("#pvp").onclick = () => { closeModal(); printJob(o, what, true); };
+}
 /* returns true | error message */
 async function printOrder(o, manual, quiet) { return printJob(o, { receipt: true }, manual, quiet); }
 /* إيصال العميل و/أو ورقة المطبخ حسب إعدادات الجهاز. يعيد true أو رسالة الخطأ */
@@ -1701,7 +1711,7 @@ function download(rows, name) {
   const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
   a.download = name; document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 4000);
 }
-const API = { S, F, D, C, VERSION, METHODS, TYPES, payParts, paidBy, hasM, mLabel, CATS, bizDay, addDays, ymd, dshRange, toast, download, render, orderCogs, packOf, itemCost, printJob, printCanvas, drawShiftReport,
+const API = { S, F, D, C, VERSION, METHODS, TYPES, payParts, paidBy, hasM, mLabel, CATS, bizDay, addDays, ymd, dshRange, toast, download, render, orderCogs, packOf, itemCost, printJob, previewJob, printCanvas, drawShiftReport,
   signOut: () => F.signOut(auth), admStock: () => admStock(), admMenu: () => admMenu(), admStaff: () => admStaff(), admStore: () => admStore(), admVerify: () => admVerify() };
 function openAdmin(tab) {
   if (!isAdmin()) return; closeModal(); S.view = "admin";

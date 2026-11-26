@@ -399,7 +399,7 @@ function orderDrawer(o) {
       <div><span>مجمل الربح</span><b class="num">${nf(o.total - c.food - c.pack)}</b></div><div><span>نسبة التكلفة</span><b class="num">${o.total ? pct((c.food + c.pack) / o.total * 100) : "—"}</b></div></div></div>
     <div class="cx-sec"><h4>سجل الطلب</h4><ul class="cx-tl">${ev.map(([t, a, b]) => `<li><b>${a}</b><small><span class="tm">${tm(t)}</span> · ${b}</small></li>`).join("")}</ul></div>`,
     `<button class="cx-btn" id="drk">${ic("chef")}ورقة المطبخ</button><button class="cx-btn pri" id="drp">${ic("print")}طباعة الإيصال</button>`,
-    d => { d.querySelector("#drp").onclick = () => A.printJob(o, { receipt: true }, true); d.querySelector("#drk").onclick = () => A.printJob(o, { kitchen: true }, true); });
+    d => { d.querySelector("#drp").onclick = () => A.printJob(o, { receipt: true }, true); d.querySelector("#drk").onclick = () => (A.previewJob ? A.previewJob(o, { kitchen: true }) : A.printJob(o, { kitchen: true }, true)); });
 }
 
 /* =================== الصفحات =================== */
