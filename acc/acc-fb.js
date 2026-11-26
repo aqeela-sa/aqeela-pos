@@ -75,8 +75,14 @@ const db = {
 };
 
 /* ---------- who is using it ---------- */
-let current = null;
+let current = null, profile = {};
 const names = {};
+/* a random id kept by this browser, so the account's device list has one entry per device */
+const deviceId = () => { try { let k = localStorage.getItem("acc-device"); if (!k){ k = [...crypto.getRandomValues(new Uint8Array(8))].map(x => x.toString(16).padStart(2, "0")).join(""); localStorage.setItem("acc-device", k); } return k; } catch(e){ return "unknown"; } };
+const deviceLabel = () => { const u = navigator.userAgent || "";
+  const os = /iPhone/.test(u) ? "iPhone" : /iPad/.test(u) || (/Macintosh/.test(u) && navigator.maxTouchPoints > 1) ? "iPad" : /Android/.test(u) ? (/Mobile/.test(u) ? "جوال Android" : "جهاز Android") : /Windows/.test(u) ? "Windows" : /Mac OS X|Macintosh/.test(u) ? "Mac" : /Linux/.test(u) ? "Linux" : "جهاز";
+  const br = /Edg\//.test(u) ? "Edge" : /SamsungBrowser/.test(u) ? "Samsung Internet" : /CriOS|Chrome\//.test(u) ? "Chrome" : /FxiOS|Firefox\//.test(u) ? "Firefox" : /Safari\//.test(u) ? "Safari" : "متصفح";
+  return os + " · " + br + (matchMedia && matchMedia("(display-mode: standalone)").matches ? " (تطبيق)" : ""); };
 const userApi = {
   id: async () => current ? current.uid : "",
   can: async () => !!current && (["admin", "staff"].includes(roleOf(current)) || (roleOf(current) === "member" && member.role !== "partner")),
@@ -88,6 +94,36 @@ const userApi = {
   email: () => current ? current.email : "",
   role: () => roleOf(current),
   signOut: () => F.signOut(auth).then(() => location.reload()),
+  meta: () => current ? { uid: current.uid, created: current.metadata && current.metadata.creationTime, lastSignIn: current.metadata && current.metadata.lastSignInTime } : {},
+  profile: () => profile,
+  device: () => deviceId(),
+  /* the account's own details (حسابي): the name shown on its entries, a phone and a title */
+  async saveProfile(o){
+    if (!current) throw new Error("signed-out");
+    const d = { updatedAt: new Date().toISOString() };
+    if (typeof o.name === "string" && !member){ d.name = o.name.trim(); d.nameSet = true; }
+    ["phone", "title"].forEach(k => { if (typeof o[k] === "string") d[k] = o[k].trim(); });
+    await F.setDoc(F.doc(fs, P + "users", current.uid), d, { merge: true });
+    profile = { ...profile, ...d }; if (d.name) names[current.uid] = d.name;
+    return profile;
+  },
+  /* a new password: the current one is checked first; Firebase then ends every other device's sign-in,
+     and this device signs in again with the new password so it carries on */
+  async changePassword(cur, nw){
+    if (!current) return { ok: false, code: "SIGNED_OUT" };
+    const em = current.email, key = encodeURIComponent(firebaseConfig.apiKey);
+    const call = async (op, body) => { try { const r = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:${op}?key=${key}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      const j = await r.json().catch(() => ({})); return r.ok ? { ok: true, j } : { ok: false, code: (j.error && j.error.message) || ("HTTP " + r.status) }; } catch(e){ return { ok: false, code: "NETWORK" }; } };
+    const a = await call("signInWithPassword", { email: em, password: cur, returnSecureToken: true });
+    if (!a.ok) return a;
+    const b = await call("update", { idToken: a.j.idToken, password: nw, returnSecureToken: true });
+    if (!b.ok) return b;
+    const when = new Date().toISOString(); profile = { ...profile, pwChangedAt: when };
+    try { await F.signInWithEmailAndPassword(auth, em, nw); } catch(e){ return { ok: true, relogin: true }; }
+    try { await F.setDoc(F.doc(fs, P + "users", current.uid), { pwChangedAt: when }, { merge: true }); } catch(e){}
+    return { ok: true };
+  },
+  sendReset: () => current ? login.reset(current.email) : Promise.resolve({ ok: false, code: "SIGNED_OUT" }),
   async profiles(ids){
     const out = {};
     if (!Object.keys(names).length){
@@ -212,6 +248,7 @@ function loginScreen(msg){
   let el = document.getElementById("acc_login");
   if (!el){ el = document.createElement("div"); el.id = "acc_login"; document.body.appendChild(el); }
   let last = ""; try { last = localStorage.getItem("acc-last-email") || ""; } catch(e){}
+  try { if (!msg && localStorage.getItem("acc-idle-out")) msg = "أُغلق البرنامج تلقائياً بعد مدة دون استخدام. سجّل الدخول من جديد."; localStorage.removeItem("acc-idle-out"); } catch(e){}
   el.innerHTML = `<form class="acc-lg" id="acc_lg_f" autocomplete="on">
       <img src="../icons/logo.png" alt="" class="acc-lg-logo">
       <h1 dir="ltr">AQ ACC</h1>
@@ -247,9 +284,16 @@ F.onAuthStateChanged(auth, async u => {
   const el = document.getElementById("acc_login"); if (el) el.hidden = true;
   /* keep a readable name for this account, shown next to every entry it makes */
   try {
-    const name = roleOf(u) === "admin" ? "عاطف" : member ? member.name || u.email : "عقيلة";
-    names[u.uid] = name;
-    await F.setDoc(F.doc(fs, P + "users", u.uid), { name, email: u.email, role: member ? "member:" + member.role : roleOf(u), lastSeen: new Date().toISOString() }, { merge: true });
+    /* a name the account chose for itself (حسابي) stays; a team member's name is the one the owner gave in الفريق */
+    let prev = {}; try { const s = await F.getDoc(F.doc(fs, P + "users", u.uid)); prev = s.exists() ? s.data() || {} : {}; } catch(e){}
+    const name = member ? member.name || u.email : prev.nameSet && prev.name ? prev.name : roleOf(u) === "admin" ? "عاطف" : "عقيلة";
+    names[u.uid] = name; profile = { ...profile, ...prev, name };
+    /* this device in the account's list (حسابي ← الأجهزة): one entry per browser, its kind and when it was last used */
+    const now = new Date().toISOString(), dv = { ...(prev.devices || {}) }, id = deviceId();
+    dv[id] = { label: deviceLabel(), first: (dv[id] && dv[id].first) || now, last: now };
+    const keep = Object.entries(dv).sort((a, b) => (b[1].last || "").localeCompare(a[1].last || "")).slice(0, 12);
+    profile.devices = Object.fromEntries(keep);
+    await F.setDoc(F.doc(fs, P + "users", u.uid), { name, email: u.email, role: member ? "member:" + member.role : roleOf(u), lastSeen: now, devices: profile.devices }, { merge: true });
   } catch(e){}
   if (!started){ started = true; (window.__accStart || (() => {}))(); }
 });

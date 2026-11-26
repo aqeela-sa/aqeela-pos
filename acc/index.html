@@ -953,8 +953,8 @@ nav.tabs a[hidden],.nav-more[hidden]{display:none!important}
 .acc-lg button:disabled{opacity:.6}
 .acc-lg-err{background:#FDECEE;color:#B3261E;border-radius:10px;padding:10px 12px;font-size:14px}
 </style>
-<link rel="stylesheet" href="pro.css?v=4">
-<script src="pro.js?v=4"></script>
+<link rel="stylesheet" href="pro.css?v=5">
+<script src="pro.js?v=5"></script>
 <script src="pro-dash.js?v=1"></script>
 </head>
 <body>
@@ -1236,7 +1236,7 @@ const staffPerms = () => { const M = typeof teamMe === "function" ? teamMe() : n
   if (M){ const h = memberHome(M); return {views: new Set([h, ...memberViews(M).filter(k => STAFF_PAGES.some(p => p[0] === k))]), month: M.role === "partner" || !!M.month}; }
   const P = (S.settings && S.settings.staffPerms) || {}; const v = Array.isArray(P.views) ? P.views : STAFF_DEFAULT;
   return {views: new Set(["guide", ...v.filter(k => STAFF_PAGES.some(p => p[0] === k))]), month: !!P.month}; };
-const STAFF_VIEWS = {has: k => staffPerms().views.has(k)};
+const STAFF_VIEWS = {has: k => k === "account" || staffPerms().views.has(k)};   // «حسابي» is every account's own page
 const staffMonth = () => !isStaff() || staffPerms().month;   // month totals and production cost in the daily summary
 const homeView = () => !isStaff() ? "dashboard" : typeof teamMe === "function" && teamMe() ? memberHome(teamMe()) : STAFF_HOME;
 const STAFF_REPORTS = new Set(["summary","sales","expenses","production","recon","custody","apps","supplier","payables","buyer","prices","daily"]);
@@ -2200,7 +2200,7 @@ function viewSetup(){
   <div class="card"><h3>الحسابات</h3>
     <p style="margin:0 0 8px">الدخول بحساب Firebase: <b>المدير</b> له كل الصلاحيات، و<b>عقيلة</b> للإدخال فقط (المبيعات والفواتير والعهد والمطابقة)، ولا ترى الرواتب والقيود والمدير المالي. كل إدخال يُحفظ باسم من أدخله.</p>
     <p class="small muted" style="margin:0 0 10px">طرق الدفع وأنواع حركة العهد ثابتة لأن الحسابات تعتمد عليها: ${PAY.join("، ")} · ${CTYPES.join("، ")}.</p>
-    <div class="actions"><span class="small">الحساب الحالي: <b dir="ltr">${esc((window.__accFb && window.__accFb.user.email()) || "")}</b></span><button class="btn ghost sm" type="button" id="t_out">تسجيل الخروج</button></div>
+    <div class="actions"><span class="small">الحساب الحالي: <b dir="ltr">${esc((window.__accFb && window.__accFb.user.email()) || "")}</b></span><a class="btn ghost sm" href="#account">حسابي وكلمة المرور</a><button class="btn ghost sm" type="button" id="t_out">تسجيل الخروج</button></div>
   </div>
   <div class="card" id="bk_card"><h3>النسخ الاحتياطي والاستعادة</h3>
     ${S.isOwner && window.__accFb && window.__accFb.backup ? `<p class="small muted" style="margin:0 0 8px"><b>النسخة الكاملة</b> ملف واحد فيه كل بيانات البرامج الثلاثة: المحاسبة كاملة (مع المؤرشف وسجل التعديلات والصور والإعدادات والتطبيقات) وطلبات الكاشير ووردياته ومنيوه وإعداداته. نزّلها مرة كل أسبوع على الأقل واحفظها خارج الجهاز (Google Drive أو البريد). تُستعاد من هنا عند الحاجة.</p>
@@ -7004,10 +7004,11 @@ if (window.__accHost) window.__accStart = connect; else connect();
 <script src="apps.js?v=10"></script>
 <script src="kitchen.js?v=8"></script>
 <script src="purchase.js?v=5"></script>
-<script src="team.js?v=2"></script>
+<script src="team.js?v=3"></script>
 <script src="hr.js?v=1"></script>
+<script src="account.js?v=1"></script>
 <script src="mgr.js?v=4"></script>
-<script type="module" src="acc-fb.js?v=16"></script>
+<script type="module" src="acc-fb.js?v=17"></script>
 <script>
 (() => { const mark = () => document.querySelectorAll('input[type=date]').forEach(el => { const e = !el.value; if (el.classList.contains("dt-empty") !== e) el.classList.toggle("dt-empty", e); });
   ["input", "change", "focusout"].forEach(t => document.addEventListener(t, e => { if (e.target && e.target.type === "date") mark(); }, true));

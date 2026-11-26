@@ -33,6 +33,7 @@
     search:'<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>',
     bars:'<path d="M4 6h16M4 12h16M4 18h16"/>',
     out:'<path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><path d="M10 17l-5-5 5-5M5 12h11"/>',
+    user:'<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>',
     more:'<circle cx="5" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="19" cy="12" r="1.3"/>'
   };
   const icon = k => P(IC[k] || IC.dashboard);
@@ -46,9 +47,10 @@
   ];
   const BOTTOM = ["dashboard", "sales", "invoices", "recon"];
   const tabOf = v => document.querySelector(`#tabs a[data-v="${v}"]`);
-  const nameOf = v => { const a = tabOf(v); return a ? a.textContent.trim() : v; };
+  const EXTRA = {account:["حسابي", "الحساب"]};   // pages outside the tab strip
+  const nameOf = v => { const a = tabOf(v); return a ? a.textContent.trim() : EXTRA[v] ? EXTRA[v][0] : v; };
   const visible = v => { const a = tabOf(v); return !!a && !a.hidden; };
-  const groupOf = v => (GROUPS.find(g => g[1].includes(v)) || [""])[0];
+  const groupOf = v => EXTRA[v] ? EXTRA[v][1] : (GROUPS.find(g => g[1].includes(v)) || [""])[0];
   let built = false;
 
   function build(){
@@ -61,7 +63,7 @@
     nav.innerHTML = `<div class="px-brand"><img src="${aqSrc}" alt=""><div><b dir="ltr" class="px-name">AQ <span>ACC</span></b><small>شاورما العقيلة · المحاسبة والإدارة</small></div></div>
       <button type="button" class="px-search" id="px_find">${icon("search")}<span>بحث وانتقال سريع…</span><kbd>Ctrl K</kbd></button>
       <nav class="px-scroll">${GROUPS.map(([t, vs]) => `<div class="px-grp"><div class="px-sec">${t}</div>${vs.map(v => `<a class="px-link" href="#${v}" data-pv="${v}">${icon(v)}<span>${nameOf(v)}</span></a>`).join("")}</div>`).join("")}</nav>
-      <div class="px-foot"><div class="px-av" id="px_av">A</div><div class="px-who"><b id="px_name">—</b><small id="px_role"></small></div><button type="button" class="px-out" id="px_out" title="تسجيل الخروج" aria-label="تسجيل الخروج">${icon("out")}</button></div>`;
+      <div class="px-foot"><a class="px-me" id="px_me" href="#account" title="حسابي: البيانات وكلمة المرور"><div class="px-av" id="px_av">A</div><div class="px-who"><b id="px_name">—</b><small id="px_role"></small></div></a><button type="button" class="px-out" id="px_out" title="تسجيل الخروج" aria-label="تسجيل الخروج">${icon("out")}</button></div>`;
     const top = document.createElement("div"); top.id = "pxtop"; top.className = "px-only";
     top.innerHTML = `<button type="button" class="px-menu" id="px_menu" aria-label="القائمة">${icon("bars")}</button><img class="px-mlogo" src="${aqSrc}" alt="">
       <div class="px-crumb"><span id="px_grp"></span><i>/</i><b id="px_page"></b></div>
@@ -117,6 +119,7 @@
       return [...out, ...invs]; };
     const draw = () => { const raw = q.value.trim(), t = norm(raw);
       const pages = GROUPS.flatMap(([g, vs]) => vs.filter(visible).map(v => ({v, ic:v, n:nameOf(v), g}))).filter(x => !t || norm(x.n).includes(t) || norm(x.g).includes(t));
+      if (!t || norm("حسابي كلمة المرور الحساب الملف الشخصي").includes(t)) pages.push({v:"account", ic:"user", n:"حسابي وكلمة المرور", g:"الحساب"});
       const rs = recs(raw); items = [...pages, ...rs];
       sel = Math.min(sel, Math.max(0, items.length - 1));
       const row = (x, i) => `<a class="pxk-it ${i === sel ? "sel" : ""}" href="${x.v ? "#" + x.v : "#"}" data-i="${i}">${icon(x.ic)}<span>${x.n}</span><small>${x.g}</small></a>`;
@@ -141,7 +144,7 @@
     try {
       const me = typeof teamMe === "function" ? teamMe() : null;
       const role = typeof S !== "undefined" && S.canEdit ? "المالك" : me ? ((typeof TEAM_ROLES !== "undefined" && TEAM_ROLES[me.role] && TEAM_ROLES[me.role].l) || "عضو الفريق") : "موظف";
-      const nm = me && me.name ? me.name : (typeof S !== "undefined" && S.canEdit ? "حساب المالك" : "حساب الإدخال");
+      const nm = typeof accMyName === "function" ? accMyName() : me && me.name ? me.name : (typeof S !== "undefined" && S.canEdit ? "حساب المالك" : "حساب الإدخال");
       return {nm, role};
     } catch(e){ return {nm:"—", role:""}; }
   }
@@ -169,6 +172,7 @@
       bot.style.gridTemplateColumns = `repeat(${vs.length + 1},1fr)`;
       document.getElementById("px_more").onclick = () => document.getElementById("px_menu").click(); }
     const w = who(); const n = document.getElementById("px_name"), r = document.getElementById("px_role"), av = document.getElementById("px_av");
+    const pm = document.getElementById("px_me"); if (pm) pm.classList.toggle("on", cur === "account");
     if (n) n.textContent = w.nm; if (r) r.textContent = w.role; if (av) av.textContent = (w.nm || "A").trim().charAt(0) || "A";
   };
 })();
