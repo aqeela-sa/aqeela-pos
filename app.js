@@ -4,7 +4,7 @@
 import * as F from "./fb.js";
 import { firebaseConfig } from "./firebase-config.js";
 
-const VERSION = "2.11.1";
+const VERSION = "2.11.2";
 const ADMIN_EMAIL = "abuabraj@gmail.com";
 const DEVICE_EMAIL = "cashier@aqeela-pos.app";
 const APP_NAME = `<span dir="ltr">Cashier AQ</span>`;
@@ -407,7 +407,7 @@ function drawMenu() {
   G.innerHTML = list.map(m => { const p = priceOf(m), n = qty(m.id);
     return `<button class="item ${m.addon ? "addon" : ""} ${n ? "in" : ""} ${m.img || anyImg ? "has-img" : ""}" data-i="${m.id}" style="--c:${CAT_C[m.cat] || "#71717A"}" ${p == null ? "disabled" : ""}>
       ${n ? `<span class="q num">${n}</span>` : ""}${m.img ? `<span class="pimg"><img src="${m.img}" alt="" loading="lazy" decoding="async"></span>` : anyImg ? `<span class="pimg ph">${esc(m.name.trim().split(/\s+/).map(w => w[0]).slice(0, 2).join(" "))}</span>` : ""}<span class="nm">${esc(m.name)}</span>
-      <span class="ft">${p == null ? `<small class="na">غير متوفر في ${tName(S.cart.type)}</small>` : `<span class="pr"><span class="num">${m2(p)}</span> <small>ر.س</small></span>`}${m.addon ? `<span class="ad">إضافة</span>` : ""}</span></button>`; }).join("")
+      <span class="ft">${p == null ? `<small class="na">${isAgg(S.cart.type) || m.price != null ? `غير متوفر في ${tName(S.cart.type) || "المطعم"}` : `${AGG.filter(k => m[k] != null).map(tName).join(" و")} فقط`}</small>` : `<span class="pr"><span class="num">${m2(p)}</span> <small>ر.س</small></span>`}${m.addon ? `<span class="ad">إضافة</span>` : ""}</span></button>`; }).join("")
     || `<div class="empty">${q ? "لا يوجد صنف بهذا الاسم" : "لا أصناف في هذا القسم"}</div>`;
   $$("[data-i]").forEach(b => b.onclick = () => { addItem(b.dataset.i); b.classList.remove("tap"); void b.offsetWidth; b.classList.add("tap"); });
 }
@@ -1712,7 +1712,7 @@ function admMenu() {
     <button class="sw ${m.addon ? "on" : ""}" data-f="addon" aria-label="إضافة تُضاف على صنف (مثل الجبن)"></button>
     <input data-f="sort" type="number" step="1" inputmode="numeric" dir="ltr" value="${m.sort ?? 0}" aria-label="الترتيب">
     <button class="sw ${m.active ? "on" : ""}" data-f="active" aria-label="ظاهر في الكاشير"></button></div>`;
-  A.innerHTML = `<div class="note" style="margin-bottom:12px">سعر لوكيت أو هنقرستيشن الفارغ يعني أن الصنف غير متوفر فيه. اضغط على مربع الصورة لإضافة صورة الصنف (تُصغَّر تلقائياً). «تكلفة الطعام» للحبة الواحدة بدون التغليف (من برنامج المحاسبة). «علبة» للأصناف التي تُقدَّم في علبة ورقية، ويُحسب لكل منها علبة وكيس. الأصناف المُطفأة تختفي من الكاشير وتبقى في التقارير.</div>
+  A.innerHTML = `<div class="note" style="margin-bottom:12px">السعر الفارغ يعني أن الصنف غير متوفر في ذلك المكان: اترك سعر المطعم فارغاً لصنف خاص بلوكيت أو هنقرستيشن. اضغط على مربع الصورة لإضافة صورة الصنف (تُصغَّر تلقائياً). «تكلفة الطعام» للحبة الواحدة بدون التغليف (من برنامج المحاسبة). «علبة» للأصناف التي تُقدَّم في علبة ورقية، ويُحسب لكل منها علبة وكيس. الأصناف المُطفأة تختفي من الكاشير وتبقى في التقارير.</div>
     <div class="mrow h"><span>صورة</span><span>الصنف</span><span>القسم</span><span>سعر المطعم</span><span>سعر لوكيت</span><span>سعر هنقرستيشن</span><span>تكلفة الطعام</span><span>علبة</span><span>إضافة</span><span>الترتيب</span><span>ظاهر</span></div>
     <div id="mrows">${rows.map(row).join("")}</div>
     <div style="display:flex;gap:10px;margin-top:14px;flex-wrap:wrap"><button class="btn ghost" id="madd">+ صنف جديد</button><span class="sp"></span><button class="btn" id="msv">حفظ المنيو</button></div>
@@ -1730,7 +1730,8 @@ function admMenu() {
     const batch = F.writeBatch(db); let n = 0, err = "";
     $$("#mrows .mrow").forEach(e => { const i = +e.dataset.r, o = rows[i], g = f => e.querySelector(`[data-f=${f}]`);
       const v = { name: g("name").value.trim(), cat: g("cat").value, price: g("price").value === "" ? null : r2(g("price").value), lokit: g("lokit").value === "" ? null : r2(g("lokit").value), hunger: g("hunger").value === "" ? null : r2(g("hunger").value), sort: +g("sort").value || 0, active: g("active").classList.contains("on"), cost: g("cost").value === "" ? null : r2(g("cost").value), box: g("box").classList.contains("on") };
-      if (!v.name && !o.id) return; if (!v.name) err ||= "اسم صنف فارغ"; if (v.price == null || v.price < 0) err ||= `سعر المطعم مطلوب: ${v.name || "صنف جديد"}`;
+      if (!v.name && !o.id) return; if (!v.name) err ||= "اسم صنف فارغ"; /* a platform-only item (e.g. a Lokit combo) has no restaurant price: it shows only when that platform is chosen */
+      if (v.price == null && v.lokit == null && v.hunger == null) err ||= `اكتب سعراً واحداً على الأقل (المطعم أو لوكيت أو هنقرستيشن): ${v.name || "صنف جديد"}`;
       v.addon = g("addon").classList.contains("on");
       if (o.imgChanged) v.img = o.img || null;
       const changed = !o.id || o.imgChanged || ["name", "cat", "price", "lokit", "hunger", "sort", "active", "cost", "box", "addon"].some(k => (o[k] ?? (k === "addon" || k === "box" ? false : null)) !== v[k]);
