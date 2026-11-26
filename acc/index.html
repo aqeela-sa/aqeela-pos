@@ -1,7 +1,8 @@
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
-<script>try{document.documentElement.dataset.skin=localStorage.getItem("skin")||"rose"}catch(e){document.documentElement.dataset.skin="rose"}
+<script>/* the look: «pro» (the default since the redesign) is the modern red skin plus the AQ Pro layout; the earlier looks stay one tap away in الإعدادات ← المظهر */
+(function(){var R=document.documentElement,k;try{k=localStorage.getItem("skin");if(!localStorage.getItem("skinv2")){k="pro";localStorage.setItem("skin","pro");localStorage.setItem("skinv2","1")}}catch(e){k="pro"}if(!k||k==="pro"){R.dataset.skin="rose";R.dataset.pro="1"}else R.dataset.skin=k})();
 /* the AQ logo from the first paint: the brand is known only after the settings load, so the last one seen is kept (AQ by default) */
 try{document.documentElement.dataset.aq=localStorage.getItem("aq")??"1"}catch(e){document.documentElement.dataset.aq="1"}</script>
 <meta charset="utf-8">
@@ -951,6 +952,8 @@ nav.tabs a[hidden],.nav-more[hidden]{display:none!important}
 .acc-lg button:disabled{opacity:.6}
 .acc-lg-err{background:#FDECEE;color:#B3261E;border-radius:10px;padding:10px 12px;font-size:14px}
 </style>
+<link rel="stylesheet" href="pro.css?v=1">
+<script src="pro.js?v=1"></script>
 </head>
 <body>
 <header class="top">
@@ -2134,10 +2137,10 @@ document.addEventListener("keydown", e => { if (e.key === "Escape") closeModal()
 /* ---------- SETUP ---------- */
 function viewSetup(){
   const st = S.settings, lock = !S.canEdit;
-  const sk = ["teal", "rose"].includes(document.documentElement.dataset.skin) ? document.documentElement.dataset.skin : "classic";
+  const sk = document.documentElement.dataset.pro === "1" ? "pro" : ["teal", "rose"].includes(document.documentElement.dataset.skin) ? document.documentElement.dataset.skin : "classic";
   return `<div class="bar"><h2>الإعدادات</h2></div>
 
-  ${brandIsAqeela() ? `<div class="card" style="display:flex;align-items:center;gap:14px;flex-wrap:wrap"><div style="flex:1;min-width:220px"><h3 style="margin:0 0 4px">📘 دليل المستخدم</h3><p class="small muted" style="margin:0">كتاب PDF من 51 صفحة يشرح فكرة البرنامج وطريقة استخدام كل صفحاته، مناسب لتدريب أي موظف جديد.</p></div><button class="btn" type="button" id="set_book">تنزيل الدليل</button></div>` : ""}
+  ${brandIsAqeela() ? `<div class="card" style="display:flex;align-items:center;gap:14px;flex-wrap:wrap"><div style="flex:1;min-width:220px"><h3 style="margin:0 0 4px">📘 دليل المستخدم</h3><p class="small muted" style="margin:0">كتاب PDF من 69 صفحة يشرح فكرة البرنامج وطريقة استخدام كل صفحاته، مناسب لتدريب أي موظف جديد.</p></div><button class="btn" type="button" id="set_book">تنزيل الدليل</button></div>` : ""}
   ${brandCard()}
   ${typeof teamCard === "function" ? teamCard() : ""}
   ${staffPermCard()}
@@ -2189,6 +2192,7 @@ function viewSetup(){
     <p class="small muted" style="margin:0 0 8px">مرة واحدة فقط: اختر «ملف النقل الكامل» الذي نزّلته من البرنامج القديم. يُنقل كل سجل كما هو (مع المؤرشف وسجل التعديلات والصور)، ثم يُطابَق العدد مجموعةً مجموعة.</p>
     <input type="file" id="t_imp" accept=".json,application/json"><div id="t_imp_st" style="margin-top:8px"></div></div>` : ""}
   <div class="skin-mini" role="radiogroup" aria-label="مظهر البرنامج"><span>المظهر</span>
+    <button type="button" role="radio" aria-checked="${sk === "pro"}" class="skin-opt ${sk === "pro" ? "on" : ""}" data-sk="pro" title="الاحترافي (الافتراضي)" aria-label="الاحترافي (الافتراضي)"><i style="background:linear-gradient(90deg,#fff 0 62%,#C1121F 62%)"></i></button>
     <button type="button" role="radio" aria-checked="${sk === "teal"}" class="skin-opt ${sk === "teal" ? "on" : ""}" data-sk="teal" title="الحديث (فيروزي)" aria-label="الحديث (فيروزي)"><i style="background:linear-gradient(135deg,#15B5B8,#0B6470)"></i></button>
     <button type="button" role="radio" aria-checked="${sk === "rose"}" class="skin-opt ${sk === "rose" ? "on" : ""}" data-sk="rose" title="الحديث (أحمر)" aria-label="الحديث (أحمر)"><i style="background:#C1121F"></i></button>
     <button type="button" role="radio" aria-checked="${sk === "classic"}" class="skin-opt ${sk === "classic" ? "on" : ""}" data-sk="classic" title="الكلاسيكي" aria-label="الكلاسيكي"><i style="background:linear-gradient(135deg,#B71C1C 50%,#fff 50%)"></i></button></div>`;
@@ -2279,8 +2283,11 @@ async function storageSize(){
 function bindSetup(){
   $("#sz_go") && ($("#sz_go").onclick = storageSize);
   bindLockCard(); bindBrandCard(); bindStaffPermCard(); if (typeof bindTeamCard === "function") bindTeamCard(); bindPosClean(); bindRestoreSettings(); if ($("#set_book")) $("#set_book").onclick = () => downloadBook($("#set_book"));
-  document.querySelectorAll(".skin-opt").forEach(b => b.onclick = () => { const v = ["teal", "rose"].includes(b.dataset.sk) ? b.dataset.sk : "classic";
-    document.documentElement.dataset.skin = v; try { localStorage.setItem("skin", v); } catch(e){}
+  document.querySelectorAll(".skin-opt").forEach(b => b.onclick = () => { const v = ["teal", "rose", "pro"].includes(b.dataset.sk) ? b.dataset.sk : "classic";
+    try { localStorage.setItem("skin", v); } catch(e){}
+    /* the layouts differ in their whole frame (sidebar or top tabs), so the page reloads into the chosen one */
+    if ((v === "pro") !== (document.documentElement.dataset.pro === "1")){ location.reload(); return; }
+    document.documentElement.dataset.skin = v;
     document.querySelectorAll(".skin-opt").forEach(x => { x.classList.toggle("on", x === b); x.setAttribute("aria-checked", x === b); }); });
   const lines = id => [...new Set($(id).value.split("\n").map(s=>s.trim()).filter(Boolean))];
   const formFresh = S.loaded.has("settings");
@@ -6817,7 +6824,7 @@ function render(){
   if (isStaff() && !STAFF_VIEWS.has(S.view)) S.view = homeView();
   const V = VIEWS[S.view];
   document.querySelectorAll("#tabs a, #nav_menu a").forEach(a => a.classList.toggle("on", a.dataset.v === S.view));
-  navMoreSync();
+  navMoreSync(); if (window.proNavSync) proNavSync();
   $("#main").innerHTML = V.v();
   bindPeriod(); if (V.bind) V.bind(); renderLists();
 }
