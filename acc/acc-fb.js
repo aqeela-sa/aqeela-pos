@@ -214,8 +214,8 @@ function loginScreen(msg){
   let last = ""; try { last = localStorage.getItem("acc-last-email") || ""; } catch(e){}
   el.innerHTML = `<form class="acc-lg" id="acc_lg_f" autocomplete="on">
       <img src="../icons/logo.png" alt="" class="acc-lg-logo">
-      <h1>محاسبة شاورما العقيلة</h1>
-      <p class="acc-lg-sub">سجّل الدخول بحسابك</p>
+      <h1 dir="ltr">AQ ACC</h1>
+      <p class="acc-lg-sub">نظام المحاسبة والإدارة · شاورما العقيلة<br>سجّل الدخول بحسابك</p>
       ${msg ? `<div class="acc-lg-err">${esc(msg)}</div>` : ""}
       <label for="acc_em">البريد الإلكتروني</label>
       <input id="acc_em" type="email" dir="ltr" autocomplete="username" inputmode="email" required value="${esc(last)}">

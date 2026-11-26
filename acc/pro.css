@@ -82,7 +82,7 @@
 /* tables: calm header, no zebra, a soft hover */
 [data-pro="1"] table{font-size:13.5px}
 [data-pro="1"] thead th{background:var(--head)!important;color:var(--muted)!important;font-weight:600!important;font-size:12px!important;letter-spacing:.1px}
-[data-pro="1"] th,[data-pro="1"] td{padding:11px 12px}
+[data-pro="1"] th,[data-pro="1"] td{padding:11px 10px}
 [data-pro="1"] tbody tr:nth-child(even) td{background:var(--card)}
 [data-pro="1"] tbody td{border-bottom-color:var(--line2)}
 [data-pro="1"] tbody tr:hover td{background:color-mix(in srgb,var(--ink) 2.5%,var(--card))}
@@ -169,9 +169,8 @@
 :root[data-pro="1"][data-theme="dark"] .mgc.on{background:color-mix(in srgb,#2E7D32 16%,var(--card))}
 
 /* ---------- tables: long text wraps (a long name or note never stretches a column across the page); numbers stay on one line ---------- */
-[data-pro="1"] td{white-space:normal;max-width:340px;word-break:keep-all;overflow-wrap:break-word}
-[data-pro="1"] td.n,[data-pro="1"] td.num,[data-pro="1"] td .num,[data-pro="1"] td .chip,[data-pro="1"] td .pill,[data-pro="1"] td .btn{white-space:nowrap;overflow-wrap:normal}
-[data-pro="1"] td:first-child{white-space:nowrap}
+/* cells keep one line; a cell with long text (marked .px-wrap by pro.js) wraps inside a bounded width */
+[data-pro="1"] td.px-wrap{white-space:normal;min-width:180px;max-width:360px;overflow-wrap:break-word}
 [data-pro="1"] .card .tw{box-shadow:none!important;border-radius:10px!important}
 
 /* ---------- dashboard ---------- */
@@ -342,3 +341,8 @@
 .pdx{grid-template-columns:minmax(0,1fr)}
 .pdx>*{min-width:0}
 [data-pro="1"] main>*{min-width:0}
+.px-brand .px-name{font-size:17px;font-weight:800;letter-spacing:.3px;text-align:right}
+.px-brand .px-name span{color:var(--red)}
+[data-pro="1"] .st-log{border:1px solid var(--line)!important;border-radius:14px!important;box-shadow:var(--shadow)}
+/* «save» actions keep their green, in the calm Pro shade */
+[data-pro="1"] #fs button[type=submit],[data-pro="1"] #i_save,[data-pro="1"] #c_save,[data-pro="1"] #a_new,[data-pro="1"] #fpay button[type=submit],[data-pro="1"] #fsup button[type=submit],[data-pro="1"] #fstaff button[type=submit],[data-pro="1"] #fadv button[type=submit],[data-pro="1"] #fsp button[type=submit],[data-pro="1"] #fsti button[type=submit],[data-pro="1"] #fstc button[type=submit],[data-pro="1"] #sk_count,[data-pro="1"] #pr_appr,[data-pro="1"] #pr_create,[data-pro="1"] #pr_payall,[data-pro="1"] [data-spay]{background:#15803D!important;box-shadow:0 1px 2px rgba(16,24,40,.08)!important}

@@ -7,7 +7,8 @@
 try{document.documentElement.dataset.aq=localStorage.getItem("aq")??"1"}catch(e){document.documentElement.dataset.aq="1"}</script>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>محاسبة شاورما العقيلة</title>
+<title>AQ ACC · شاورما العقيلة</title>
+<meta name="apple-mobile-web-app-title" content="AQ ACC"><meta name="application-name" content="AQ ACC">
 <link rel="icon" href="../icons/icon-192.png?v=2"><link rel="apple-touch-icon" href="../icons/apple-touch-icon.png?v=2"><meta name="theme-color" content="#C1121F">
 <script>window.__accHost = true;</script>
 <style>
@@ -952,8 +953,8 @@ nav.tabs a[hidden],.nav-more[hidden]{display:none!important}
 .acc-lg button:disabled{opacity:.6}
 .acc-lg-err{background:#FDECEE;color:#B3261E;border-radius:10px;padding:10px 12px;font-size:14px}
 </style>
-<link rel="stylesheet" href="pro.css?v=3">
-<script src="pro.js?v=3"></script>
+<link rel="stylesheet" href="pro.css?v=4">
+<script src="pro.js?v=4"></script>
 <script src="pro-dash.js?v=1"></script>
 </head>
 <body>
@@ -1017,7 +1018,7 @@ const brandIsAqeela = () => /^al-?aqeela$/i.test(brandEn().trim());
 const brandWordmark = (cls, color, dot) => { const en = brandEn().trim(), t = en || brandShort();
   return `<span class="${cls}" style="${color ? `color:${color};` : ""}" ${en ? 'dir="ltr"' : ""}>${esc(t)}<i style="${dot ? `color:${dot}` : ""}">.</i></span>`; };
 function applyBrand(){
-  const B = brand(); document.title = "محاسبة " + B.ar;
+  const B = brand(); document.title = brandIsAqeela() ? "AQ ACC · " + B.ar : "محاسبة " + B.ar;
   const em = document.querySelector(".brand .emblem"); if (em){ em.setAttribute("aria-label", brandShort()); const h = em.querySelector("h1"); if (h) h.textContent = brandShort(); }
   const l2 = document.querySelector(".brand .logo2"); if (l2){ l2.setAttribute("aria-label", brandShort() + (brandEn() ? " " + brandEn() : ""));
     const svg = l2.querySelector("svg.wmk"); let tx = l2.querySelector(".wmk-t"); const own = brandIsAqeela(); document.documentElement.dataset.aq = own ? "1" : ""; try { localStorage.setItem("aq", own ? "1" : ""); } catch(e){}
@@ -7000,7 +7001,7 @@ if (window.__accHost) window.__accStart = connect; else connect();
 <script src="purchase.js?v=5"></script>
 <script src="team.js?v=2"></script>
 <script src="mgr.js?v=4"></script>
-<script type="module" src="acc-fb.js?v=14"></script>
+<script type="module" src="acc-fb.js?v=15"></script>
 <script>
 (() => { const mark = () => document.querySelectorAll('input[type=date]').forEach(el => { const e = !el.value; if (el.classList.contains("dt-empty") !== e) el.classList.toggle("dt-empty", e); });
   ["input", "change", "focusout"].forEach(t => document.addEventListener(t, e => { if (e.target && e.target.type === "date") mark(); }, true));

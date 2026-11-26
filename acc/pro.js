@@ -58,7 +58,7 @@
     /* any page added later to #tabs and not placed in a section still shows, under «الإدارة» */
     [...document.querySelectorAll("#tabs a[data-v]")].forEach(a => { if (!known.has(a.dataset.v)) GROUPS[GROUPS.length - 1][1].push(a.dataset.v); });
     const nav = document.createElement("aside"); nav.id = "pxnav"; nav.className = "px-only"; nav.setAttribute("aria-label", "التنقل");
-    nav.innerHTML = `<div class="px-brand"><img src="${aqSrc}" alt=""><div><b>شاورما العقيلة</b><small>نظام الإدارة والمحاسبة</small></div></div>
+    nav.innerHTML = `<div class="px-brand"><img src="${aqSrc}" alt=""><div><b dir="ltr" class="px-name">AQ <span>ACC</span></b><small>شاورما العقيلة · المحاسبة والإدارة</small></div></div>
       <button type="button" class="px-search" id="px_find">${icon("search")}<span>بحث وانتقال سريع…</span><kbd>Ctrl K</kbd></button>
       <nav class="px-scroll">${GROUPS.map(([t, vs]) => `<div class="px-grp"><div class="px-sec">${t}</div>${vs.map(v => `<a class="px-link" href="#${v}" data-pv="${v}">${icon(v)}<span>${nameOf(v)}</span></a>`).join("")}</div>`).join("")}</nav>
       <div class="px-foot"><div class="px-av" id="px_av">A</div><div class="px-who"><b id="px_name">—</b><small id="px_role"></small></div><button type="button" class="px-out" id="px_out" title="تسجيل الخروج" aria-label="تسجيل الخروج">${icon("out")}</button></div>`;
@@ -145,6 +145,14 @@
       return {nm, role};
     } catch(e){ return {nm:"—", role:""}; }
   }
+
+  /* long text in a table cell (a long supplier name, a note) wraps inside a bounded width instead of stretching its column across the page */
+  let wrapT = 0;
+  const markWrap = () => { wrapT = 0; document.querySelectorAll("#main td:not([data-pw]), #sheet td:not([data-pw])").forEach(td => { td.dataset.pw = "1";
+    if (td.querySelector("input,select,textarea,button")) return; const t = (td.textContent || "").replace(/\s+/g, " ").trim(); if (t.length > 40) td.classList.add("px-wrap"); }); };
+  const mo = new MutationObserver(() => { if (pro() && !wrapT) wrapT = setTimeout(markWrap, 40); });
+  document.addEventListener("DOMContentLoaded", () => { const m = document.getElementById("main"), sh = document.getElementById("sheet");
+    if (m) mo.observe(m, {childList:true, subtree:true}); if (sh) mo.observe(sh, {childList:true, subtree:true}); });
 
   window.proNavSync = function(){
     if (!pro()) return;
