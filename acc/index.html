@@ -952,8 +952,9 @@ nav.tabs a[hidden],.nav-more[hidden]{display:none!important}
 .acc-lg button:disabled{opacity:.6}
 .acc-lg-err{background:#FDECEE;color:#B3261E;border-radius:10px;padding:10px 12px;font-size:14px}
 </style>
-<link rel="stylesheet" href="pro.css?v=2">
-<script src="pro.js?v=2"></script>
+<link rel="stylesheet" href="pro.css?v=3">
+<script src="pro.js?v=3"></script>
+<script src="pro-dash.js?v=1"></script>
 </head>
 <body>
 <header class="top">
@@ -1434,6 +1435,11 @@ function renderDash(){
       <div class="actions"><button class="btn sm" type="button" id="d_app" ${S.canWrite?"":"disabled"}>تسجيل تحويل من التطبيقات</button><a class="small" href="${ar.byContract ? "#platforms" : "#apps"}">${ar.byContract ? "التفاصيل حسب التطبيق" : "كل التحويلات"}</a></div></div></div>
   </div>`;
   /* AQ Pro: one reading order — decisions, money now, the month, then the detail; the cashier controls move to the side column */
+  if (document.documentElement.dataset.pro === "1" && typeof proDash === "function"){
+    try { proDash(el, {inbox, mgr, ns, b, rows, st, yr, row2, balG}); const b4 = $("#d_app"); if (b4) b4.onclick = () => openApp();
+      if (typeof mgrTick === "function") mgrTick(); if (typeof mgrOpenDraw === "function") mgrOpenDraw(); return; }
+    catch(e){ console.error("proDash", e); }
+  }
   if (document.documentElement.dataset.pro === "1"){
     const parts = tables.match(/<div class="card">[\s\S]*?<\/table><\/div><\/div>/g) || [];
     el.innerHTML = `<div class="pd">${inbox}${ns}

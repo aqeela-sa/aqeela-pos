@@ -59,20 +59,32 @@
     [...document.querySelectorAll("#tabs a[data-v]")].forEach(a => { if (!known.has(a.dataset.v)) GROUPS[GROUPS.length - 1][1].push(a.dataset.v); });
     const nav = document.createElement("aside"); nav.id = "pxnav"; nav.className = "px-only"; nav.setAttribute("aria-label", "التنقل");
     nav.innerHTML = `<div class="px-brand"><img src="${aqSrc}" alt=""><div><b>شاورما العقيلة</b><small>نظام الإدارة والمحاسبة</small></div></div>
-      <button type="button" class="px-search" id="px_find">${icon("search")}<span>انتقال سريع…</span><kbd>Ctrl K</kbd></button>
+      <button type="button" class="px-search" id="px_find">${icon("search")}<span>بحث وانتقال سريع…</span><kbd>Ctrl K</kbd></button>
       <nav class="px-scroll">${GROUPS.map(([t, vs]) => `<div class="px-grp"><div class="px-sec">${t}</div>${vs.map(v => `<a class="px-link" href="#${v}" data-pv="${v}">${icon(v)}<span>${nameOf(v)}</span></a>`).join("")}</div>`).join("")}</nav>
       <div class="px-foot"><div class="px-av" id="px_av">A</div><div class="px-who"><b id="px_name">—</b><small id="px_role"></small></div><button type="button" class="px-out" id="px_out" title="تسجيل الخروج" aria-label="تسجيل الخروج">${icon("out")}</button></div>`;
     const top = document.createElement("div"); top.id = "pxtop"; top.className = "px-only";
     top.innerHTML = `<button type="button" class="px-menu" id="px_menu" aria-label="القائمة">${icon("bars")}</button><img class="px-mlogo" src="${aqSrc}" alt="">
-      <div class="px-crumb"><span id="px_grp"></span><i>/</i><b id="px_page"></b></div><button type="button" class="px-ic" id="px_find2" aria-label="انتقال سريع">${icon("search")}</button>`;
+      <div class="px-crumb"><span id="px_grp"></span><i>/</i><b id="px_page"></b></div>
+      <div class="px-neww"><button type="button" class="px-new" id="px_new" aria-haspopup="true" aria-expanded="false"><b>+</b><span>إضافة</span></button><div class="px-pop" id="px_pop" hidden></div></div>
+      <button type="button" class="px-ic" id="px_find2" aria-label="بحث وانتقال سريع">${icon("search")}</button>`;
     const st = document.getElementById("status"); if (st) top.appendChild(st);
     const scrim = document.createElement("div"); scrim.id = "pxscrim"; scrim.className = "px-only";
     const bot = document.createElement("nav"); bot.id = "pxbot"; bot.className = "px-only"; bot.setAttribute("aria-label", "الصفحات الرئيسية");
     const k = document.createElement("div"); k.id = "pxk"; k.hidden = true;
-    k.innerHTML = `<div class="pxk-box" role="dialog" aria-modal="true" aria-label="انتقال سريع"><div class="pxk-in">${icon("search")}<input id="pxk_q" placeholder="اكتب اسم الصفحة…" autocomplete="off"></div><div class="pxk-list" id="pxk_l"></div></div>`;
+    k.innerHTML = `<div class="pxk-box" role="dialog" aria-modal="true" aria-label="انتقال سريع"><div class="pxk-in">${icon("search")}<input id="pxk_q" placeholder="ابحث عن صفحة، مورد، فاتورة بمبلغها أو رقمها، موظف، أو تاريخ…" autocomplete="off"></div><div class="pxk-list" id="pxk_l"></div></div>`;
     const main = document.getElementById("main");
     document.body.insertBefore(nav, main); document.body.insertBefore(top, main); document.body.append(scrim, bot, k);
 
+    /* «+ إضافة»: the everyday entries one tap away, each opens its page with the form ready */
+    const NEW = [["invoices", "فاتورة جديدة", "#i_date"], ["sales", "مبيعات يوم", "#s_date"], ["custody", "حركة عهدة", "#c_date"], ["recon", "جرد الخزنة والبنك", ""], ["buy", "طلب شراء", ""]];
+    const pop = document.getElementById("px_pop"), nb = document.getElementById("px_new");
+    const popClose = () => { pop.hidden = true; nb.setAttribute("aria-expanded", "false"); };
+    nb.onclick = e => { e.stopPropagation(); if (!pop.hidden) return popClose();
+      const L = NEW.filter(x => visible(x[0])); if (!L.length) return;
+      pop.innerHTML = L.map(([v, l, f]) => `<a href="#${v}" data-f="${f}">${icon(v)}<span>${l}</span></a>`).join(""); pop.hidden = false; nb.setAttribute("aria-expanded", "true"); };
+    pop.onclick = e => { const a = e.target.closest("a"); if (!a) return; popClose(); const f = a.dataset.f;
+      if (f) setTimeout(() => { const el = document.querySelector(f); if (el){ el.scrollIntoView({block:"center", behavior:"smooth"}); el.focus({preventScroll:true}); } }, 450); };
+    document.addEventListener("click", e => { if (!pop.hidden && !pop.contains(e.target)) popClose(); });
     const close = () => { nav.classList.remove("open"); scrim.classList.remove("open"); document.body.classList.remove("px-lock"); };
     document.getElementById("px_menu").onclick = () => { nav.classList.add("open"); scrim.classList.add("open"); document.body.classList.add("px-lock"); };
     scrim.onclick = close;
@@ -84,22 +96,45 @@
     let items = [], sel = 0;
     const q = document.getElementById("pxk_q"), list = document.getElementById("pxk_l");
     const norm = s => String(s).replace(/[إأآ]/g, "ا").replace(/ة/g, "ه").replace(/ى/g, "ي").toLowerCase();
-    const draw = () => { const t = norm(q.value.trim());
-      items = GROUPS.flatMap(([g, vs]) => vs.filter(visible).map(v => ({v, n:nameOf(v), g}))).filter(x => !t || norm(x.n).includes(t) || norm(x.g).includes(t));
+    /* besides the pages: invoices (supplier, number, amount, category), suppliers, employees and a day by its date */
+    const esc2 = s => String(s == null ? "" : s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+    const recs = raw => { const out = [], invs = [], t = norm(raw); if (raw.length < 2 || typeof S === "undefined") return out;
+      const go = (v, fn) => () => { location.hash = "#" + v; setTimeout(() => { try { fn && fn(); } catch(e){} }, 350); };
+      const dm = raw.match(/^(\d{1,2})[\/\-.](\d{1,2})(?:[\/\-.](\d{2,4}))?$/) || raw.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+      if (dm && visible("daily")){ let y, m, d; if (dm[0].length >= 8 && /^\d{4}/.test(dm[0])){ y = +dm[1]; m = +dm[2]; d = +dm[3]; } else { d = +dm[1]; m = +dm[2]; y = dm[3] ? (+dm[3] < 100 ? 2000 + +dm[3] : +dm[3]) : S.y; }
+        const iso2 = `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+        if (m >= 1 && m <= 12 && d >= 1 && d <= 31) out.push({ic:"daily", n:`الملخص اليومي · ${d}/${m}/${y}`, g:"يوم", run: () => { S.dyPick = true; S.dyDate = iso2; if (location.hash === "#daily") render(); else location.hash = "#daily"; }}); }
+      const num = raw.replace(/,/g, ""), isNum = /^\d+(\.\d+)?$/.test(num);
+      if (visible("invoices") && Array.isArray(S.invoices)){
+        const hit = S.invoices.filter(x => !x.deleted && (isNum ? (String(x.no || "") === num || Math.abs((+x.beforeTax || 0) + (+x.vat || 0) - +num) < 0.006 || String(x.no || "").includes(num))
+          : norm(x.supplier || "").includes(t) || norm(x.category || "").includes(t) || norm(x.buyer || "").includes(t) || norm(x.notes || "").includes(t)))
+          .sort((a, b2) => (b2.date || "").localeCompare(a.date || "")).slice(0, 6);
+        hit.forEach(x => invs.push({ic:"invoices", n:`${esc2(x.supplier || x.category || "فاتورة")} · <span class="num">${((+x.beforeTax || 0) + (+x.vat || 0)).toLocaleString("en-US", {minimumFractionDigits:2, maximumFractionDigits:2})}</span>`, g:`فاتورة ${esc2((x.date || "").split("-").reverse().join("/"))}`, run: go("invoices", () => S.loadInv && S.loadInv(x.id))})); }
+      if (!isNum && visible("suppliers") && Array.isArray(S.suppliers)) S.suppliers.filter(x => !x.deleted && norm(x.name || "").includes(t)).slice(0, 3)
+        .forEach(x => out.push({ic:"suppliers", n:esc2(x.name), g:"مورد", run: go("suppliers")}));
+      if (!isNum && visible("payroll") && Array.isArray(S.staff)) S.staff.filter(x => !x.deleted && norm(x.name || "").includes(t)).slice(0, 3)
+        .forEach(x => out.push({ic:"payroll", n:esc2(x.name), g:"موظف", run: go("payroll", () => typeof openHrProfile === "function" && openHrProfile(x.id))}));
+      return [...out, ...invs]; };
+    const draw = () => { const raw = q.value.trim(), t = norm(raw);
+      const pages = GROUPS.flatMap(([g, vs]) => vs.filter(visible).map(v => ({v, ic:v, n:nameOf(v), g}))).filter(x => !t || norm(x.n).includes(t) || norm(x.g).includes(t));
+      const rs = recs(raw); items = [...pages, ...rs];
       sel = Math.min(sel, Math.max(0, items.length - 1));
-      list.innerHTML = items.length ? items.map((x, i) => `<a class="pxk-it ${i === sel ? "sel" : ""}" href="#${x.v}" data-i="${i}">${icon(x.v)}<span>${x.n}</span><small>${x.g}</small></a>`).join("") : `<div class="pxk-empty">لا توجد صفحة بهذا الاسم</div>`;
+      const row = (x, i) => `<a class="pxk-it ${i === sel ? "sel" : ""}" href="${x.v ? "#" + x.v : "#"}" data-i="${i}">${icon(x.ic)}<span>${x.n}</span><small>${x.g}</small></a>`;
+      list.innerHTML = items.length ? (pages.length ? `<div class="pxk-h">الصفحات</div>` + pages.map((x, i) => row(x, i)).join("") : "") + (rs.length ? `<div class="pxk-h">السجلات</div>` + rs.map((x, i) => row(x, pages.length + i)).join("") : "")
+        : `<div class="pxk-empty">لا توجد نتيجة. جرّب اسم صفحة أو مورد أو مبلغ فاتورة أو تاريخاً مثل 12/11</div>`;
       const s = list.querySelector(".sel"); if (s) s.scrollIntoView({block:"nearest"}); };
+    const pick = i => { const x = items[i]; if (!x) return; closeK(); if (x.run) x.run(); else location.hash = "#" + x.v; };
     const openK = () => { if (!pro()) return; close(); k.hidden = false; q.value = ""; sel = 0; draw(); setTimeout(() => q.focus(), 20); };
     const closeK = () => { k.hidden = true; };
     document.getElementById("px_find").onclick = openK; document.getElementById("px_find2").onclick = openK;
     q.oninput = () => { sel = 0; draw(); };
     q.onkeydown = e => { if (e.key === "ArrowDown"){ e.preventDefault(); sel = Math.min(items.length - 1, sel + 1); draw(); }
       else if (e.key === "ArrowUp"){ e.preventDefault(); sel = Math.max(0, sel - 1); draw(); }
-      else if (e.key === "Enter" && items[sel]){ e.preventDefault(); location.hash = "#" + items[sel].v; closeK(); } };
-    list.onclick = e => { if (e.target.closest("a")) closeK(); };
+      else if (e.key === "Enter" && items[sel]){ e.preventDefault(); pick(sel); } };
+    list.onclick = e => { const a = e.target.closest("a[data-i]"); if (a){ e.preventDefault(); pick(+a.dataset.i); } };
     k.onclick = e => { if (e.target === k) closeK(); };
     addEventListener("keydown", e => { if ((e.ctrlKey || e.metaKey) && (e.key === "k" || e.key === "K" || e.key === "ك")){ e.preventDefault(); k.hidden ? openK() : closeK(); }
-      else if (e.key === "Escape"){ if (!k.hidden) closeK(); close(); } });
+      else if (e.key === "Escape"){ if (!k.hidden) closeK(); close(); popClose(); } });
   }
 
   function who(){
