@@ -232,3 +232,13 @@
 #acc_ptr.spin{animation:accspin .8s linear infinite;opacity:1}@keyframes accspin{to{transform:translate(-50%,77px) rotate(360deg)}}
 `; document.head.appendChild(st);
 })();
+
+/* opened from a home-screen icon: a link to the other app (cashier ⇄ accounting) opens in this same window, signed in,
+   instead of leaving for Safari, where the user may not be signed in */
+document.addEventListener("click", e => {
+  const a = e.target.closest && e.target.closest("a[target=_blank][href]"); if (!a) return;
+  if (!(matchMedia("(display-mode: standalone)").matches || navigator.standalone)) return;
+  let u; try { u = new URL(a.href, location.href); } catch { return; }
+  if (u.origin !== location.origin || !/\/aqeela-pos\/|^\/(acc\/|index\.html|$)/.test(u.pathname)) return;
+  e.preventDefault(); location.href = u.href;
+}, true);

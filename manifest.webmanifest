@@ -1,6 +1,8 @@
 {
   "name": "Cashier AQ",
   "short_name": "Cashier AQ",
+  "description": "الكاشير ولوحة المدير · شاورما العقيلة",
+  "id": "./",
   "lang": "ar",
   "dir": "rtl",
   "start_url": "./",

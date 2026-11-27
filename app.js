@@ -4,7 +4,7 @@
 import * as F from "./fb.js";
 import { firebaseConfig } from "./firebase-config.js";
 
-const VERSION = "2.12.3";
+const VERSION = "2.12.4";
 /* the screen language (per device): Arabic or English; the receipt and kitchen ticket stay Arabic */
 const isEn = () => !!(window.aqLang && window.aqLang() === "en");
 const langLink = id => `<button type="button" class="link" id="${id}" data-noi18n style="color:var(--mut);font-size:14px">${isEn() ? "العربية" : "English"}</button>`;
@@ -200,6 +200,8 @@ function route() {
   if (!S.config || !S.menu.length) return render(isAdmin() ? "setup" : "notready");
   if (S.view === "admin") return;
   if (isAdmin() && location.hash.startsWith("#/admin") && S.view !== "admin") return openAdmin();
+  /* the owner opening the app on a phone (its home-screen icon) lands on the manager console; the sales screen stays one tap away */
+  if (!S.routedOnce) { S.routedOnce = true; if (isAdmin() && !S.shift && matchMedia("(max-width: 700px)").matches) return openAdmin(); }
   const c = S.cashier && S.config.cashiers.find(x => x.id === S.cashier.id && x.active);
   if (!c) { S.cashier = null; ls.set("cashier", null); }
   if (S.view === "pos" && S.cashier && S.shift) { drawMenu(); drawCart(); drawTop(); return; }
@@ -1864,6 +1866,16 @@ function admVerify() {
       ${real !== o.code ? "<br><b>تنبيه: بيانات هذا الطلب في النظام عُدّلت بعد حفظه.</b>" : ""}</div>${orderDetail(o)}`).join("<hr>");
   };
 }
+
+/* opened from a home-screen icon: a link to the other app (cashier ⇄ accounting) opens in this same window, signed in,
+   instead of leaving for Safari, where the user may not be signed in */
+document.addEventListener("click", e => {
+  const a = e.target.closest && e.target.closest("a[target=_blank][href]"); if (!a) return;
+  if (!(matchMedia("(display-mode: standalone)").matches || navigator.standalone)) return;
+  let u; try { u = new URL(a.href, location.href); } catch { return; }
+  if (u.origin !== location.origin || !/\/aqeela-pos\/|^\/(acc\/|index\.html|$)/.test(u.pathname)) return;
+  e.preventDefault(); location.href = u.href;
+}, true);
 
 /* expose for tests */
 window.__aq = { S, F, D, mgrCode, render, total, bizDay, drawReceipt, drawKitchen, raster, shiftCalc, drawShiftReport, packOf, orderCogs, sha256Hex };
