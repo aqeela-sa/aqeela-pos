@@ -15,8 +15,8 @@ Object.assign(KEY, {attendance:"attendance", rota:"rota", leaves:"leaves", hrEve
 Object.assign(COLL_LABEL, {attendance:"حضور", rota:"جدول ورديات", leaves:"إجازة", hrEvents:"إجراء موارد بشرية"});
 ["attendance", "rota", "leaves", "hrEvents"].forEach(c => { STAFF_COLL_PAGE[c] = ["payroll"]; MEMBER_COLL_PAGE[c] = ["payroll"]; if (!STAFF_HIDDEN.includes(c)) STAFF_HIDDEN.push(c); });
 
-const HX_TABS = [["overview","نظرة عامة"],["staff","ملفات الموظفين"],["att","الحضور والورديات"],["leave","الإجازات"],["perf","الأداء والانضباط"],["payroll","مسير الرواتب"],["adv","السلف"],["exit","نهاية الخدمة والخطابات"]];
-const HX_NEW = ["overview","att","leave","perf","exit"];
+const HX_TABS = [["overview","نظرة عامة"],["staff","ملفات الموظفين"],["docs","المستندات"],["att","الحضور والورديات"],["leave","الإجازات"],["perf","الأداء والانضباط"],["payroll","مسير الرواتب"],["adv","السلف"],["letters","الخطابات"],["exit","نهاية الخدمة"]];
+const HX_NEW = ["overview","docs","att","leave","perf","letters","exit"];
 const HX_ST = {"حاضر":"ok", "متأخر":"warn", "غائب":"bad", "إجازة":"info", "راحة":"mute"};
 const HX_LEAVES = [["سنوية","تُخصم من الرصيد السنوي"],["مرضية","بتقرير طبي (م 117)"],["اضطرارية","مدفوعة · حتى 5 أيام للزواج والوفاة (م 113)"],["بدون راتب","تُخصم من الراتب"],["أخرى",""],["تعديل رصيد","إضافة أو خصم أيام من الرصيد (رصيد سابق)"]];
 const HX_VIOL = ["التأخر عن موعد الدوام","الغياب بدون إذن","مغادرة العمل قبل نهاية الوردية","عدم الالتزام بالزي والنظافة الشخصية","مخالفة اشتراطات النظافة وسلامة الغذاء","سوء التعامل مع العملاء","استخدام الجوال أثناء العمل","إهمال المعدات أو الهدر","أخرى"];
@@ -41,7 +41,7 @@ function hxState(d, sid){
 }
 const hxChip = st => st ? `<span class="hx-st ${HX_ST[st] || ""}">${esc(st)}</span>` : `<span class="hx-st none">لم يُسجّل</span>`;
 const hxDays = (a, b) => Math.max(0, hrDays(a, b));
-const hxAv = s => `<span class="hr-av" style="background:${hrColor(s.name)}">${esc(hrInitials(s.name))}</span>`;
+const hxAv = s => hrAvatar(s);
 
 /* ---------- leave balance, Saudi Labor Law art. 109: 21 days a year, 30 after five years of service ---------- */
 function hxAccrued(s, asOf){

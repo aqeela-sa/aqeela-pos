@@ -3705,6 +3705,7 @@ function openStaff(id){
       ${F("address", "السكن / العنوان", "", "wide")}</div>
     <h4>الوظيفة</h4><div class="fields">
       ${F("role", "الوظيفة الفعلية", 'placeholder="مثال: شيف، كاشير"')}
+      ${F("roleEn", "المسمى بالإنجليزية", 'dir="ltr" placeholder="e.g. Chef"')}
       ${F("iqamaProf", "المهنة في الإقامة")}
       <div class="f"><label for="st_kind">نوع العمل</label><select id="st_kind">${PR_KINDS.map(k => `<option ${(x ? x.kind : "أساسي") === k ? "selected" : ""}>${k}</option>`).join("")}</select></div>
       ${Dt("start", "تاريخ التعيين")}
@@ -3725,12 +3726,11 @@ function openStaff(id){
       ${F("passportNo", "رقم الجواز", 'dir="ltr"')}${Dt("passportExp", "انتهاء الجواز")}
       ${F("insNo", "رقم بطاقة التأمين الطبي", 'dir="ltr"')}${Dt("insExp", "انتهاء التأمين الطبي")}
       ${F("healthNo", "رقم الشهادة الصحية", 'dir="ltr"')}${Dt("healthExp", "انتهاء الشهادة الصحية")}
-      ${attachField("st_att", "صور الوثائق (الإقامة، الجواز، العقد...)")}
+      <p class="foot wide" style="margin:0">صور المستندات (الإقامة، الجواز، الشهادة الصحية، العقد…) تُرفق من ملف الموظف ← «المستندات»، مع تاريخ الإصدار والانتهاء لكل مستند.</p>
       <div class="f wide"><label for="st_notes">ملاحظات</label><input id="st_notes" value="${v("notes")}"></div></div>
     <div class="actions"><button class="btn" type="submit" id="st_save" ${S.canWrite ? "" : "disabled"}>حفظ</button><button class="btn ghost" type="button" id="st_close">إغلاق</button>
       ${x && S.canWrite ? `<button class="btn danger sm" type="button" id="st_del">حذف (أرشفة)</button>` : ""}</div></form>`;
   $("#modal").classList.add("open");
-  const att = attachController("st_att"); if (x) att.load("staff/" + id);
   $("#st_close").onclick = closeModal;
   const parts = ["basic", "housing", "transport", "otherAllow"];
   const syncSal = () => { const t = r2(sumBy(parts, k => n($("#st_" + k).value))); const on = parts.some(k => $("#st_" + k).value !== "");
@@ -3743,14 +3743,13 @@ function openStaff(id){
     if (S.staff.some(s => s.id !== id && normName(s.name) === name)){ toast("يوجد موظف بنفس الاسم"); return; }
     const g = k => $("#st_" + k).value.trim(), num = k => $("#st_" + k).value === "" ? null : r2(n($("#st_" + k).value));
     const data = {...(x ? strip(x) : {}), name, nameEn:g("nameEn"), nationality:g("nationality"), birthDate:g("birthDate"), gender:g("gender"), phone:g("phone"), emergName:g("emergName"), emergPhone:g("emergPhone"), address:g("address"),
-      role:g("role"), iqamaProf:g("iqamaProf"), kind:$("#st_kind").value, start:g("start"), contractEnd:g("contractEnd"), active: $("#st_active").value === "1", leave:g("leave"), leaveReason:g("leaveReason"),
+      role:g("role"), roleEn:g("roleEn"), iqamaProf:g("iqamaProf"), kind:$("#st_kind").value, start:g("start"), contractEnd:g("contractEnd"), active: $("#st_active").value === "1", leave:g("leave"), leaveReason:g("leaveReason"),
       basic:num("basic"), housing:num("housing"), transport:num("transport"), otherAllow:num("otherAllow"), salary:r2(n($("#st_sal").value)), payDefault:$("#st_pay").value, payDay: Math.min(28, Math.max(1, Math.round(n($("#st_payDay").value) || 1))), bankName:g("bankName"), iban:g("iban").replace(/\s+/g, "").toUpperCase(),
       iqamaNo:g("iqamaNo"), iqamaExp:g("iqamaExp"), passportNo:g("passportNo"), passportExp:g("passportExp"), insNo:g("insNo"), insExp:g("insExp"), healthNo:g("healthNo"), healthExp:g("healthExp"), notes:g("notes")};
     if (data.leave && data.start && data.leave < data.start){ toast("تاريخ ترك العمل قبل تاريخ التعيين"); return; }
     if (data.birthDate && data.birthDate > today()){ toast("تاريخ الميلاد غير صحيح"); return; }
     const sid = id || S.db.collection("staff").doc().id, sv = $("#st_save"); sv.disabled = true;
-    try { const up = await att.flush("staff/" + sid); data.att = Math.max(0, n(x && x.att) - att.removed.length) + up;
-      if (await recWrite("staff", sid, data, null, "تم حفظ ملف الموظف")) closeModal(); } finally { if ($("#st_save")) sv.disabled = !S.canWrite; } };
+    try { if (await recWrite("staff", sid, data, null, "تم حفظ ملف الموظف")) closeModal(); } finally { if ($("#st_save")) sv.disabled = !S.canWrite; } };
 }
 
 /* ---------- advance modal ---------- */
@@ -5227,6 +5226,8 @@ function hrAlerts(){
 }
 const hrInitials = nm => String(nm || "").replace(/^(الشيف|ابو|أبو)\s+/,"").split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join(" ");
 const hrColor = nm => { let h = 0; for (const c of String(nm)) h = (h * 31 + c.charCodeAt(0)) % 360; return `hsl(${h} 45% 38%)`; };
+/* the employee's picture when the file has one (ملف الموظف ← الصورة), otherwise the initials on a colour of the name */
+const hrAvatar = (s, cls) => s && s.photo && /^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(s.photo) ? `<span class="hr-av ${cls || ""}" style="background:${hrColor(s.name)} url(${s.photo}) center/cover no-repeat" role="img" aria-label="${esc(s.name)}"></span>` : `<span class="hr-av ${cls || ""}" style="background:${hrColor((s || {}).name)}">${esc(hrInitials((s || {}).name))}</span>`;
 /* the document closest to expiry (or the first missing one when none is dated) */
 function hrWorst(s){ let w = null; HR_DOCS.forEach(d => { const st = hrDocState(s, d); if (st.lv !== "none" && (!w || st.days < w.days)) w = {...st, name:d.name}; }); return w || {lv:"none", days:1e9, name:""}; }
 const hrChip = st => `<span class="hr-doc ${st.lv}">${esc(st.label)}</span>`;
@@ -5256,7 +5257,7 @@ function hrDirectory(){
   const card = s => { const sv = hrService(s), age = hrAge(s), b = advBalance(s.id), iq = hrDocState(s, HR_DOCS[0]);
     const worst = HR_DOCS.map(d => hrDocState(s, d)).filter(x => x.lv === "bad" || x.lv === "warn").length;
     return `<article class="hr-card ${s.active === false ? "off" : ""}">
-      <button type="button" class="hr-top" data-hrp="${esc(s.id)}" aria-label="ملف ${esc(s.name)}"><span class="hr-av" style="background:${hrColor(s.name)}">${esc(hrInitials(s.name))}</span>
+      <button type="button" class="hr-top" data-hrp="${esc(s.id)}" aria-label="ملف ${esc(s.name)}">${hrAvatar(s)}
         <span class="hr-nm"><b>${esc(s.name)}</b><span class="small muted">${esc(s.role || "بدون وظيفة محددة")}${s.nationality ? " · " + esc(s.nationality) : ""}</span></span>
         <span class="chip ${s.active === false ? "info" : "ok"}">${s.active === false ? "متوقف" : esc(s.kind || "أساسي")}</span></button>
       <dl class="hr-dl">
@@ -5276,7 +5277,7 @@ function hrDirectory(){
   const docCell = s => { const w = hrWorst(s); return w.lv === "none" ? '<span class="hr-doc none">غير مسجّلة</span>' : w.lv === "ok" ? '<span class="hr-doc ok">سارية</span>' : `<span class="hr-doc ${w.lv}" title="${esc(w.label)}">${w.lv === "bad" ? "منتهية" : `باقي ${w.days} يوم`}</span><div class="by">${esc(w.name)}<span class="hr-c2"> · <span class="num">${dmy(w.exp)}</span></span></div>`; };
   const table = `<div class="tw hr-tw"><table class="hr-t"><thead><tr><th>الموظف</th><th class="hr-c2">الجنسية</th><th class="hr-c2">التعيين</th><th class="hr-c2">مدة الخدمة</th><th class="n">الراتب</th><th>الوثائق</th><th class="n hr-c2">سلف</th><th class="hr-c3"></th></tr></thead><tbody>
     ${list.map(s => { const sv = hrService(s), b = advBalance(s.id); return `<tr class="click ${s.active === false ? "off" : ""}" data-hrp="${esc(s.id)}">
-      <td><div class="hr-who"><span class="hr-av sm" style="background:${hrColor(s.name)}">${esc(hrInitials(s.name))}</span><div><b>${esc(s.name)}</b><div class="by">${esc(s.role || s.kind || "")}${s.active === false ? " · متوقف" : ""}</div></div></div></td>
+      <td><div class="hr-who">${hrAvatar(s, "sm")}<div><b>${esc(s.name)}</b><div class="by">${esc(s.role || s.kind || "")}${s.active === false ? " · متوقف" : ""}</div></div></div></td>
       <td class="hr-c2">${esc(s.nationality || "—")}</td><td class="hr-c2 num">${s.start ? dmy(s.start) : "—"}</td><td class="hr-c2">${sv ? esc(sv.label) : "—"}</td>
       <td class="n"><b>${money(n(s.salary))}</b></td><td>${docCell(s)}</td><td class="n hr-c2">${b > 0.004 ? `<b class="neg">${money(b)}</b>` : '<span class="dash">—</span>'}</td>
       <td class="hr-c3"><div class="actions" style="flex-wrap:nowrap">${S.canWrite ? `<button type="button" class="btn ghost sm" data-staff="${esc(s.id)}">تعديل</button>` : ""}${S.canWrite && s.active !== false ? `<button type="button" class="btn ghost sm" data-adv="${esc(s.id)}">سلفة</button>` : ""}</div></td></tr>`; }).join("")}
@@ -7005,10 +7006,11 @@ if (window.__accHost) window.__accStart = connect; else connect();
 <script src="kitchen.js?v=8"></script>
 <script src="purchase.js?v=5"></script>
 <script src="team.js?v=3"></script>
-<script src="hr.js?v=1"></script>
+<script src="hr.js?v=2"></script>
+<script src="hr2.js?v=1"></script>
 <script src="account.js?v=1"></script>
 <script src="mgr.js?v=4"></script>
-<script type="module" src="acc-fb.js?v=17"></script>
+<script type="module" src="acc-fb.js?v=18"></script>
 <script>
 (() => { const mark = () => document.querySelectorAll('input[type=date]').forEach(el => { const e = !el.value; if (el.classList.contains("dt-empty") !== e) el.classList.toggle("dt-empty", e); });
   ["input", "change", "focusout"].forEach(t => document.addEventListener(t, e => { if (e.target && e.target.type === "date") mark(); }, true));

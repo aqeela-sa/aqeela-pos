@@ -90,6 +90,8 @@ service cloud.firestore {
     match /acc_rota/{id}        { allow read, create, update: if isAdmin() || granted('payroll'); allow delete: if isAdmin(); }
     match /acc_leaves/{id}      { allow read, create, update: if isAdmin() || granted('payroll'); allow delete: if isAdmin(); }
     match /acc_hrEvents/{id}    { allow read, create, update: if isAdmin() || granted('payroll'); allow delete: if isAdmin(); }
+    // the employees' documents (iqama, passport, health certificate, contract…): pictures seen only with «الموارد البشرية»
+    match /acc_hrFiles/{id}     { allow read, create, update: if isAdmin() || granted('payroll'); allow delete: if isAdmin(); }
     match /acc_journal/{id}     { allow read: if isAdmin() || granted('accounting'); allow write: if isAdmin(); }
     match /acc_cfo/{id}         { allow read, create, update: if isAdmin() || granted('cfo'); allow delete: if isAdmin(); }
     match /acc_menuItems/{id}   { allow read, create, update: if isAdmin() || granted('menu'); allow delete: if isAdmin(); }
