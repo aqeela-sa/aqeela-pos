@@ -63,7 +63,7 @@
     nav.innerHTML = `<div class="px-brand"><img src="${aqSrc}" alt=""><div><b dir="ltr" class="px-name">AQ <span>ACC</span></b><small>شاورما العقيلة · المحاسبة والإدارة</small></div></div>
       <button type="button" class="px-search" id="px_find">${icon("search")}<span>بحث وانتقال سريع…</span><kbd>Ctrl K</kbd></button>
       <nav class="px-scroll">${GROUPS.map(([t, vs]) => `<div class="px-grp"><div class="px-sec">${t}</div>${vs.map(v => `<a class="px-link" href="#${v}" data-pv="${v}">${icon(v)}<span>${nameOf(v)}</span></a>`).join("")}</div>`).join("")}</nav>
-      <div class="px-foot"><a class="px-me" id="px_me" href="#account" title="حسابي: البيانات وكلمة المرور"><div class="px-av" id="px_av">A</div><div class="px-who"><b id="px_name">—</b><small id="px_role"></small></div></a><button type="button" class="px-out" id="px_out" title="تسجيل الخروج" aria-label="تسجيل الخروج">${icon("out")}</button></div>`;
+      <div class="px-foot"><a class="px-me" id="px_me" href="#account" title="حسابي: البيانات وكلمة المرور"><div class="px-av" id="px_av">A</div><div class="px-who"><b id="px_name">—</b><small id="px_role"></small></div></a><button type="button" class="px-out" id="px_rl" title="تحديث البرنامج" aria-label="تحديث البرنامج"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg></button><button type="button" class="px-out" id="px_out" title="تسجيل الخروج" aria-label="تسجيل الخروج">${icon("out")}</button></div>`;
     const top = document.createElement("div"); top.id = "pxtop"; top.className = "px-only";
     top.innerHTML = `<button type="button" class="px-menu" id="px_menu" aria-label="القائمة">${icon("bars")}</button><img class="px-mlogo" src="${aqSrc}" alt="">
       <div class="px-crumb"><span id="px_grp"></span><i>/</i><b id="px_page"></b></div>
@@ -131,6 +131,7 @@
     const openK = () => { if (!pro()) return; close(); k.hidden = false; q.value = ""; sel = 0; draw(); setTimeout(() => q.focus(), 20); };
     const closeK = () => { k.hidden = true; };
     document.getElementById("px_find").onclick = openK; document.getElementById("px_find2").onclick = openK;
+    document.getElementById("px_rl").onclick = () => window.accReload ? accReload() : location.reload();
     document.getElementById("px_lang").onclick = () => window.accSetLang && accSetLang(accLang() === "en" ? "ar" : "en");
     q.oninput = () => { sel = 0; draw(); };
     q.onkeydown = e => { if (e.key === "ArrowDown"){ e.preventDefault(); sel = Math.min(items.length - 1, sel + 1); draw(); }
@@ -177,4 +178,56 @@
     const pm = document.getElementById("px_me"); if (pm) pm.classList.toggle("on", cur === "account");
     if (n) n.textContent = w.nm; if (r) r.textContent = w.role; if (av) av.textContent = (w.nm || "A").trim().charAt(0) || "A";
   };
+})();
+
+/* Keeping the program current, above all when it runs as an app from the home screen (no address bar, no reload button):
+   - it checks the published page now and then, and when a newer version is out it offers «تحديث الآن» at the bottom;
+   - pulling the page down from the very top reloads it, as in other phone apps;
+   - «تحديث البرنامج» in the menu does the same at any time.
+   A reload asks the server for a fresh copy (a new address each time), so an old copy kept by the phone is not reused. */
+(function(){
+  const fresh = () => { const u = new URL(location.href); u.searchParams.set("r", Date.now().toString(36)); location.replace(u.pathname + u.search + u.hash); };
+  window.accReload = fresh;
+  /* a newer version is out when the published page names a program file (file.js?v=12 …) that this copy has not loaded */
+  let shown = false;
+  async function check(){
+    if (shown || document.hidden || !navigator.onLine) return;
+    try {
+      const r = await fetch(location.pathname + "?chk=" + Date.now(), { cache: "no-store" }); if (!r.ok) return;
+      const h = await r.text();
+      const want = [...h.matchAll(/<(?:script|link)\b[^>]*?(?:src|href)="([^"]+\?v=[^"]+)"/g)].map(m => m[1]);
+      if (!want.length) return;
+      const have = new Set([...document.querySelectorAll("script[src],link[href]")].map(e => e.getAttribute("src") || e.getAttribute("href")));
+      if (want.some(u => !have.has(u))) offer();
+    } catch(e){}
+  }
+  function offer(){
+    if (shown) return; shown = true;
+    const b = document.createElement("div"); b.id = "acc_upd"; b.setAttribute("role", "status");
+    b.innerHTML = `<span>يتوفر تحديث جديد للبرنامج</span><button type="button">تحديث الآن</button>`;
+    b.querySelector("button").onclick = fresh;
+    document.body.appendChild(b);
+  }
+  setTimeout(check, 4000); setInterval(check, 5 * 60 * 1000);
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) check(); });
+
+  /* pull down from the top to reload (phones only; not while a window, the menu or a text field is in use) */
+  const busy = () => document.querySelector(".modal-bg:not([hidden]), .modal:not([hidden]), #pxnav.open, #pxk:not([hidden]), dialog[open]") || /INPUT|TEXTAREA|SELECT/.test((document.activeElement || {}).tagName || "");
+  let y0 = null, pull = 0, ind = null;
+  const show = d => {
+    if (!ind){ ind = document.createElement("div"); ind.id = "acc_ptr"; ind.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>`; document.body.appendChild(ind); }
+    const p = Math.min(1, d / 90); ind.style.opacity = p; ind.style.transform = `translate(-50%, ${Math.min(d, 110) * 0.7}px) rotate(${p * 300}deg)`; ind.classList.toggle("go", d >= 90);
+  };
+  const hide = () => { if (ind){ ind.style.opacity = 0; ind.style.transform = "translate(-50%,0)"; } };
+  addEventListener("touchstart", e => { y0 = (window.scrollY <= 0 && e.touches.length === 1 && !busy()) ? e.touches[0].clientY : null; pull = 0; }, { passive: true });
+  addEventListener("touchmove", e => { if (y0 == null) return; pull = e.touches[0].clientY - y0; if (pull > 10 && window.scrollY <= 0) show(pull - 10); else if (pull <= 0) { y0 = null; hide(); } }, { passive: true });
+  addEventListener("touchend", () => { if (y0 != null && pull - 10 >= 90){ if (ind) ind.classList.add("spin"); fresh(); } else hide(); y0 = null; }, { passive: true });
+  const st = document.createElement("style"); st.textContent = `
+#acc_upd{position:fixed;z-index:60;inset-inline:12px;bottom:calc(14px + env(safe-area-inset-bottom));display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 14px;border-radius:14px;background:#1D1D22;color:#fff;font-weight:600;font-size:14px;box-shadow:0 10px 30px rgba(0,0,0,.25);max-width:520px;margin-inline:auto}
+#acc_upd button{flex:none;border:0;border-radius:10px;background:#C8102E;color:#fff;font:inherit;font-weight:700;padding:8px 14px;cursor:pointer}
+@media (max-width:1023px){#acc_upd{bottom:calc(76px + env(safe-area-inset-bottom))}}
+#acc_ptr{position:fixed;z-index:70;left:50%;top:calc(8px + env(safe-area-inset-top));width:38px;height:38px;border-radius:50%;background:var(--card,#fff);color:var(--muted,#777);display:grid;place-items:center;box-shadow:0 4px 14px rgba(0,0,0,.16);opacity:0;transform:translate(-50%,0);pointer-events:none;transition:opacity .15s}
+#acc_ptr svg{width:20px;height:20px}#acc_ptr.go{color:var(--red,#C8102E)}
+#acc_ptr.spin{animation:accspin .8s linear infinite;opacity:1}@keyframes accspin{to{transform:translate(-50%,77px) rotate(360deg)}}
+`; document.head.appendChild(st);
 })();

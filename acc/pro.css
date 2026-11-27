@@ -351,3 +351,16 @@
 [data-pro="1"] #fs button[type=submit],[data-pro="1"] #i_save,[data-pro="1"] #c_save,[data-pro="1"] #a_new,[data-pro="1"] #fpay button[type=submit],[data-pro="1"] #fsup button[type=submit],[data-pro="1"] #fstaff button[type=submit],[data-pro="1"] #fadv button[type=submit],[data-pro="1"] #fsp button[type=submit],[data-pro="1"] #fsti button[type=submit],[data-pro="1"] #fstc button[type=submit],[data-pro="1"] #sk_count,[data-pro="1"] #pr_appr,[data-pro="1"] #pr_create,[data-pro="1"] #pr_payall,[data-pro="1"] [data-spay]{background:#15803D!important;box-shadow:0 1px 2px rgba(16,24,40,.08)!important}
 
 .px-lang{font-weight:800;font-size:13px;letter-spacing:0;font-family:inherit}
+
+/* phones: the connection dot keeps its size, and the quick actions show all at once in two columns */
+#pxtop .status{flex:none}
+@media (max-width:1023px){
+  #pxtop{gap:8px;padding-inline:12px}
+  .px-crumb{min-width:0;flex:1}.px-crumb b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .pdx-acts{display:grid!important;grid-template-columns:1fr 1fr;gap:8px;margin:0!important;padding:0!important;overflow:visible!important}
+  .pdx-act{justify-content:center;height:44px;padding:0 10px;min-width:0}
+  .pdx-act span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .pdx-act:last-child:nth-child(odd){grid-column:1/-1}
+}
+#pxtop .status::before{flex:none}
+@media (max-width:1023px){#pxtop .status{gap:0;justify-content:center;overflow:hidden}}
