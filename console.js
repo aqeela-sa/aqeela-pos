@@ -26,6 +26,7 @@ const TYPE_C = { dine: "#F28C28", take: "#C1121F", delivery: "#0E7490", lokit: "
 
 /* ---------- أيقونات (Material) ---------- */
 const P = {
+  globe: "M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zm6.93 6h-2.95a15.65 15.65 0 0 0-1.38-3.56A8.03 8.03 0 0 1 18.92 8zM12 4.04c.83 1.2 1.48 2.53 1.91 3.96h-3.82c.43-1.43 1.08-2.76 1.91-3.96zM4.26 14C4.1 13.36 4 12.69 4 12s.1-1.36.26-2h3.38c-.08.66-.14 1.32-.14 2s.06 1.34.14 2H4.26zm.82 2h2.95c.32 1.25.78 2.45 1.38 3.56A7.987 7.987 0 0 1 5.08 16zm2.95-8H5.08a7.987 7.987 0 0 1 4.33-3.56A15.65 15.65 0 0 0 8.03 8zM12 19.96c-.83-1.2-1.48-2.53-1.91-3.96h3.82c-.43 1.43-1.08 2.76-1.91 3.96zM14.34 14H9.66c-.09-.66-.16-1.32-.16-2s.07-1.35.16-2h4.68c.09.65.16 1.32.16 2s-.07 1.34-.16 2zm.25 5.56c.6-1.11 1.06-2.31 1.38-3.56h2.95a8.03 8.03 0 0 1-4.33 3.56zM16.36 14c.08-.66.14-1.32.14-2s-.06-1.34-.14-2h3.38c.16.64.26 1.31.26 2s-.1 1.36-.26 2h-3.38z",
   people: "M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z",
   chat: "M20 2H4c-1.1 0-1.99.9-1.99 2L2 22l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zM6 9h12v2H6V9zm8 5H6v-2h8v2zm4-6H6V6h12v2z",
   call: "M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z",
@@ -131,8 +132,9 @@ function onClick(e) {
 function exitToPos() { unmount(); A.render(A.S.cashier ? (A.S.shift ? "pos" : "openshift") : "pin"); }
 function userMenu(anchor) {
   pop(anchor, `<div class="cx-menu"><div class="hd"><b>${esc(userName())}</b><small class="num">${esc(A.S.user?.email || "")}</small></div>
-    <button data-m="acct">${ic("gear")}حسابي وكلمة المرور</button><button data-m="pos">${ic("store")}شاشة البيع</button><button data-m="upd">${ic("refresh")}تحديث التطبيق <small class="num" style="margin-inline-start:auto;color:#A1A1AA">${A.VERSION}</small></button><hr>
+    <button data-m="acct">${ic("gear")}حسابي وكلمة المرور</button><button data-m="pos">${ic("store")}شاشة البيع</button><button data-m="upd">${ic("refresh")}تحديث التطبيق <small class="num" style="margin-inline-start:auto;color:#A1A1AA">${A.VERSION}</small></button><button data-m="lang" data-noi18n>${ic("globe")}${window.aqLang && window.aqLang() === "en" ? "العربية" : "English"}</button><hr>
     <button data-m="out" style="color:#C2261F">${ic("logout")}تسجيل الخروج</button></div>`, { align: "end" }, el => {
+    el.querySelector("[data-m=lang]").onclick = () => { closePop(); window.aqSetLang && window.aqSetLang(window.aqLang() === "en" ? "ar" : "en"); };
     el.querySelector("[data-m=acct]").onclick = () => { closePop(); go("account"); };
     el.querySelector("[data-m=pos]").onclick = () => { closePop(); exitToPos(); };
     el.querySelector("[data-m=upd]").onclick = async () => { closePop(); try { await (await navigator.serviceWorker?.getRegistration())?.update(); } catch {} location.reload(); };
@@ -170,7 +172,7 @@ function picker(anchor, o) {
     /* الأسبوع يبدأ السبت مثل تقارير المطعم */
     const f = new Date(y, m, 1), start = A.addDays(A.ymd(f), -((f.getDay() + 1) % 7)), cells = [...Array(42).keys()].map(i => A.addDays(start, i));
     const lo = half || o.a, hi = half ? null : o.b;
-    const cal = head(`${AR_M[m]} ${y}`) + `<div class="pk2-d">${["س", "ح", "ن", "ث", "ر", "خ", "ج"].map(d => `<i>${d}</i>`).join("")}${cells.map(d => {
+    const cal = head(`${AR_M[m]} ${y}`) + `<div class="pk2-d">${(window.aqLang && window.aqLang() === "en" ? ["Sa", "Su", "Mo", "Tu", "We", "Th", "Fr"] : ["س", "ح", "ن", "ث", "ر", "خ", "ج"]).map(d => `<i>${d}</i>`).join("")}${cells.map(d => {
       const cls = [+d.slice(5, 7) !== m + 1 ? "out" : "", lo && hi && d > lo && d < hi ? "in" : "", d === lo || d === hi ? "end" : "", d === t ? "today" : ""].join(" ");
       return `<button data-dy="${d}" class="${cls}" ${d > t ? "disabled" : ""}>${+d.slice(8)}</button>`; }).join("")}</div>`;
     if (o.mode === "day") return cal;
@@ -417,7 +419,7 @@ PAGES.dash = async () => {
   page(`<div class="cx-tabs">${[["gen", "عام"], ["kitchen", "المطبخ"], ["cash", "الكاشيرون"]].map(([k, l]) => `<button data-dt="${k}" class="${st.dtab === k ? "on" : ""}">${l}</button>`).join("")}</div>
     <div class="cx-ctl"><div class="cx-seg">${[["day", "يوم"], ["week", "الأسبوع"], ["month", "شهر"]].map(([k, l]) => `<button data-p="${k}" class="${st.p === k ? "on" : ""}">${l}</button>`).join("")}</div>
       <button class="cx-btn" id="cxd">${ic("cal")}<span>${rLab(...R)}</span></button>${st.dtab === "gen" ? `<button class="cx-sw ${st.cmp ? "on" : ""}" id="cxcmp" type="button"><i></i>مقارنة</button>` : ""}<span class="cx-sp"></span>${fltBtn()}</div>
-    ${fltChips()}<div id="dbody">${loadingCards()}</div>`, { h1: `مرحباً، ${esc(userName())}`, acts: expBtn() });
+    ${fltChips()}<div id="dbody">${loadingCards()}</div>`, { h1: `${window.aqLang && window.aqLang() === "en" ? "Hello, " : "مرحباً، "}<span data-noi18n>${esc(userName())}</span>`, acts: expBtn() });
   bindExp();
   $$("[data-dt]").forEach(b => b.onclick = () => { st.dtab = b.dataset.dt; save(); PAGES.dash(); });
   $$("[data-p]").forEach(b => b.onclick = () => { st.p = b.dataset.p; save(); PAGES.dash(); });
@@ -559,7 +561,8 @@ PAGES.orders = async () => {
 };
 
 /* ---------- تقرير المبيعات ---------- */
-const GROUPS = { none: "لا شيء", day: "اليوم", week: "الأسبوع", month: "الشهر", hour: "الساعة", cashier: "الكاشير", type: "نوع الطلب", method: "طريقة الدفع" };
+const GROUPS = { none: "لا شيء", day: "يوم", week: "أسبوع", month: "شهر", hour: "ساعة", cashier: "الكاشير", type: "نوع الطلب", method: "طريقة الدفع" };
+const GROUPS_DEF = { day: "اليوم", week: "الأسبوع", month: "الشهر", hour: "الساعة" };   /* the same with «ال», inside a sentence */
 function grpKey(o, g) { if (g === "day") return o.day; if (g === "week") return A.dshRange("week", o.day)[0]; if (g === "month") return o.day.slice(0, 7); if (g === "hour") return new Date(o.ts).getHours(); if (g === "cashier") return o.cashierName; if (g === "type") return o.type; if (g === "method") return o.pays?.length ? "split" : o.method; return "all"; }
 function grpLabel(k, g) { if (g === "day") return dFull(k); if (g === "week") return `${dLab(k)} – ${dLab(A.addDays(k, 6))}`; if (g === "month") return `${AR_M[+k.slice(5) - 1]} ${k.slice(0, 4)}`; if (g === "hour") return `${hrLab(+k)} – ${hrLab((+k + 1) % 24)}`; if (g === "type") return A.TYPES.find(t => t[0] === k)?.[1] || k; if (g === "method") return k === "split" ? "مقسّم (كاش + شبكة)" : A.METHODS[k] || k; if (g === "none") return "كل المبيعات"; return k; }
 const grpSel = (id, cur, opts) => `<label style="display:inline-flex;align-items:center;gap:8px;color:#71717A;font-size:14px">تجميع بـ<select class="cx-sel" id="${id}">${opts.map(k => `<option value="${k}" ${cur === k ? "selected" : ""}>${GROUPS[k]}</option>`).join("")}</select></label>`;
@@ -580,7 +583,7 @@ PAGES.sales = async () => {
   $("#sb").innerHTML = `<div class="cx-stats"><div class="cx-st"><span>إجمالي المبيعات</span><b class="num">${nf(a.gross)}</b><small>قبل الخصم</small></div><div class="cx-st"><span>الخصومات</span><b class="num">${nf(a.disc)}</b><small>${a.discN} طلب</small></div>
       <div class="cx-st"><span>صافي المبيعات</span><b class="num">${nf(a.net)}</b><small>${ni(a.n)} طلب · ${ni(a.qty)} صنف</small></div><div class="cx-st"><span>التكلفة</span><b class="num">${nf(a.cost)}</b><small>طعام ${nf(a.food)} · تغليف ${nf(a.pack)}</small></div>
       <div class="cx-st"><span>مجمل الربح</span><b class="num" style="color:#15803D">${nf(a.gp)}</b><small>نسبة التكلفة ${pct(a.cpct)}</small></div><div class="cx-st"><span>الإلغاءات</span><b class="num">${nf(a.vT)}</b><small>${a.vN} طلب</small></div></div>
-    ${st.chart && rows.length ? `<div class="cx-card" style="margin-bottom:20px"><div class="cx-ch"><h3>صافي المبيعات حسب ${GROUPS[g]}</h3></div>${chart({ kind: rows.length > 16 ? "line" : "bar", labels: rows.map(r => g === "day" ? dLab(r.k) : r.label), tips: rows.map(r => r.label), series: [{ name: "صافي المبيعات", color: "#C1121F", values: rows.map(r => r.net) }], sub: rows.map(r => `${r.n} طلب`) }, 260)}</div>` : ""}
+    ${st.chart && rows.length ? `<div class="cx-card" style="margin-bottom:20px"><div class="cx-ch"><h3>صافي المبيعات حسب ${GROUPS_DEF[g] || GROUPS[g]}</h3></div>${chart({ kind: rows.length > 16 ? "line" : "bar", labels: rows.map(r => g === "day" ? dLab(r.k) : r.label), tips: rows.map(r => r.label), series: [{ name: "صافي المبيعات", color: "#C1121F", values: rows.map(r => r.net) }], sub: rows.map(r => `${r.n} طلب`) }, 260)}</div>` : ""}
     <div class="cx-tcard"><div id="stb"></div></div>`;
   table("#stb", "sales" + g, [{ k: "label", t: GROUPS[g] === "لا شيء" ? "الفترة" : GROUPS[g], sv: r => r.k, f: r => `<b>${esc(r.label)}</b>` }, { k: "n", t: "الطلبات", num: 1, f: r => `<span class="num">${ni(r.n)}</span>` }, { k: "qty", t: "الكمية", num: 1, f: r => `<span class="num">${ni(r.qty)}</span>` },
     { k: "gross", t: "إجمالي المبيعات", num: 1, f: m("gross") }, { k: "disc", t: "الخصم", num: 1, f: m("disc") }, { k: "net", t: "صافي المبيعات", num: 1, f: r => `<b class="num">${nf(r.net)}</b>` }, { k: "vT", t: "الإلغاء", num: 1, f: m("vT") },

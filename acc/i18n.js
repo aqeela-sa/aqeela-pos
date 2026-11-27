@@ -12,30 +12,33 @@
   if (lang !== "en") { window.tr = s => s; return; }
   H.lang = "en"; H.dir = "ltr";
   /* the dictionary is read only in English (synchronously, before the page draws) */
-  document.write('<script src="i18n-en.js?v=5"><\/script>');
+  document.write('<script src="i18n-en.js?v=6"><\/script>');
 
   const AR = /[؀-ۿ]/, LET = /[ء-ي٠-٩ٮ-ۓۺ-ۿ]/;
   let DICT = null, RX = null;
   const cache = new Map();
   function build(){
     DICT = window.ACC_EN || {};
-    const keys = Object.keys(DICT).filter(k => k && AR.test(k)).sort((a, b) => b.length - a.length);
+    const keys = Object.keys(DICT).filter(k => k && AR.test(k) && k[0] !== "=" && !k.startsWith("th:")).sort((a, b) => b.length - a.length);
     const escK = k => k.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/\s+/g, "\\s+");
     RX = keys.length ? new RegExp(keys.map(escK).join("|"), "g") : null;
   }
   const norm = s => s.replace(/\s+/g, " ").trim();
+  const UNIT = {"د": "min", "ص": "AM", "م": "PM"};
   /* one text: the whole of it when the dictionary has it, otherwise each known piece inside it (whole words only) */
   function tr(s){
     if (!s || !AR.test(s)) return s;
     if (!DICT) build();
     const c = cache.get(s); if (c !== undefined) return c;
     const core = norm(s); let out;
-    if (DICT[core] != null){ const lead = s.match(/^\s*/)[0], tail = s.match(/\s*$/)[0]; out = lead + DICT[core] + tail; }
+    const whole = DICT["=" + core] != null ? DICT["=" + core] : DICT[core];   /* «=key»: a word alone (a button or a label), not inside a sentence */
+    if (whole != null){ const lead = s.match(/^\s*/)[0], tail = s.match(/\s*$/)[0]; out = lead + whole + tail; }
     else if (RX){
       RX.lastIndex = 0;
       out = s.replace(RX, (m, off, all) => {
         const b = all[off - 1], a = all[off + m.length];
         if ((b && LET.test(b) && LET.test(m[0])) || (a && LET.test(a) && LET.test(m[m.length - 1]))) return m;
+        if (b === "{" && a === "}") return m;   /* a {placeholder} people type stays as it is */
         /* a single word beside other Arabic words is most likely part of what someone typed (an item, a supplier): left as written */
         if (!/\s/.test(m.trim())){
           const pre = all.slice(0, off).replace(/\s+$/, ""), post = all.slice(off + m.length).replace(/^\s+/, "");
@@ -46,6 +49,8 @@
       /* pieces joined back: no space lost between an English word and the next */
       out = out.replace(/([a-z0-9).%])([A-Z][a-z])/g, "$1 $2");
     } else out = s;
+    out = out.replace(/(^|[^\d:/])(\d{1,2})\s*(ص|م)(?![؀-ۿ])/g, (m, a, d, x) => a + d + " " + UNIT[x]);   /* hours: «4ص», «12م» */
+    out = out.replace(/(\d)\s*د(?![؀-ۿ])/g, "$1 min").replace(/(\d:\d\d)\s*(ص|م)(?![؀-ۿ])/g, (m, d, x) => d + " " + UNIT[x]);
     out = out.replace(/←/g, "→").replace(/«/g, "“").replace(/»/g, "”").replace(/،/g, ",").replace(/؛/g, ";").replace(/؟/g, "?");
     if (cache.size > 20000) cache.clear();
     cache.set(s, out); return out;
@@ -64,7 +69,12 @@
     if (v && !AR.test(v) && v.includes("←") && v.trim().length > 1){ const p0 = n.parentElement; if (p0 && !p0.closest(SKIP)) n.nodeValue = v.replace(/←/g, "→"); return; }   /* «from ← to» reads left to right */
     if (!v || !AR.test(v)) return;
     const p = n.parentElement; if (!p || p.closest(SKIP)) return;
-    const t = tr(v); if (t !== v) n.nodeValue = t;
+    /* a one-letter unit after a number shown just before it: «12 د» minutes, «9 ص / م» */
+    const u = UNIT[v.trim()]; if (u){ const prev = n.previousSibling; if (prev && (v.trim() === "د" ? /\d\s*$/ : /\d:\d\d\s*$/).test(prev.textContent || "")){ n.nodeValue = v.replace(v.trim(), u); return; } }
+    /* a column heading can read differently from the same word elsewhere («th:key») */
+    if (!DICT) build();
+    const th = p.closest("th"), k = th && DICT["th:" + norm(v)];
+    const t = k != null ? v.replace(v.trim(), k) : tr(v); if (t !== v) n.nodeValue = t;
   }
   function doEl(el){
     if (el.nodeType !== 1 || el.closest(AREA)) return;

@@ -395,7 +395,7 @@ body{background:var(--page)}
 .paycard .ph-f{max-width:340px;margin:14px auto 0}
 .ph-row{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}
 .ph-row .ph-f{margin:0}
-.ph-f.nm input{text-align:right;letter-spacing:0;font-size:16px}
+.ph-f.nm input{text-align:start;letter-spacing:0;font-size:16px}
 .paycard .ph-row{max-width:520px;margin:14px auto 0}
 .cashpay .ph-row{grid-template-columns:1fr}
 @media (max-width:560px){.ph-row{grid-template-columns:1fr}}

@@ -4,7 +4,11 @@
 import * as F from "./fb.js";
 import { firebaseConfig } from "./firebase-config.js";
 
-const VERSION = "2.11.8";
+const VERSION = "2.12.0";
+/* the screen language (per device): Arabic or English; the receipt and kitchen ticket stay Arabic */
+const isEn = () => !!(window.aqLang && window.aqLang() === "en");
+const langLink = id => `<button type="button" class="link" id="${id}" data-noi18n style="color:var(--mut);font-size:14px">${isEn() ? "العربية" : "English"}</button>`;
+const bindLang = id => { const b = document.getElementById(id); if (b) b.onclick = () => { if (S.pending && !confirm("هناك طلبات لم تُرسل بعد. ستبقى محفوظة في الجهاز وتُرسل لاحقاً. هل تريد المتابعة؟")) return; window.aqSetLang && window.aqSetLang(isEn() ? "ar" : "en"); }; };
 const ADMIN_EMAIL = "abuabraj@gmail.com";
 const DEVICE_EMAIL = "cashier@aqeela-pos.app";
 const APP_NAME = `<span dir="ltr">Cashier AQ</span>`;
@@ -226,7 +230,8 @@ function drawLogin(msg) {
     <div class="f"><label for="pw">كلمة المرور</label><input id="pw" type="password" autocomplete="current-password" dir="ltr" required></div>
     <button class="btn block" id="lb">دخول</button>
     <p class="small muted" style="margin:14px 0 0;line-height:1.7">آيباد المطعم يدخل بحساب الجهاز <span class="num">${DEVICE_EMAIL}</span>. المدير يدخل ببريده لإدارة المنيو والرموز والتقارير. يبقى الجهاز مسجّلاً حتى بدون إنترنت.</p>
-    <p class="small muted" style="margin:6px 0 0;text-align:center">الإصدار <span class="num">${VERSION}</span></p></form></div>`;
+    <p class="small muted" style="margin:6px 0 0;text-align:center">الإصدار <span class="num">${VERSION}</span></p><div style="text-align:center;margin-top:6px">${langLink("lg_lang")}</div></form></div>`;
+  bindLang("lg_lang");
   $("#lf").onsubmit = async e => {
     e.preventDefault(); const b = $("#lb"); b.disabled = true; b.textContent = "جارٍ الدخول…";
     const em = $("#em").value.trim().toLowerCase(); ls.set("lastEmail", em);
@@ -269,8 +274,9 @@ function drawPin() {
     <div class="dots" id="dots">${"<i></i>".repeat(4)}</div>
     <div class="pad">${[1, 2, 3, 4, 5, 6, 7, 8, 9].map(k => `<button data-k="${k}">${k}</button>`).join("")}<button class="fn" data-k="c">مسح</button><button data-k="0">0</button><button class="fn" data-k="b">⌫</button></div>
     <div style="display:flex;justify-content:space-between;margin-top:14px">${isAdmin() ? `<button class="link" id="toadm">لوحة المدير</button>` : `<button class="link" id="pdev" style="display:inline-flex;align-items:center;gap:6px">${ic("gear")}إعدادات الجهاز</button>`}<button class="link" id="lo" style="color:var(--mut)">خروج الجهاز</button></div>
-    <div style="text-align:center;margin-top:10px"><button class="link" id="pup" style="color:var(--mut);font-size:13px">${ic("refresh")} تحديث الكاشير · الإصدار <span class="num">${VERSION}</span></button></div>
+    <div style="display:flex;justify-content:center;align-items:center;gap:14px;margin-top:10px"><button class="link" id="pup" style="color:var(--mut);font-size:13px">${ic("refresh")} تحديث الكاشير · الإصدار <span class="num">${VERSION}</span></button>${langLink("pn_lang")}</div>
   </div></div>`;
+  bindLang("pn_lang");
   const dots = () => $$("#dots i").forEach((d, i) => d.classList.toggle("on", i < pin.length));
   const sel = () => $$("[data-c]").forEach(b => b.classList.toggle("on", b.dataset.c === who)); sel();
   $$("[data-c]").forEach(b => b.onclick = () => { who = b.dataset.c; pin = ""; sel(); dots(); });
@@ -292,6 +298,7 @@ function drawPin() {
 
 /* ----- POS (شاشة البيع) ----- */
 const IC = {
+  globe: "M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zm6.93 6h-2.95a15.65 15.65 0 0 0-1.38-3.56A8.03 8.03 0 0 1 18.92 8zM12 4.04c.83 1.2 1.48 2.53 1.91 3.96h-3.82c.43-1.43 1.08-2.76 1.91-3.96zM4.26 14C4.1 13.36 4 12.69 4 12s.1-1.36.26-2h3.38c-.08.66-.14 1.32-.14 2s.06 1.34.14 2H4.26zm.82 2h2.95c.32 1.25.78 2.45 1.38 3.56A7.987 7.987 0 0 1 5.08 16zm2.95-8H5.08a7.987 7.987 0 0 1 4.33-3.56A15.65 15.65 0 0 0 8.03 8zM12 19.96c-.83-1.2-1.48-2.53-1.91-3.96h3.82c-.43 1.43-1.08 2.76-1.91 3.96zM14.34 14H9.66c-.09-.66-.16-1.32-.16-2s.07-1.35.16-2h4.68c.09.65.16 1.32.16 2s-.07 1.34-.16 2zm.25 5.56c.6-1.11 1.06-2.31 1.38-3.56h2.95a8.03 8.03 0 0 1-4.33 3.56zM16.36 14c.08-.66.14-1.32.14-2s-.06-1.34-.14-2h3.38c.16.64.26 1.31.26 2s-.1 1.36-.26 2h-3.38z",
   search: "M15.5 14h-.79l-.28-.27A6.47 6.47 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z",
   menu: "M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z",
   close: "M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z",
@@ -1196,8 +1203,9 @@ function openMore() {
     <button class="row" id="m-dev"><span class="ri">${ic("gear")}</span><span><b>إعدادات الجهاز والطابعة</b><br><span class="meta">تحتاج رمز المدير</span></span><span></span></button>
     ${isAdmin() ? `<button class="row" id="m-adm"><span class="ri">${ic("dash")}</span><span><b>لوحة المدير</b><br><span class="meta">التقرير، المنيو، الكاشيرون، الإعدادات</span></span><span></span></button>` : ""}
     <button class="row" id="m-up"><span class="ri">${ic("refresh")}</span><span><b>تحديث الكاشير</b><br><span class="meta">الإصدار <span class="num">${VERSION}</span></span></span><span></span></button>
+    <button class="row" id="m-lang" data-noi18n><span class="ri">${ic("globe")}</span><span><b>${isEn() ? "العربية" : "English"}</b><br><span class="meta">${isEn() ? "تغيير لغة الشاشة على هذا الجهاز" : "Change the screen language on this device"}</span></span><span></span></button>
   </div><p class="small muted" style="margin:14px 2px 0;text-align:center">الحساب: <span class="num">${esc(S.user?.email || "")}</span> · <b>${isAdmin() ? "حساب المدير" : "حساب جهاز الكاشير"}</b></p></div>`);
-  $("#m-ord").onclick = openOrders; $("#m-sh").onclick = openShift;
+  $("#m-ord").onclick = openOrders; $("#m-sh").onclick = openShift; bindLang("m-lang");
   $("#m-sw").onclick = switchCashier;
   $("#m-dev").onclick = () => askManager("إعدادات الجهاز", openDevice);
   $("#m-adm") && ($("#m-adm").onclick = openAdmin);
@@ -1817,7 +1825,7 @@ function admStore() {
       <span class="hint">تتحول الصورة تلقائياً إلى أبيض وأسود بحجم مناسب للطابعة.</span></div>
     <div class="f"><label for="swa">رسالة تذكير العميل بواتساب</label><textarea id="swa" rows="5" style="min-height:120px">${esc(S.config.waMsg || WA_DEFAULT)}</textarea>
       <span class="hint">تُستبدل تلقائياً: {الاسم} اسم العميل (يُحذف إن لم يُكتب)، {رقم} رقم الطلب، {المبلغ}، {المطعم}، {الجوال} رقم الطلبات. <button type="button" class="link" id="swr" style="padding:0">استعادة النص الافتراضي</button></span>
-      <div class="note" id="swp" style="white-space:pre-line;margin-top:6px"></div></div>
+      <div class="note" id="swp" data-noi18n style="white-space:pre-line;margin-top:6px"></div></div>
     <button class="btn" id="ssv">حفظ</button></div>
     <div><p class="small muted" style="margin:0 0 6px">معاينة الإيصال</p><img id="pv" class="rcpt" style="width:300px" alt="معاينة الإيصال"></div></div>`;
   let logo = S.config.logo || null;
