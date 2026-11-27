@@ -20,12 +20,14 @@ const dLab = d => `${+d.slice(8)} ${AR_M[+d.slice(5, 7) - 1]}`;
 const dFull = d => `${+d.slice(8)} ${AR_M[+d.slice(5, 7) - 1]} ${d.slice(0, 4)}`;
 const rLab = (a, b) => a === b ? dFull(a) : a.slice(0, 7) === b.slice(0, 7) ? `${+a.slice(8)} – ${dFull(b)}` : `${dLab(a)} – ${dFull(b)}`;
 const tm = t => { const d = new Date(t); let h = d.getHours(); const ap = h < 12 ? "ص" : "م"; h = h % 12 || 12; return `${h}:${pad(d.getMinutes())} ${ap}`; };
-const hrLab = h => `${(h % 12) || 12}${h < 12 ? "ص" : "م"}`;
+const hrLab = h => window.aqLang && window.aqLang() === "en" ? `${(h % 12) || 12} ${h < 12 ? "AM" : "PM"}` : `${(h % 12) || 12}${h < 12 ? "ص" : "م"}`;
 const COLORS = ["#C1121F", "#1F4E9E", "#F28C28", "#2A9D8F", "#7B2CBF", "#E9C46A", "#6B7280", "#0EA5E9"];
 const TYPE_C = { dine: "#F28C28", take: "#C1121F", delivery: "#0E7490", lokit: "#7B2CBF", hunger: "#B45309" };
 
 /* ---------- أيقونات (Material) ---------- */
 const P = {
+  compare: "M9.01 14H2v2h7.01v3L13 15l-3.99-4v3zm5.98-1v-3H22V8h-7.01V5L11 9l3.99 4z",
+  edit: "M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a.996.996 0 0 0 0-1.41l-2.34-2.34a.996.996 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z",
   globe: "M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zm6.93 6h-2.95a15.65 15.65 0 0 0-1.38-3.56A8.03 8.03 0 0 1 18.92 8zM12 4.04c.83 1.2 1.48 2.53 1.91 3.96h-3.82c.43-1.43 1.08-2.76 1.91-3.96zM4.26 14C4.1 13.36 4 12.69 4 12s.1-1.36.26-2h3.38c-.08.66-.14 1.32-.14 2s.06 1.34.14 2H4.26zm.82 2h2.95c.32 1.25.78 2.45 1.38 3.56A7.987 7.987 0 0 1 5.08 16zm2.95-8H5.08a7.987 7.987 0 0 1 4.33-3.56A15.65 15.65 0 0 0 8.03 8zM12 19.96c-.83-1.2-1.48-2.53-1.91-3.96h3.82c-.43 1.43-1.08 2.76-1.91 3.96zM14.34 14H9.66c-.09-.66-.16-1.32-.16-2s.07-1.35.16-2h4.68c.09.65.16 1.32.16 2s-.07 1.34-.16 2zm.25 5.56c.6-1.11 1.06-2.31 1.38-3.56h2.95a8.03 8.03 0 0 1-4.33 3.56zM16.36 14c.08-.66.14-1.32.14-2s-.06-1.34-.14-2h3.38c.16.64.26 1.31.26 2s-.1 1.36-.26 2h-3.38z",
   people: "M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z",
   chat: "M20 2H4c-1.1 0-1.99.9-1.99 2L2 22l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zM6 9h12v2H6V9zm8 5H6v-2h8v2zm4-6H6V6h12v2z",
@@ -59,12 +61,13 @@ const NAV = [
   { id: "dash", ic: "dash", t: "الملخص" },
   { id: "orders", ic: "cart", t: "الطلبات" },
   { id: "customers", ic: "people", t: "العملاء" },
+  { id: "compare", ic: "compare", t: "المقارنة" },
   { g: "reports", ic: "trend", t: "التقارير", items: [["sales", "المبيعات"], ["hours", "المبيعات بالساعة"], ["pays", "المدفوعات"], ["items", "تحليل القائمة"], ["disc", "الخصومات والإلغاءات"], ["shifts", "الورديات"]] },
   { id: "stock", ic: "bag", t: "المخزون" },
   { id: "menu", ic: "food", t: "قائمة المنتجات" },
   { g: "admin", ic: "gear", t: "إدارة", items: [["staff", "الكاشيرون والرموز"], ["store", "الإيصال والإعدادات"], ["verify", "التحقق من إيصال"], ["account", "حسابي وكلمة المرور"]] },
 ];
-const TITLES = { dash: "الملخص", orders: "الطلبات", customers: "العملاء", sales: "تقرير المبيعات", hours: "المبيعات بالساعة", pays: "تقرير المدفوعات", items: "تحليل القائمة", disc: "الخصومات والإلغاءات", shifts: "الورديات", stock: "المخزون — التغليف", menu: "قائمة المنتجات والأسعار", staff: "الكاشيرون والرموز", store: "الإيصال والإعدادات", verify: "التحقق من إيصال", account: "حسابي" };
+const TITLES = { compare: "المقارنة", dash: "الملخص", orders: "الطلبات", customers: "العملاء", sales: "تقرير المبيعات", hours: "المبيعات بالساعة", pays: "تقرير المدفوعات", items: "تحليل القائمة", disc: "الخصومات والإلغاءات", shifts: "الورديات", stock: "المخزون — التغليف", menu: "قائمة المنتجات والأسعار", staff: "الكاشيرون والرموز", store: "الإيصال والإعدادات", verify: "التحقق من إيصال", account: "حسابي" };
 const PARENT = { sales: "التقارير", hours: "التقارير", pays: "التقارير", items: "التقارير", disc: "التقارير", shifts: "التقارير", staff: "إدارة", store: "إدارة", verify: "إدارة", account: "إدارة" };
 
 export function mount(api, tab) {
@@ -101,7 +104,7 @@ function unmount() {
 const userName = () => ACC.name || (A.S.user?.email ==="abuabraj@gmail.com" ? "عاطف" : (A.S.cashier?.name || "المدير"));
 function net() { const n = $("#cxnet"); if (!n) return; n.classList.toggle("off", !navigator.onLine); n.querySelector("span").textContent = navigator.onLine ? "متصل" : "بدون إنترنت"; }
 function onHash() { const h = location.hash.match(/^#\/admin\/(\w+)/); if (h && TITLES[h[1]] && h[1] !== st.page) go(h[1], true); }
-const save = () => ls.set("st", { open: st.open, p: st.p, cmp: st.cmp, dtab: st.dtab, grp: st.grp, pgrp: st.pgrp, igrp: st.igrp, chart: st.chart, hrs: st.hrs, flt: { ...st.flt }, page: st.page, dkind: st.dkind, ra: st.ra, rb: st.rb, cmpR: st.cmpR });
+const save = () => ls.set("st", { open: st.open, p: st.p, cmp: st.cmp, dtab: st.dtab, grp: st.grp, pgrp: st.pgrp, igrp: st.igrp, chart: st.chart, hrs: st.hrs, flt: { ...st.flt }, page: st.page, dkind: st.dkind, ra: st.ra, rb: st.rb, cmpS: st.cmpS, cmpB: st.cmpB });
 
 function go(page, noPush) {
   closePop(); closeDrawer(); st.page = page; st.pg = 0; save();
@@ -429,10 +432,10 @@ const nDays = R => Math.round((new Date(R[1]) - new Date(R[0])) / 864e5) + 1;
 function prevRange([a, b]) { if (st.cmpR) return st.cmpR;   /* a period the manager picked to compare with */
   if (st.p === "month") return A.dshRange("month", A.addDays(a, -1)); const n = Math.round((new Date(b) - new Date(a)) / 864e5) + 1; return [A.addDays(a, -n), A.addDays(b, -n)]; }
 PAGES.dash = async () => {
-  const R = dashRange();
+  const R = dashRange(); st.cmp = false; st.cmpR = null;   /* comparing lives on its own page now */
   page(`<div class="cx-tabs">${[["gen", "عام"], ["kitchen", "المطبخ"], ["cash", "الكاشيرون"]].map(([k, l]) => `<button data-dt="${k}" class="${st.dtab === k ? "on" : ""}">${l}</button>`).join("")}</div>
     <div class="cx-ctl"><div class="cx-seg">${[["day", "يوم"], ["week", "أسبوع"], ["month", "شهر"], ["range", "مخصص"]].map(([k, l]) => `<button data-p="${k}" class="${st.p === k ? "on" : ""}">${l}</button>`).join("")}</div>
-      <button class="cx-btn" id="cxd">${ic("cal")}<span>${rLab(...R)}</span></button>${st.dtab === "gen" ? `<button class="cx-sw ${st.cmp ? "on" : ""}" id="cxcmp" type="button"><i></i>مقارنة</button>${st.cmp ? `<button class="cx-btn" id="cxcr" title="اختر فترة المقارنة">${ic("cal")}<span>${st.cmpR ? "مقابل " + rLab(...st.cmpR) : "مقابل الفترة السابقة"}</span></button>${st.cmpR ? `<button class="cx-btn" id="cxcrx" title="الرجوع للمقارنة بالفترة السابقة" aria-label="الرجوع للمقارنة بالفترة السابقة">✕</button>` : ""}` : ""}` : ""}<span class="cx-sp"></span>${fltBtn()}</div>
+      <button class="cx-btn" id="cxd">${ic("cal")}<span>${rLab(...R)}</span></button><button class="cx-btn" data-go="compare">${ic("compare")}مقارنة</button><span class="cx-sp"></span>${fltBtn()}</div>
     ${fltChips()}${st.cmp && st.dtab === "gen" && nDays(R) !== nDays(prevRange(R)) ? `<p class="cx-note" data-noi18n>${lenNote(nDays(R), nDays(prevRange(R)))}</p>` : ""}<div id="dbody">${loadingCards()}</div>`, { h1: `${window.aqLang && window.aqLang() === "en" ? "Hello, " : "مرحباً، "}<span data-noi18n>${esc(userName())}</span>`, acts: expBtn() });
   bindExp();
   $$("[data-dt]").forEach(b => b.onclick = () => { st.dtab = b.dataset.dt; save(); PAGES.dash(); });
@@ -456,6 +459,175 @@ PAGES.dash = async () => {
   await ({ gen: dashGen, kitchen: dashKitchen, cash: dashCash })[st.dtab](L, Lp, R);
   if (st.page === "dash") drawCharts();
 };
+/* =================== المقارنة =================== */
+/* Two or three sides (أ، ب، ج), each one of: a day, a from–to period, separate days picked one by one, or some weekdays within a period.
+   Compared by total or by average day; scorecard, hour chart, payment/type/product breakdown, every day of each side, and a one-line finding. */
+const CMP_COL = ["#C1121F", "#71717A", "#1F4E9E"], CMP_AR = ["أ", "ب", "ج"], CMP_EN = ["A", "B", "C"];
+const CMP_N = new Proxy([], { get: (_, i) => (window.aqLang && window.aqLang() === "en" ? CMP_EN : CMP_AR)[i] });
+const WDN_AR = ["الأحد", "الاثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت"], WDN_EN = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+const WDN = new Proxy([], { get: (_, i) => (window.aqLang && window.aqLang() === "en" ? WDN_EN : WDN_AR)[i] });
+const sideT = i => (window.aqLang && window.aqLang() === "en" ? "Side " : "الطرف ") + CMP_N[i];
+const daysTx = n => window.aqLang && window.aqLang() === "en" ? `<span class="num">${n}</span> day${n === 1 ? "" : "s"}` : daysAr(n);
+const wdOf = d => new Date(d + "T12:00:00").getDay();
+const isEnL = () => !!(window.aqLang && window.aqLang() === "en");
+function cmpPresets() {
+  const t = A.bizDay(), y = A.addDays(t, -1), w = A.dshRange("week", t), n = Math.round((new Date(t) - new Date(w[0])) / 864e5);
+  const m0 = t.slice(0, 8) + "01", pm0 = A.dshRange("month", A.addDays(m0, -1))[0], dm = +t.slice(8) - 1;
+  const pmEnd = A.addDays(pm0, Math.min(dm, Math.round((new Date(m0) - new Date(pm0)) / 864e5) - 1));
+  const four = [A.addDays(t, -27), t];
+  return [
+    ["اليوم مقابل الأمس", [{ k: "day", a: t }, { k: "day", a: y }]],
+    ["اليوم مقابل نفس اليوم قبل أسبوع", [{ k: "day", a: t }, { k: "day", a: A.addDays(t, -7) }]],
+    ["الأمس مقابل قبل أسبوع", [{ k: "day", a: y }, { k: "day", a: A.addDays(y, -7) }]],
+    ["هذا الأسبوع مقابل الماضي", [{ k: "range", a: w[0], b: t }, { k: "range", a: A.addDays(w[0], -7), b: A.addDays(w[0], n - 7) }]],
+    ["هذا الشهر مقابل الماضي", [{ k: "range", a: m0, b: t }, { k: "range", a: pm0, b: pmEnd }]],
+    ["آخر 7 أيام مقابل التي قبلها", [{ k: "range", a: A.addDays(t, -6), b: t }, { k: "range", a: A.addDays(t, -13), b: A.addDays(t, -7) }]],
+    ["الخميس والجمعة مقابل بقية الأيام", [{ k: "wd", wd: [4, 5], a: four[0], b: four[1] }, { k: "wd", wd: [6, 0, 1, 2, 3], a: four[0], b: four[1] }]],
+  ];
+}
+function sideDays(s) {
+  const t = A.bizDay(); let out = [];
+  if (s.k === "day") out = [s.a];
+  else if (s.k === "days") out = [...(s.days || [])].sort();
+  else { for (let d = s.a; d <= s.b; d = A.addDays(d, 1)) if (s.k === "range" || (s.wd || []).includes(wdOf(d))) out.push(d); }
+  return out.filter(d => d <= t);
+}
+function sideLabel(s) {
+  if (s.k === "day") return [dFull(s.a), wdName(s.a)];
+  const en = isEnL();
+  if (s.k === "range") return [rLab(s.a, s.b), daysTx(sideDays(s).length)];
+  if (s.k === "days") { const d = sideDays(s), sep = en ? ", " : "، "; return [d.length > 3 ? `${d.slice(0, 3).map(dLab).join(sep)} …` : d.map(dLab).join(sep) || "—", en ? `${daysTx(d.length)}, separate` : `${daysAr(d.length)} متفرقة`]; }
+  const names = (s.wd || []).map(i => WDN[i]);
+  const list = (L, sep, and) => L.length < 2 ? L.join("") : L.slice(0, -1).join(sep) + and + L[L.length - 1];
+  return [en ? `Every ${list(names, ", ", " and ")}` : `كل ${list(names, "، ", " و")}`, `${rLab(s.a, s.b)} · ${daysTx(sideDays(s).length)}`];
+}
+const wdName = d => new Date(d + "T12:00:00").toLocaleDateString(isEnL() ? "en-GB" : "ar", { weekday: "long" });
+function cmpDefault() { return cmpPresets()[0][1]; }
+
+PAGES.compare = async () => {
+  if (!Array.isArray(st.cmpS) || st.cmpS.length < 2) st.cmpS = cmpDefault();
+  const S2 = st.cmpS, D = S2.map(sideDays), eq = D.every(d => d.length === D[0].length);
+  const basis = st.cmpB || (eq ? "sum" : "avg");
+  const pres = cmpPresets(), curKey = JSON.stringify(S2);
+  page(`<div class="cq-pre">${pres.map(([l, v], i) => `<button class="cq-chip ${JSON.stringify(v) === curKey ? "on" : ""}" data-pre="${i}">${l}</button>`).join("")}</div>
+    <div class="cq-sides">${S2.map((s, i) => { const [l1, l2] = sideLabel(s); return `<button class="cq-side" data-side="${i}" style="--c:${CMP_COL[i]}">
+      <span class="cq-tag">${sideT(i)}</span><b>${l1}</b><small>${l2}</small><span class="cq-ed">${ic("edit")}تغيير</span>${i > 1 ? `<span class="cq-rm" data-rm="${i}" aria-label="حذف الطرف">✕</span>` : ""}</button>`; }).join("")}
+      ${S2.length < 3 ? `<button class="cq-add" id="cqadd">＋ إضافة طرف ثالث</button>` : ""}</div>
+    <div class="cq-bar"><div class="cx-seg"><button data-basis="sum" class="${basis === "sum" ? "on" : ""}">المجموع</button><button data-basis="avg" class="${basis === "avg" ? "on" : ""}">متوسط اليوم</button></div><span class="cx-sp"></span>${fltBtn()}</div>
+    ${!eq && basis === "sum" ? `<p class="cx-note" data-noi18n>${isEnL() ? `The sides have different numbers of days (${D.map((d, i) => `${CMP_EN[i]}: ${daysTx(d.length)}`).join(", ")}), so totals favour the longer one. “Average day” is fairer here.` : `عدد الأيام مختلف (${D.map((d, i) => `${CMP_N[i]}: ${daysAr(d.length)}`).join("، ")})، فمقارنة المجموع تميل للأطول. «متوسط اليوم» أعدل هنا.`}</p>` : ""}
+    ${fltChips()}<div id="cqbody">${loadingCards(3, 220)}</div>`, { acts: expBtn() });
+  bindExp();
+  $$("[data-pre]").forEach(b => b.onclick = () => { st.cmpS = JSON.parse(JSON.stringify(pres[+b.dataset.pre][1])); st.cmpB = null; save(); PAGES.compare(); });
+  $$("[data-basis]").forEach(b => b.onclick = () => { st.cmpB = b.dataset.basis; save(); PAGES.compare(); });
+  $$("[data-side]").forEach(b => b.onclick = e => { if (e.target.closest("[data-rm]")) { st.cmpS.splice(+e.target.closest("[data-rm]").dataset.rm, 1); save(); return PAGES.compare(); } sideEditor(+b.dataset.side); });
+  if ($("#cqadd")) $("#cqadd").onclick = () => { st.cmpS.push({ k: "day", a: A.addDays(A.bizDay(), -14) }); save(); sideEditor(st.cmpS.length - 1); };
+  const all = D.flat(); if (!all.length) { $("#cqbody").innerHTML = `<div class="cx-card">${emptyBox("اختر أياماً سابقة أو اليوم لكل طرف")}</div>`; return; }
+  const lo = all.reduce((a, b) => a < b ? a : b), hi = all.reduce((a, b) => a > b ? a : b);
+  let L; try { const raw = await load(lo, hi); L = applyF(raw); bindFlt(PAGES.compare, raw.map(o => o.cashierName)); } catch (e) { $("#cqbody").innerHTML = errBox(e); return; }
+  if (st.page !== "compare") return;
+  charts.clear(); EXP = [];
+  const sides = S2.map((s, i) => { const set = new Set(D[i]), Ls = L.filter(o => set.has(o.day)); return { i, s, days: D[i], L: Ls, ok: Ls.filter(isOk), a: agg(Ls) }; });
+  $("#cqbody").innerHTML = cmpBody(sides, basis);
+  $$("[data-more]").forEach(b => b.onclick = () => { $$(".cq-h" + b.dataset.more).forEach(r => r.classList.remove("cq-hid")); b.closest("tr").remove(); });
+  drawCharts();
+};
+
+function cmpBody(sides, basis) {
+  const k = sd => basis === "avg" ? 1 / Math.max(1, sd.days.length) : 1, A0 = sides[0];
+  const val = (sd, f) => f.avg ? sd.a[f.k] : sd.a[f.k] * k(sd);
+  const F = [
+    { t: "صافي المبيعات", k: "net", m: 1 }, { t: "الطلبات", k: "n", i: 1 }, { t: "متوسط الطلب", k: "avg", m: 1, avg: 1 },
+    { t: "مجمل الربح", k: "gp", m: 1 }, { t: "نسبة التكلفة", k: "cpct", p: 1, avg: 1, inv: 1 }, { t: "عدد القطع", k: "qty", i: 1 },
+    { t: "مبلغ الخصم", k: "disc", m: 1, inv: 1 }, { t: "مبلغ الإلغاء", k: "vT", m: 1, inv: 1 }, { t: "متوسط التحضير (د)", k: "prep", avg: 1, inv: 1, d1: 1 } ];
+  const fmt = (f, v) => v == null || !isFinite(v) ? "—" : f.p ? pct(v) : f.i ? (basis === "avg" && !f.avg ? nf(v, 1) : ni(v)) : f.d1 ? nf(v, 1) : nf(v);
+  const dlt = (f, a, b) => { if (a == null || b == null || !isFinite(a) || !isFinite(b)) return `<span class="cq-d eq">—</span>`;
+    if (f.p) { const d = a - b; return `<span class="cq-d ${Math.abs(d) < .05 ? "eq" : (d < 0) === !!f.inv ? "up" : "dn"}">${d >= 0 ? "▲" : "▼"} ${nf(Math.abs(d), 1)} نقطة</span>`; }
+    if (!b) return a ? `<span class="cq-d up">جديد</span>` : `<span class="cq-d eq">0%</span>`;
+    const d = (a - b) / Math.abs(b) * 100; return `<span class="cq-d ${Math.abs(d) < .05 ? "eq" : (d >= 0) !== !!f.inv ? "up" : "dn"}">${d >= 0 ? "▲" : "▼"} ${nf(Math.abs(d), 1)}%</span>`; };
+  const head = `<th>المؤشر</th>${sides.map(sd => `<th><i class="cq-dot" style="background:${CMP_COL[sd.i]}"></i>${CMP_N[sd.i]}</th>`).join("")}${sides.slice(1).map(sd => `<th>${CMP_N[0]} مقابل ${CMP_N[sd.i]}</th>`).join("")}`;
+  const rows = F.map(f => `<tr><td>${f.t}</td>${sides.map(sd => `<td class="num ${sd.i === 0 ? "b" : ""}">${fmt(f, val(sd, f))}</td>`).join("")}${sides.slice(1).map(sd => `<td>${dlt(f, val(A0, f), val(sd, f))}</td>`).join("")}</tr>`).join("");
+  expT("المقارنة", [["t", "المؤشر"], ...sides.map(sd => [`s${sd.i}`, `${CMP_N[sd.i]}: ${sideLabel(sd.s).join(" · ")}`])], F.map(f => ({ t: f.t, ...Object.fromEntries(sides.map(sd => { const v = val(sd, f); return [`s${sd.i}`, v == null || !isFinite(v) ? "" : r2(v)]; })) })));
+  /* hours of the business day, per side (total or average day) */
+  const cut = A.S.config?.cutoff ?? 4, hrs = [...Array(24).keys()].map(i => (i + cut) % 24);
+  const hv = sd => hrs.map(h => sd.ok.filter(o => new Date(o.ts).getHours() === h).reduce((s, o) => s + o.total, 0) * k(sd));
+  const H = sides.map(hv), used = hrs.map((_, j) => H.some(v => v[j] > 0)), f0 = used.indexOf(true), l0 = used.lastIndexOf(true);
+  const span = f0 < 0 ? [0, 23] : [Math.max(0, f0 - 1), Math.min(23, l0 + 1)], hk = hrs.slice(span[0], span[1] + 1);
+  const hchart = chart({ kind: "line", labels: hk.map(hrLab), tips: hk.map(h => `${hrLab(h)} – ${hrLab((h + 1) % 24)}`), series: sides.map(sd => ({ name: `${CMP_N[sd.i]}`, color: CMP_COL[sd.i], dash: sd.i ? 1 : 0, values: H[sd.i].slice(span[0], span[1] + 1) })) }, 220);
+  const leg = `<div class="cx-leg2">${sides.map(sd => `<span><i class="${sd.i ? "d" : ""}" style="border-top-color:${CMP_COL[sd.i]}"></i>${CMP_N[sd.i]}: ${sideLabel(sd.s)[0]}</span>`).join("")}</div>`;
+  /* side-by-side breakdown */
+  const brk = (title, keys, lab, f) => { const R = keys.map(key => [lab(key), ...sides.map(sd => f(sd, key) * k(sd))]).filter(r => r.slice(1).some(v => v));
+    if (!R.length) return ""; const mx = Math.max(1e-9, ...R.flatMap(r => r.slice(1)));
+    return `<div class="cx-card"><div class="cx-ch"><h3>${title}</h3></div><div class="cq-brk">${R.map(r => `<div class="cq-br"><div class="cq-bl">${r[0]}</div>${sides.map(sd => `<div class="cq-bb"><i style="width:${Math.max(2, r[sd.i + 1] / mx * 100)}%;background:${CMP_COL[sd.i]}"></i><span class="num">${nf(r[sd.i + 1])}</span></div>`).join("")}</div>`).join("")}</div></div>`; };
+  const itemVal = (sd, name) => sd.ok.reduce((s, o) => { const fct = o.subtotal ? o.total / o.subtotal : 1; return s + o.lines.filter(l => l.name === name).reduce((x, l) => x + l.qty * l.price * fct, 0); }, 0);
+  const names = [...new Set(sides.flatMap(sd => sd.ok.flatMap(o => o.lines.map(l => l.name))))];
+  const topN = names.map(n => [n, Math.max(...sides.map(sd => itemVal(sd, n) * k(sd)))]).sort((a, b) => b[1] - a[1]).slice(0, 8).map(x => x[0]);
+  /* finding: where the difference comes from */
+  const B1 = sides[1], dn = val(A0, F[0]) - val(B1, F[0]);
+  let find = "";
+  if (A0.ok.length || B1.ok.length) {
+    const hd = hk.map((h, j) => [h, H[0][span[0] + j] - H[1][span[0] + j]]).sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]))[0];
+    const idf = names.map(n => [n, itemVal(A0, n) * k(A0) - itemVal(B1, n) * k(B1)]).filter(x => Math.sign(x[1]) === Math.sign(dn) && Math.abs(x[1]) >= .5).sort((a, b) => Math.abs(b[1]) - Math.abs(a[1])).slice(0, 2);
+    const en = isEnL(), pr = basis === "avg" ? (en ? "per average day " : "في متوسط اليوم ") : "";
+    const sh = Math.abs(dn), pc = val(B1, F[0]) ? ` (<span class="num">${nf(sh / val(B1, F[0]) * 100, 1)}%</span>)` : "";
+    const hT = hd && Math.abs(hd[1]) >= .5 ? `${hrLab(hd[0])} – ${hrLab((hd[0] + 1) % 24)}` : "";
+    const iT = idf.map(x => `<b>${esc(en && window.tr ? window.tr(x[0]) : x[0])}</b> (<span class="num">${nf(Math.abs(x[1]))}</span>)`).join(en ? " and " : " و");
+    find = en
+      ? (sh < .5 ? `Both sides are about equal ${pr}in net sales.` : `${CMP_N[0]} is ${dn > 0 ? "higher" : "lower"} than ${CMP_N[1]} ${pr}by <b class="num">${nf(sh)}</b> SAR${pc}, with <span class="num">${fmt(F[1], val(A0, F[1]))}</span> orders vs <span class="num">${fmt(F[1], val(B1, F[1]))}</span>.` + (hT ? ` The biggest gap is at <b>${hT}</b> (<span class="num">${nf(Math.abs(hd[1]))}</span> SAR).` : "") + (iT ? ` Items that moved it most: ${iT}.` : ""))
+      : (sh < .5 ? `الطرفان متساويان تقريباً ${pr}في صافي المبيعات.` : `${CMP_N[0]} ${dn > 0 ? "أعلى" : "أقل"} من ${CMP_N[1]} ${pr}بـ <b class="num">${nf(sh)}</b> ر.س${pc}، وعدد الطلبات <span class="num">${fmt(F[1], val(A0, F[1]))}</span> مقابل <span class="num">${fmt(F[1], val(B1, F[1]))}</span>.` + (hT ? ` أكبر فرق في الساعة <b>${hT}</b> (<span class="num">${nf(Math.abs(hd[1]))}</span> ر.س).` : "") + (iT ? ` وأكثر الأصناف تأثيراً: ${iT}.` : ""));
+  }
+  /* every day of each side */
+  const dayRows = sd => sd.days.map((d, j) => { const g = sd.ok.filter(o => o.day === d); return `<tr class="${sd.days.length > 7 && j >= 5 ? `cq-hid cq-h${sd.i}` : ""}"><td><b>${dLab(d)}</b><span class="cx-mut">${wdName(d)}</span></td><td class="num">${ni(g.length)}</td><td class="num">${nf(g.reduce((s, o) => s + o.total, 0))}</td></tr>`; }).join("");
+  const days = `<div class="cx-card s3"><div class="cx-ch"><h3>أيام كل طرف</h3></div><table class="cx-t cx-cmpt"><thead><tr><th>اليوم</th><th>الطلبات</th><th>صافي المبيعات</th></tr></thead><tbody>
+    ${sides.map(sd => `<tr class="cx-sec" style="--c:${CMP_COL[sd.i]}"><td colspan="3">${sideT(sd.i)} · ${sideLabel(sd.s)[0]}</td></tr>${dayRows(sd)}${sd.days.length > 7 ? `<tr class="cq-mo"><td colspan="3"><button class="cx-link" data-more="${sd.i}">عرض كل الأيام (<span class="num">${sd.days.length}</span>)</button></td></tr>` : ""}
+      ${sd.days.length > 1 ? `<tr class="cx-sumr"><td>المجموع · ${daysAr(sd.days.length)}</td><td class="num">${ni(sd.a.n)}</td><td class="num">${nf(sd.a.net)}</td></tr><tr class="cx-sumr"><td>متوسط اليوم</td><td class="num">${nf(sd.a.n / sd.days.length, 1)}</td><td class="num">${nf(sd.a.net / sd.days.length)}</td></tr>` : ""}`).join("")}</tbody></table></div>`;
+  return `${find ? `<div class="cq-find" data-noi18n>${ic("trend")}<div>${find}</div></div>` : ""}
+    <div class="cx-grid"><div class="cx-card s3"><div class="cx-ch"><h3>النتيجة${basis === "avg" ? " · متوسط اليوم" : " · المجموع"}</h3></div><div class="cx-tw"><table class="cx-t cq-t"><thead><tr>${head}</tr></thead><tbody>${rows}</tbody></table></div></div>
+    <div class="cx-card s3"><div class="cx-ch"><h3>المبيعات حسب الساعة${basis === "avg" ? " · متوسط اليوم" : ""}</h3></div>${hchart}${leg}</div>
+    ${brk("طرق الدفع", Object.keys(A.METHODS), m => A.METHODS[m], (sd, m) => sd.ok.reduce((s, o) => s + A.paidBy(o, m), 0))}
+    ${brk("أنواع الطلب", A.TYPES.map(t => t[0]), t => A.TYPES.find(x => x[0] === t)[1], (sd, t) => sd.ok.filter(o => o.type === t).reduce((s, o) => s + o.total, 0))}
+    ${brk("أعلى الأصناف", topN, n => esc(n), itemVal)}
+    ${days}</div>`;
+}
+
+/* editing one side: its kind, then its days */
+function sideEditor(i) {
+  const s0 = st.cmpS[i], s = JSON.parse(JSON.stringify(s0)), t = A.bizDay();
+  if (!s.a) s.a = t; let y = +s.a.slice(0, 4), m = +s.a.slice(5, 7) - 1, half = null;
+  const KINDS = [["day", "يوم"], ["range", "فترة من – إلى"], ["days", "أيام متفرقة"], ["wd", "أيام من الأسبوع"]];
+  const cal = () => { const f = new Date(y, m, 1), start = A.addDays(A.ymd(f), -((f.getDay() + 1) % 7)), cells = [...Array(42).keys()].map(j => A.addDays(start, j));
+    const picked = d => s.k === "day" ? d === s.a : s.k === "days" ? (s.days || []).includes(d) : s.k === "range" ? (half ? d === half : d >= s.a && d <= s.b) : (d >= s.a && d <= s.b && (s.wd || []).includes(wdOf(d)));
+    const inR = d => (s.k === "range" || s.k === "wd") && !half && s.b && d > s.a && d < s.b;
+    return `<div class="pk2-h"><button data-n="-1" aria-label="الشهر السابق">‹</button><b>${AR_M[m]} ${y}</b><button data-n="1" aria-label="الشهر التالي">›</button></div>
+      <div class="pk2-d">${(isEnL() ? ["Sa", "Su", "Mo", "Tu", "We", "Th", "Fr"] : ["س", "ح", "ن", "ث", "ر", "خ", "ج"]).map(d => `<i>${d}</i>`).join("")}${cells.map(d => `<button data-dy="${d}" class="${+d.slice(5, 7) !== m + 1 ? "out" : ""} ${picked(d) ? "end" : inR(d) ? "in" : ""} ${d === t ? "today" : ""}" ${d > t ? "disabled" : ""}>${+d.slice(8)}</button>`).join("")}</div>`; };
+  const hint = () => s.k === "day" ? "اضغط اليوم" : s.k === "range" ? (half ? "اختر يوم النهاية" : "اختر يوم البداية ثم يوم النهاية") : s.k === "days" ? `اضغط كل يوم تريده · المختار: <b class="num">${(s.days || []).length}</b>` : (half ? "اختر نهاية الفترة" : "اختر الأيام، ثم بداية الفترة ونهايتها من التقويم");
+  const body = () => `<div class="cx-seg cq-kinds">${KINDS.map(([kk, l]) => `<button data-kind="${kk}" class="${s.k === kk ? "on" : ""}">${l}</button>`).join("")}</div>
+    ${s.k === "wd" ? `<div class="cq-wd">${[6, 0, 1, 2, 3, 4, 5].map(w => `<button data-wd="${w}" class="${(s.wd || []).includes(w) ? "on" : ""}">${WDN[w]}</button>`).join("")}</div>
+      <div class="cq-q">${[["آخر 4 أسابيع", A.addDays(t, -27), t], ["آخر 8 أسابيع", A.addDays(t, -55), t], ["هذا الشهر", t.slice(0, 8) + "01", t], ["الشهر الماضي", ...A.dshRange("month", A.addDays(t.slice(0, 8) + "01", -1))]].map(([l, a, b]) => `<button data-q="${a}|${b}" class="${s.a === a && s.b === b ? "on" : ""}">${l}</button>`).join("")}</div>` : ""}
+    <div class="pk2 cq-cal">${cal()}</div><p class="pk2-hint">${hint()}</p>
+    <div class="cq-sum"><b>${sideLabel(s)[0]}</b><small>${sideLabel(s)[1]}</small></div>`;
+  const ok = () => s.k === "day" ? !!s.a : s.k === "range" ? !half && s.a && s.b : s.k === "days" ? (s.days || []).length > 0 : (s.wd || []).length && s.a && s.b && !half;
+  drawer(`<b>${sideT(i)}</b>`, `<div id="cqed"></div>`, `<button class="cx-btn" data-x2>إلغاء</button><button class="cx-btn pri" id="cqok">تطبيق</button>`, d => {
+    const draw = () => { d.querySelector("#cqed").innerHTML = body(); bind(); };
+    const bind = () => {
+      d.querySelectorAll("[data-kind]").forEach(b => b.onclick = () => { const nk = b.dataset.kind; if (nk === s.k) return; s.k = nk; half = null;
+        if (nk === "range" || nk === "wd") { s.b = s.b && s.b >= s.a ? s.b : t; if (nk === "wd") { s.a = A.addDays(t, -27); s.b = t; s.wd = s.wd?.length ? s.wd : [wdOf(t)]; } }
+        if (nk === "days") s.days = s.days?.length ? s.days : [s.a]; draw(); });
+      d.querySelectorAll("[data-n]").forEach(b => b.onclick = () => { m += +b.dataset.n; if (m < 0) { m = 11; y--; } if (m > 11) { m = 0; y++; } draw(); });
+      d.querySelectorAll("[data-wd]").forEach(b => b.onclick = () => { const w = +b.dataset.wd, L = new Set(s.wd || []); L.has(w) ? L.delete(w) : L.add(w); s.wd = [...L]; draw(); });
+      d.querySelectorAll("[data-q]").forEach(b => b.onclick = () => { [s.a, s.b] = b.dataset.q.split("|"); half = null; draw(); });
+      d.querySelectorAll("[data-dy]").forEach(b => b.onclick = () => { const dd = b.dataset.dy;
+        if (s.k === "day") s.a = dd;
+        else if (s.k === "days") { const L = new Set(s.days || []); L.has(dd) ? L.delete(dd) : L.add(dd); s.days = [...L].sort(); }
+        else if (!half) { half = dd; s.a = dd; s.b = null; }
+        else { [s.a, s.b] = dd < half ? [dd, half] : [half, dd]; half = null; }
+        draw(); });
+    };
+    d.querySelector("[data-x2]").onclick = closeDrawer;
+    d.querySelector("#cqok").onclick = () => { if (!ok()) return A.toast(s.k === "wd" && !(s.wd || []).length ? "اختر يوماً واحداً على الأقل من الأسبوع" : "أكمل اختيار الأيام أولاً"); st.cmpS[i] = s; st.cmpB = null; save(); closeDrawer(); PAGES.compare(); };
+    draw();
+  });
+}
+
 function buckets(L, R, hourly = oneDay(R)) {
   const cut = A.S.config?.cutoff ?? 4;
   if (hourly) { const hrs = [...Array(24).keys()].map(i => (i + cut) % 24); return { keys: hrs, labels: hrs.map(hrLab), tips: hrs.map(h => `${hrLab(h)} – ${hrLab((h + 1) % 24)}`), of: o => new Date(o.ts).getHours() }; }
