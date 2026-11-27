@@ -303,3 +303,4 @@ a.cx-ni{text-decoration:none;box-sizing:border-box}
 @media (display-mode: standalone) and (max-width:920px){
   .cx-side,.cx.nav .cx-scrim{bottom:auto;height:100vh}
 }
+.cx-note{margin:0 0 14px;padding:10px 14px;border-radius:12px;background:#FFF7E6;color:#7A4F00;font-size:13px;line-height:1.6}

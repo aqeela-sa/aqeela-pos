@@ -101,7 +101,7 @@ function unmount() {
 const userName = () => ACC.name || (A.S.user?.email ==="abuabraj@gmail.com" ? "عاطف" : (A.S.cashier?.name || "المدير"));
 function net() { const n = $("#cxnet"); if (!n) return; n.classList.toggle("off", !navigator.onLine); n.querySelector("span").textContent = navigator.onLine ? "متصل" : "بدون إنترنت"; }
 function onHash() { const h = location.hash.match(/^#\/admin\/(\w+)/); if (h && TITLES[h[1]] && h[1] !== st.page) go(h[1], true); }
-const save = () => ls.set("st", { open: st.open, p: st.p, cmp: st.cmp, dtab: st.dtab, grp: st.grp, pgrp: st.pgrp, igrp: st.igrp, chart: st.chart, hrs: st.hrs, flt: { ...st.flt }, page: st.page, dkind: st.dkind });
+const save = () => ls.set("st", { open: st.open, p: st.p, cmp: st.cmp, dtab: st.dtab, grp: st.grp, pgrp: st.pgrp, igrp: st.igrp, chart: st.chart, hrs: st.hrs, flt: { ...st.flt }, page: st.page, dkind: st.dkind, ra: st.ra, rb: st.rb, cmpR: st.cmpR });
 
 function go(page, noPush) {
   closePop(); closeDrawer(); st.page = page; st.pg = 0; save();
@@ -292,7 +292,7 @@ function donut(entries, names = {}, f) {
 let CMPLAB = "السابق";
 function deltaHtml(cur, prev, inverse) {
   if (!st.cmp || prev == null || !isFinite(prev) || !isFinite(cur)) return `<div class="cx-dl"></div>`;
-  if (!prev && !cur) return `<div class="cx-dl"><b class="eq">0%</b><span>مقارنة بالفترة السابقة</span></div>`;
+  if (!prev && !cur) return `<div class="cx-dl"><b class="eq">0%</b><span>${st.cmpR ? "مقارنة بفترة المقارنة" : "مقارنة بالفترة السابقة"}</span></div>`;
   if (!prev) return `<div class="cx-dl"><b class="up">جديد</b><span>السابق 0</span></div>`;
   const d = (cur - prev) / Math.abs(prev) * 100, good = inverse ? d <= 0 : d >= 0;
   return `<div class="cx-dl"><b class="${Math.abs(d) < .05 ? "eq" : good ? "up" : "dn"} num">${d >= 0 ? "▲" : "▼"} ${nf(Math.abs(d), 1)}%</b><span>${CMPLAB} <span class="num">${typeof prev === "number" && !Number.isInteger(prev) ? nf(prev) : ni(prev)}</span></span></div>`;
@@ -414,57 +414,71 @@ let LEGX = null;
 const page = (inner, opt = {}) => { LEGX = null; $("#cxp").innerHTML = `<div class="cx-ph"><div><h1>${opt.h1 || TITLES[st.page]}</h1>${opt.sub ? `<p>${opt.sub}</p>` : ""}</div><div class="cx-acts">${opt.acts || ""}</div></div>${inner}`; };
 
 /* ---------- الملخص ---------- */
-function dashRange() { return A.dshRange(st.p, st.d); }
-function prevRange([a, b]) { if (st.p === "month") return A.dshRange("month", A.addDays(a, -1)); const n = Math.round((new Date(b) - new Date(a)) / 864e5) + 1; return [A.addDays(a, -n), A.addDays(b, -n)]; }
+function dashRange() { if (st.p === "range" && st.ra && st.rb) return [st.ra, st.rb]; if (st.p === "range") st.p = "day"; return A.dshRange(st.p, st.d); }
+/* one day is shown hour by hour; a longer period day by day */
+const oneDay = R => R[0] === R[1];
+/* «4 أيام» … the right Arabic form for a count of days */
+const daysAr = n => n === 1 ? "يوم واحد" : n === 2 ? "يومان" : n <= 10 ? `<span class="num">${n}</span> أيام` : `<span class="num">${n}</span> يوماً`;
+const lenNote = (a, b) => window.aqLang && window.aqLang() === "en"
+  ? `The two periods differ in length (<span class="num">${a}</span> vs <span class="num">${b}</span> days), so their totals are compared as they are.`
+  : `الفترتان مختلفتان في الطول: الحالية ${daysAr(a)} وفترة المقارنة ${daysAr(b)}، فالمقارنة بين مجموعيهما كما هما.`;
+const nDays = R => Math.round((new Date(R[1]) - new Date(R[0])) / 864e5) + 1;
+function prevRange([a, b]) { if (st.cmpR) return st.cmpR;   /* a period the manager picked to compare with */
+  if (st.p === "month") return A.dshRange("month", A.addDays(a, -1)); const n = Math.round((new Date(b) - new Date(a)) / 864e5) + 1; return [A.addDays(a, -n), A.addDays(b, -n)]; }
 PAGES.dash = async () => {
   const R = dashRange();
   page(`<div class="cx-tabs">${[["gen", "عام"], ["kitchen", "المطبخ"], ["cash", "الكاشيرون"]].map(([k, l]) => `<button data-dt="${k}" class="${st.dtab === k ? "on" : ""}">${l}</button>`).join("")}</div>
-    <div class="cx-ctl"><div class="cx-seg">${[["day", "يوم"], ["week", "الأسبوع"], ["month", "شهر"]].map(([k, l]) => `<button data-p="${k}" class="${st.p === k ? "on" : ""}">${l}</button>`).join("")}</div>
-      <button class="cx-btn" id="cxd">${ic("cal")}<span>${rLab(...R)}</span></button>${st.dtab === "gen" ? `<button class="cx-sw ${st.cmp ? "on" : ""}" id="cxcmp" type="button"><i></i>مقارنة</button>` : ""}<span class="cx-sp"></span>${fltBtn()}</div>
-    ${fltChips()}<div id="dbody">${loadingCards()}</div>`, { h1: `${window.aqLang && window.aqLang() === "en" ? "Hello, " : "مرحباً، "}<span data-noi18n>${esc(userName())}</span>`, acts: expBtn() });
+    <div class="cx-ctl"><div class="cx-seg">${[["day", "يوم"], ["week", "أسبوع"], ["month", "شهر"], ["range", "مخصص"]].map(([k, l]) => `<button data-p="${k}" class="${st.p === k ? "on" : ""}">${l}</button>`).join("")}</div>
+      <button class="cx-btn" id="cxd">${ic("cal")}<span>${rLab(...R)}</span></button>${st.dtab === "gen" ? `<button class="cx-sw ${st.cmp ? "on" : ""}" id="cxcmp" type="button"><i></i>مقارنة</button>${st.cmp ? `<button class="cx-btn" id="cxcr" title="اختر فترة المقارنة">${ic("cal")}<span>${st.cmpR ? "مقابل " + rLab(...st.cmpR) : "مقابل الفترة السابقة"}</span></button>${st.cmpR ? `<button class="cx-btn" id="cxcrx" title="الرجوع للمقارنة بالفترة السابقة" aria-label="الرجوع للمقارنة بالفترة السابقة">✕</button>` : ""}` : ""}` : ""}<span class="cx-sp"></span>${fltBtn()}</div>
+    ${fltChips()}${st.cmp && st.dtab === "gen" && nDays(R) !== nDays(prevRange(R)) ? `<p class="cx-note" data-noi18n>${lenNote(nDays(R), nDays(prevRange(R)))}</p>` : ""}<div id="dbody">${loadingCards()}</div>`, { h1: `${window.aqLang && window.aqLang() === "en" ? "Hello, " : "مرحباً، "}<span data-noi18n>${esc(userName())}</span>`, acts: expBtn() });
   bindExp();
   $$("[data-dt]").forEach(b => b.onclick = () => { st.dtab = b.dataset.dt; save(); PAGES.dash(); });
-  $$("[data-p]").forEach(b => b.onclick = () => { st.p = b.dataset.p; save(); PAGES.dash(); });
-  $("#cxd").onclick = e => picker(e.currentTarget, { mode: st.p, a: R[0], b: R[1], onPick: a => { st.d = a; PAGES.dash(); } });
-  if ($("#cxcmp")) $("#cxcmp").onclick = () => { st.cmp = !st.cmp; save(); PAGES.dash(); };
+  const pickRange = (el, a, b, done) => picker(el, { mode: "range", a, b, onPick: (x, y) => { done(x, y); save(); PAGES.dash(); } });
+  $$("[data-p]").forEach(b => b.onclick = () => { if (b.dataset.p === "range") return pickRange(b, st.ra || R[0], st.rb || R[1], (x, y) => { st.p = "range"; st.ra = x; st.rb = y; });
+    st.p = b.dataset.p; save(); PAGES.dash(); });
+  $("#cxd").onclick = e => st.p === "range" ? pickRange(e.currentTarget, R[0], R[1], (x, y) => { st.ra = x; st.rb = y; })
+    : picker(e.currentTarget, { mode: st.p, a: R[0], b: R[1], onPick: a => { st.d = a; PAGES.dash(); } });
+  if ($("#cxcmp")) $("#cxcmp").onclick = () => { st.cmp = !st.cmp; if (!st.cmp) st.cmpR = null; save(); PAGES.dash(); };
+  if ($("#cxcr")) $("#cxcr").onclick = e => { const P = prevRange(R); pickRange(e.currentTarget, P[0], P[1], (x, y) => { st.cmpR = [x, y]; }); };
+  if ($("#cxcrx")) $("#cxcrx").onclick = () => { st.cmpR = null; save(); PAGES.dash(); };
   let L, Lp = [];
   try { const all = await load(...R); L = applyF(all); if (st.cmp && st.dtab === "gen") Lp = applyF(await load(...prevRange(R))); bindFlt(PAGES.dash, all.map(o => o.cashierName)); }
   catch (e) { $("#dbody").innerHTML = errBox(e); return; }
   if (st.page !== "dash") return;
-  charts.clear(); EXP = []; CMPLAB = partial(R) ? "السابق لنفس المدة" : "السابق";
+  charts.clear(); EXP = []; CMPLAB = st.cmpR ? "فترة المقارنة" : partial(R) ? "السابق لنفس المدة" : "السابق";
   await ({ gen: dashGen, kitchen: dashKitchen, cash: dashCash })[st.dtab](L, Lp, R);
   if (st.page === "dash") drawCharts();
 };
-function buckets(L, R) {
+function buckets(L, R, hourly = oneDay(R)) {
   const cut = A.S.config?.cutoff ?? 4;
-  if (st.p === "day") { const hrs = [...Array(24).keys()].map(i => (i + cut) % 24); return { keys: hrs, labels: hrs.map(hrLab), tips: hrs.map(h => `${hrLab(h)} – ${hrLab((h + 1) % 24)}`), of: o => new Date(o.ts).getHours() }; }
+  if (hourly) { const hrs = [...Array(24).keys()].map(i => (i + cut) % 24); return { keys: hrs, labels: hrs.map(hrLab), tips: hrs.map(h => `${hrLab(h)} – ${hrLab((h + 1) % 24)}`), of: o => new Date(o.ts).getHours() }; }
   const days = []; for (let d = R[0]; d <= R[1]; d = A.addDays(d, 1)) days.push(d);
   return { keys: days, labels: days.map(dLab), tips: days.map(dFull), of: o => o.day };
 }
 /* نقاط المستقبل تُترك فارغة (لا تُرسم صفراً) */
 function futureMask(B, R) {
   const t = A.bizDay();
-  if (st.p === "day") { if (R[0] !== t) return B.keys.map(() => R[0] > t); const cut = A.S.config?.cutoff ?? 4, cur = (new Date().getHours() - cut + 24) % 24; return B.keys.map((h, i) => i > cur); }
+  if (oneDay(R)) { if (R[0] !== t) return B.keys.map(() => R[0] > t); const cut = A.S.config?.cutoff ?? 4, cur = (new Date().getHours() - cut + 24) % 24; return B.keys.map((h, i) => i > cur); }
   return B.keys.map(d => d > t);
 }
 /* المقارنة العادلة: إن كانت الفترة الحالية لم تكتمل بعد تُقارن بنفس المدة المنقضية من الفترة السابقة */
-function partial(R) { const t = A.bizDay(); return st.p === "day" ? R[0] === t : R[1] > t && R[0] <= t; }
+function partial(R) { const t = A.bizDay(); return oneDay(R) ? R[0] === t : R[1] > t && R[0] <= t; }
 function likeFor(Lp, R) {
-  if (!partial(R)) return Lp;
+  if (st.cmpR || !partial(R)) return Lp;   /* a period picked by hand is compared whole */
   const t = A.bizDay(), cut = A.S.config?.cutoff ?? 4, hi = (h => (h - cut + 24) % 24), nowI = hi(new Date().getHours()), now = new Date(), nowM = now.getMinutes();
-  if (st.p === "day") return Lp.filter(o => { const d = new Date(o.ts), i = hi(d.getHours()); return i < nowI || (i === nowI && d.getMinutes() <= nowM); });
+  if (oneDay(R)) return Lp.filter(o => { const d = new Date(o.ts), i = hi(d.getHours()); return i < nowI || (i === nowI && d.getMinutes() <= nowM); });
   const n = Math.round((new Date(t) - new Date(R[0])) / 864e5), pr = prevRange(R), last = A.addDays(pr[0], n);
   return Lp.filter(o => o.day <= last);
 }
 function series(L, B, f, avg) { return B.keys.map(k => { const g = L.filter(o => B.of(o) === k); if (avg) { const v = g.map(f).filter(x => x != null); return v.length ? v.reduce((a, b) => a + b, 0) / v.length : (avg === "zero" ? 0 : null); } return g.reduce((s, o) => s + f(o), 0); }); }
 function kpiCard(o) {
-  const ser = [{ name: st.cmp && o.ps ? "الفترة الحالية" : o.t, color: o.color || "#C1121F", values: o.s }]; if (st.cmp && o.ps) ser.push({ name: "الفترة السابقة", color: "#A1A1AA", values: o.ps, dash: 1 });
+  const ser = [{ name: st.cmp && o.ps ? "الفترة الحالية" : o.t, color: o.color || "#C1121F", values: o.s }]; if (st.cmp && o.ps) ser.push({ name: st.cmpR ? rLab(...st.cmpR) : "الفترة السابقة", color: "#A1A1AA", values: o.ps, dash: 1 });
   return `<div class="cx-card ${o.span || ""}"><div class="cx-ch"><h3>${o.t}</h3>${o.go ? `<button class="cx-link" data-go="${o.go}">عرض التقرير</button>` : ""}</div>
     <div class="cx-val">${o.html}</div>${deltaHtml(o.v, o.pv, o.inv)}${o.s ? chart({ kind: "line", labels: o.B.labels, tips: o.B.tips, series: ser, f: o.f }) : ""}</div>`;
 }
 function dashGen(L, Lp, R) {
   const B = buckets(L, R), ok = L.filter(isOk), okp = Lp.filter(isOk), vd = L.filter(o => isVoid(o)), vdp = Lp.filter(o => isVoid(o)), a = agg(L), p = st.cmp ? agg(likeFor(Lp, R)) : {};
-  const fut = futureMask(B, R), Bp = st.cmp ? buckets(Lp, prevRange(R)) : B;
+  const fut = futureMask(B, R), Bp = st.cmp ? buckets(Lp, prevRange(R), oneDay(R)) : B;
   const S = (arr, f, avg) => series(arr, B, f, avg).map((v, i) => fut[i] ? null : v);
   const SP = (arr, f, avg) => { const v = series(arr, Bp, f, avg); return B.keys.map((_, i) => i < v.length ? v[i] : null); };
   if (!L.length && !st.cmp) { $("#dbody").innerHTML = `<div class="cx-card">${emptyBox("لا توجد طلبات في هذه الفترة. جرّب يوماً آخر أو فعّل «إظهار الطلبات التجريبية» من التصفية.")}</div>`; return; }
@@ -479,7 +493,7 @@ function dashGen(L, Lp, R) {
     ${kpiCard({ t: "متوسط الطلب", v: a.avg, pv: p.avg, html: sar(a.avg), s: S(ok, o => o.total, "zero"), ps: st.cmp ? SP(okp, o => o.total, "zero") : null, B, go: "sales", color: "#1F4E9E" })}
     ${kpiCard({ t: "مبلغ الخصم", v: a.disc, pv: p.disc, inv: 1, html: sar(a.disc), s: S(ok, o => o.discount?.amount || 0), ps: st.cmp ? SP(okp, o => o.discount?.amount || 0) : null, B, go: "disc", color: "#B45309" })}
     ${kpiCard({ t: "مبلغ الإلغاء", v: a.vT, pv: p.vT, inv: 1, html: sar(a.vT), s: S(vd, o => o.total), ps: st.cmp ? SP(vdp, o => o.total) : null, B, go: "disc", color: "#6B7280" })}
-    <div class="cx-card s2"><div class="cx-ch"><h3>المبيعات لكل ساعة</h3><span class="cx-sub2">${st.p === "day" ? "" : "مجموع الفترة حسب ساعة اليوم"}</span></div>${chart({ kind: "bar", labels: hrs.map(hrLab), tips: hrs.map(h => `${hrLab(h)} – ${hrLab((h + 1) % 24)}`), sub: hn.map(n => `${n} طلب`), series: [{ color: "#C1121F", values: hv }] }, 260)}</div>
+    <div class="cx-card s2"><div class="cx-ch"><h3>المبيعات لكل ساعة</h3><span class="cx-sub2">${oneDay(R) ? "" : "مجموع الفترة حسب ساعة اليوم"}</span></div>${chart({ kind: "bar", labels: hrs.map(hrLab), tips: hrs.map(h => `${hrLab(h)} – ${hrLab((h + 1) % 24)}`), sub: hn.map(n => `${n} طلب`), series: [{ color: "#C1121F", values: hv }] }, 260)}</div>
     ${kpiCard({ t: "نسبة التكلفة", v: a.cpct, pv: p.cpct, inv: 1, html: `<span class="num">${pct(a.cpct)}</span>`, s: S(ok, o => o.total ? costOf(o) / o.total * 100 : null, "avg"), ps: st.cmp ? SP(okp, o => o.total ? costOf(o) / o.total * 100 : null, "avg") : null, B, f: "pct", go: "items", color: "#B45309" })}
     <div class="cx-card s2"><div class="cx-ch"><h3>أنواع الطلب</h3><button class="cx-link" data-go="sales">عرض التقرير</button></div>${chart({ kind: "line", labels: B.labels, tips: B.tips, series: typeSeries, f: "int" }, 220)}
       <div class="cx-leg">${A.TYPES.map(([k, l]) => `<span><i style="background:${TYPE_C[k]}"></i>${l} <b class="num">${ni(ok.filter(o => o.type === k).length)}</b></span>`).join("")}</div></div>
@@ -493,7 +507,7 @@ function dashGen(L, Lp, R) {
   expT("المؤشرات", [["t", "المؤشر"], ["v", "الفترة الحالية"], ...(st.cmp ? [["p", CMPLAB], ["d", "التغير %"]] : [])],
     K.map(([t, v, pv]) => ({ t, v: v == null || !isFinite(v) ? "" : r2(v), p: pv == null || !isFinite(pv) ? "" : r2(pv), d: pv && isFinite(v) && isFinite(pv) ? r2((v - pv) / Math.abs(pv) * 100) : "" })));
   const so = S(ok, () => 1), sn = S(ok, o => o.total), sd = S(ok, o => o.discount?.amount || 0), sv = S(vd, o => o.total);
-  expT(st.p === "day" ? "حسب الساعة" : "حسب اليوم", [["l", st.p === "day" ? "الساعة" : "اليوم"], ["o", "الطلبات"], ["n", "صافي المبيعات"], ["d", "الخصم"], ["v", "الإلغاء"]],
+  expT(oneDay(R) ? "حسب الساعة" : "حسب اليوم", [["l", oneDay(R) ? "الساعة" : "اليوم"], ["o", "الطلبات"], ["n", "صافي المبيعات"], ["d", "الخصم"], ["v", "الإلغاء"]],
     B.keys.map((k, i) => ({ l: B.tips[i], o: so[i] ?? "", n: sn[i] == null ? "" : r2(sn[i]), d: sd[i] == null ? "" : r2(sd[i]), v: sv[i] == null ? "" : r2(sv[i]) })).filter(r => r.o !== ""));
   const mrows = Object.keys(A.METHODS).map(k => ({ k: A.METHODS[k], n: ok.filter(o => A.hasM(o, k)).length, v: r2(ok.reduce((s2, o) => s2 + A.paidBy(o, k), 0)) })).filter(r => r.n).sort((x, y) => y.v - x.v);
   expT("حسب طريقة الدفع", [["k", "طريقة الدفع"], ["n", "الطلبات"], ["v", "المبلغ"]], mrows);

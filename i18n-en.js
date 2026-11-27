@@ -1145,5 +1145,16 @@ window.AQ_EN = {
 "قليل بصل": "Less onion",
 "قليل": "Less",
 "تأكد من إلغاء الطلب في لوكيت أيضاً.": "Make sure the order is cancelled in Lokit too.",
-"تأكد من إلغاء الطلب في هنقرستيشن أيضاً.": "Make sure the order is cancelled in HungerStation too."
+"تأكد من إلغاء الطلب في هنقرستيشن أيضاً.": "Make sure the order is cancelled in HungerStation too.",
+"مخصص": "Custom",
+"مقابل الفترة السابقة": "vs previous period",
+"مقابل": "vs",
+"اختر فترة المقارنة": "Choose the comparison period",
+"الرجوع للمقارنة بالفترة السابقة": "Back to comparing with the previous period",
+"فترة المقارنة": "Comparison period",
+"مقارنة بفترة المقارنة": "vs the comparison period",
+"الفترتان مختلفتان في الطول:": "The two periods differ in length:",
+"يوم مقابل": "days vs",
+"يوم، فالمقارنة بين المجموعين كما هما.": "days, so their totals are compared as they are.",
+"أسبوع": "Week"
 };
