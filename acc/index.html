@@ -2072,13 +2072,13 @@ function renderReconList(){
   const W = `<col style="width:112px"><col style="width:74px">`;
   let cols, grp, head, body, foot;
   if (cash){
-    cols = W + `<col style="width:100px">`.repeat(6) + `<col style="width:104px"><col style="width:112px"><col style="width:96px"><col style="min-width:110px">`;
+    cols = W + `<col style="width:100px">`.repeat(6) + `<col style="width:104px"><col style="width:112px"><col style="width:96px"><col style="width:220px">`;
     grp = `<tr class="grp"><th colspan="2"></th><th class="sep"></th><th colspan="2" class="g-in sep">داخل الخزنة</th><th colspan="3" class="g-out sep">خارج من الخزنة</th><th colspan="3" class="g-res sep">الرصيد</th><th class="sep"></th></tr>`;
     head = `<th>التاريخ</th><th>اليوم</th><th class="n sep">أول اليوم</th><th class="n sep">مبيعات كاش</th><th class="n">سحب من البنك</th><th class="n sep">مصروفات كاش</th><th class="n">صافي العهد</th><th class="n">إيداع في البنك</th><th class="n sep">المتوقع</th><th class="n">الفعلي (الجرد)</th><th class="n">الفرق</th><th class="sep">ملاحظات</th>`;
     body = rows.map(r => `<tr class="click ${r.date===t?"today":""}" data-d="${r.date}"><td class="num key">${dmy(r.date)}</td><td>${dayName(r.date)}</td><td class="n sep">${money(r.cOpen)}</td><td class="n sep">${z(r.cSales)}</td><td class="n">${z(r.wd)}</td><td class="n sep">${z(r.cPurch)}</td><td class="n">${z(r.cCus)}</td><td class="n">${z(r.dep)}</td><td class="n sep"><b>${money(r.cashExp)}</b></td><td class="n">${act(r.ac)}${r.ac != null && r.cAtCount !== r.cashExp ? `<div class="by">المتوقع وقت الجرد <span class="num">${fmt(r.cAtCount)}</span></div>` : ""}</td><td class="n">${diff(r.cDiff)}${cumCell(r)}</td><td class="sep">${esc(r.notes)}</td></tr>`).join("");
     foot = `<tr class="tot"><td colspan="2">إجمالي الفترة</td><td class="n sep">${money(first.cOpen)}</td><td class="n sep">${money(sum("cSales"))}</td><td class="n">${money(sum("wd"))}</td><td class="n sep">${money(sum("cPurch"))}</td><td class="n">${money(sum("cCus"))}</td><td class="n">${money(sum("dep"))}</td><td class="n sep">${money(last.cashExp)}</td><td colspan="2"></td><td class="sep"></td></tr>`;
   } else {
-    cols = W + `<col style="width:100px">`.repeat(6) + `<col style="width:104px"><col style="width:112px"><col style="width:96px"><col style="min-width:110px">`;
+    cols = W + `<col style="width:100px">`.repeat(6) + `<col style="width:104px"><col style="width:112px"><col style="width:96px"><col style="width:220px">`;
     grp = `<tr class="grp"><th colspan="2"></th><th class="sep"></th><th colspan="2" class="g-in sep">داخل البنك</th><th colspan="3" class="g-out sep">خارج / تسويات</th><th colspan="3" class="g-res sep">الرصيد</th><th class="sep"></th></tr>`;
     head = `<th>التاريخ</th><th>اليوم</th><th class="n sep">أول اليوم</th><th class="n sep">مدى وفيزا وتحويلات</th><th class="n">تحويلات التطبيقات</th><th class="n sep">مصروفات وعهد</th><th class="n">إيداع / سحب نقدي</th><th class="n">تسويات أخرى</th><th class="n sep">المتوقع</th><th class="n">الفعلي (كشف الحساب)</th><th class="n">الفرق</th><th class="sep">ملاحظات</th>`;
     body = rows.map(r => `<tr class="click ${r.date===t?"today":""}" data-d="${r.date}"><td class="num key">${dmy(r.date)}</td><td>${dayName(r.date)}</td><td class="n sep">${money(r.bOpen)}</td><td class="n sep">${z(r.cardIn)}</td><td class="n">${z(r.appIn)}</td><td class="n sep">${z(-r.bankOut)}</td><td class="n">${z(r.depwd)}</td><td class="n">${z(r.adj)}</td><td class="n sep"><b>${money(r.bankExp)}</b></td><td class="n">${act(r.ab)}</td><td class="n">${diff(r.bDiff)}${cumCell(r)}</td><td class="sep">${esc(r.notes)}</td></tr>`).join("");
@@ -2087,7 +2087,7 @@ function renderReconList(){
   el.innerHTML = `<div class="grid g4" style="margin-bottom:14px">${tiles.map(([l,v,c]) => `<div class="kpi ${c}"><span class="l">${l}</span><span class="v num">${fmt(v)}</span></div>`).join("")}</div>
     ${lastAct ? `<div class="note" style="margin-bottom:14px">آخر ${cash?"جرد للخزنة":"كشف حساب"}: <b class="num">${dmy(lastAct.date)}</b> · الفعلي <b class="num">${fmt(cash?lastAct.ac:lastAct.ab)}</b> · فرق اليوم ${diff(cash?lastAct.cDiff:lastAct.bDiff)}</div>` : ""}
     ${cumNote}
-    <div class="tw stick"><table style="table-layout:fixed;min-width:1140px"><colgroup>${cols}</colgroup><thead>${grp}<tr>${head}</tr></thead><tbody>${body}${foot}</tbody></table></div>
+    <div class="tw stick"><table style="table-layout:fixed;min-width:1320px"><colgroup>${cols}</colgroup><thead>${grp}<tr>${head}</tr></thead><tbody>${body}${foot}</tbody></table></div>
     <p class="foot" style="margin-top:10px">${cash ? "المتوقع = أول اليوم + الداخل − الخارج. إذا سجّلت جرداً فعلياً ليوم ما، يبدأ اليوم التالي منه." : "مقبوضات البنك = مدى + فيزا (بعد تأخير التحصيل) + التحويلات البنكية + تحويلات التطبيقات الفعلية. إذا سجّلت رصيداً فعلياً ليوم ما، يبدأ اليوم التالي منه."}</p>`;
   el.querySelectorAll("tr.click").forEach(tr => tr.onclick = () => openRecon(tr.dataset.d));
 }
