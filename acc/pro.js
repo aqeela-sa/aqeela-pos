@@ -63,12 +63,13 @@
     nav.innerHTML = `<div class="px-brand"><img src="${aqSrc}" alt=""><div><b dir="ltr" class="px-name">AQ <span>ACC</span></b><small>شاورما العقيلة · المحاسبة والإدارة</small></div></div>
       <button type="button" class="px-search" id="px_find">${icon("search")}<span>بحث وانتقال سريع…</span><kbd>Ctrl K</kbd></button>
       <nav class="px-scroll">${GROUPS.map(([t, vs]) => `<div class="px-grp"><div class="px-sec">${t}</div>${vs.map(v => `<a class="px-link" href="#${v}" data-pv="${v}">${icon(v)}<span>${nameOf(v)}</span></a>`).join("")}</div>`).join("")}</nav>
-      <div class="px-foot"><a class="px-me" id="px_me" href="#account" title="حسابي: البيانات وكلمة المرور"><div class="px-av" id="px_av">A</div><div class="px-who"><b id="px_name">—</b><small id="px_role"></small></div></a><button type="button" class="px-out" id="px_rl" title="تحديث البرنامج" aria-label="تحديث البرنامج"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg></button><button type="button" class="px-out" id="px_out" title="تسجيل الخروج" aria-label="تسجيل الخروج">${icon("out")}</button></div>`;
+      <div class="px-foot"><a class="px-me" id="px_me" href="#account" title="حسابي: البيانات وكلمة المرور"><div class="px-av" id="px_av">A</div><div class="px-who"><b id="px_name">—</b><small id="px_role"></small></div></a><button type="button" class="px-out" id="px_out" title="تسجيل الخروج" aria-label="تسجيل الخروج">${icon("out")}</button></div>`;
     const top = document.createElement("div"); top.id = "pxtop"; top.className = "px-only";
     top.innerHTML = `<button type="button" class="px-menu" id="px_menu" aria-label="القائمة">${icon("bars")}</button><img class="px-mlogo" src="${aqSrc}" alt="">
       <div class="px-crumb"><span id="px_grp"></span><i>/</i><b id="px_page"></b></div>
       <div class="px-neww"><button type="button" class="px-new" id="px_new" aria-haspopup="true" aria-expanded="false"><b>+</b><span>إضافة</span></button><div class="px-pop" id="px_pop" hidden></div></div>
       <button type="button" class="px-ic" id="px_find2" aria-label="بحث وانتقال سريع">${icon("search")}</button>
+      <button type="button" class="px-ic px-rl" id="px_rl" title="تحديث البرنامج" aria-label="تحديث البرنامج"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg></button>
       <button type="button" class="px-ic px-lang" id="px_lang" data-noi18n title="${window.accLang && accLang() === "en" ? "العربية" : "English"}">${window.accLang && accLang() === "en" ? "ع" : "EN"}</button>`;
     const st = document.getElementById("status"); if (st) top.appendChild(st);
     const scrim = document.createElement("div"); scrim.id = "pxscrim"; scrim.className = "px-only";
@@ -131,7 +132,7 @@
     const openK = () => { if (!pro()) return; close(); k.hidden = false; q.value = ""; sel = 0; draw(); setTimeout(() => q.focus(), 20); };
     const closeK = () => { k.hidden = true; };
     document.getElementById("px_find").onclick = openK; document.getElementById("px_find2").onclick = openK;
-    document.getElementById("px_rl").onclick = () => window.accReload ? accReload() : location.reload();
+    document.getElementById("px_rl").onclick = e => { e.currentTarget.classList.add("spin"); window.accReload ? accReload() : location.reload(); };
     document.getElementById("px_lang").onclick = () => window.accSetLang && accSetLang(accLang() === "en" ? "ar" : "en");
     q.oninput = () => { sel = 0; draw(); };
     q.onkeydown = e => { if (e.key === "ArrowDown"){ e.preventDefault(); sel = Math.min(items.length - 1, sel + 1); draw(); }

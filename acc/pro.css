@@ -364,3 +364,7 @@
 }
 #pxtop .status::before{flex:none}
 @media (max-width:1023px){#pxtop .status{gap:0;justify-content:center;overflow:hidden}}
+/* refresh in the top bar, away from sign-out; on narrow phones the small logo gives it room (the page name stays) */
+@media (max-width:1023px){#pxtop{gap:6px}.px-menu,.px-ic,.px-new{width:36px!important;height:36px}}
+@media (max-width:440px){.px-mlogo{display:none!important}}
+.px-rl.spin svg{animation:pxrl .8s linear infinite}@keyframes pxrl{to{transform:rotate(360deg)}}
