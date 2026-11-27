@@ -8,11 +8,11 @@
   window.accLang = () => lang;
   window.accSetLang = l => { try { localStorage.setItem("acc-lang", l === "en" ? "en" : "ar"); } catch(e){} location.reload(); };
   const H = document.documentElement;
-  H.dataset.lang = lang;
+  H.dataset.uiLang = lang;
   if (lang !== "en") { window.tr = s => s; return; }
   H.lang = "en"; H.dir = "ltr";
   /* the dictionary is read only in English (synchronously, before the page draws) */
-  document.write('<script src="i18n-en.js?v=3"><\/script>');
+  document.write('<script src="i18n-en.js?v=5"><\/script>');
 
   const AR = /[؀-ۿ]/, LET = /[ء-ي٠-٩ٮ-ۓۺ-ۿ]/;
   let DICT = null, RX = null;
@@ -46,7 +46,7 @@
       /* pieces joined back: no space lost between an English word and the next */
       out = out.replace(/([a-z0-9).%])([A-Z][a-z])/g, "$1 $2");
     } else out = s;
-    out = out.replace(/«/g, "“").replace(/»/g, "”").replace(/،/g, ",").replace(/؛/g, ";").replace(/؟/g, "?");
+    out = out.replace(/←/g, "→").replace(/«/g, "“").replace(/»/g, "”").replace(/،/g, ",").replace(/؛/g, ";").replace(/؟/g, "?");
     if (cache.size > 20000) cache.clear();
     cache.set(s, out); return out;
   }
@@ -56,8 +56,13 @@
   const SKIP = "input,textarea,script,style,[contenteditable=true],.rp-capture,.rp-paper,.lt-page,[data-noi18n],.no-tr";
   const AREA = "[contenteditable=true],.rp-capture,.rp-paper,.lt-page,[data-noi18n],.no-tr";  /* a field's own hint and label are the interface's */
   const ATTRS = ["placeholder", "title", "aria-label", "alt", "data-tip"];
+  /* a lone arrow on a button points the other way when the page runs left to right (previous / next) */
+  const FLIP = {"→":"←","←":"→","‹":"›","›":"‹"};
   function doText(n){
-    const v = n.nodeValue; if (!v || !AR.test(v)) return;
+    const v = n.nodeValue;
+    if (v && FLIP[v.trim()] && n.parentElement && n.parentElement.closest("button,a") && !n.parentElement.closest(AREA) && !n.__flip){ n.__flip = 1; n.nodeValue = v.replace(v.trim(), FLIP[v.trim()]); return; }
+    if (v && !AR.test(v) && v.includes("←") && v.trim().length > 1){ const p0 = n.parentElement; if (p0 && !p0.closest(SKIP)) n.nodeValue = v.replace(/←/g, "→"); return; }   /* «from ← to» reads left to right */
+    if (!v || !AR.test(v)) return;
     const p = n.parentElement; if (!p || p.closest(SKIP)) return;
     const t = tr(v); if (t !== v) n.nodeValue = t;
   }
@@ -107,5 +112,10 @@ html[dir=ltr] .px-brand .px-name{text-align:left}
 @media (max-width:1023px){html[dir=ltr] #pxtop,html[dir=ltr][data-pro="1"] main{margin-left:0}html[dir=ltr] #pxnav{transform:translateX(-100%)}html[dir=ltr] .px-open #pxnav,html[dir=ltr] #pxnav.open{transform:none}}
 html[dir=ltr] .hl-prev>div{transform-origin:top left}
 html[dir=ltr] .num{direction:ltr}
+@media (max-width:640px){html[dir=ltr] .bg-t td:nth-child(2)::before{content:"Budget"}html[dir=ltr] .bg-t td:nth-child(3)::before{content:"Actual"}html[dir=ltr] .bg-t td:nth-child(4)::before{content:"Remaining / over"}
+html[dir=ltr] .px-t td:nth-child(2)::before{content:"Quantity"}html[dir=ltr] .px-t td:nth-child(3)::before{content:"Average price"}html[dir=ltr] .px-t td:nth-child(4)::before{content:"Low – high"}
+html[dir=ltr] .px-t td:nth-child(5)::before{content:"Last price"}html[dir=ltr] .px-t td:nth-child(6)::before{content:"Change"}html[dir=ltr] .px-t td:nth-child(7)::before{content:"Cheapest supplier"}html[dir=ltr] .px-t td:nth-child(8)::before{content:"Total"}}
+html[dir=ltr] .dy-share .btn{white-space:normal;line-height:1.2}
+html[dir=ltr] .pdx-link svg,html[dir=ltr] .px-pop svg.chev{transform:scaleX(-1)}
 `; (document.head || H).appendChild(st);
 })();

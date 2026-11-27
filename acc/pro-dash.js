@@ -42,11 +42,11 @@ function proDash(el, D){
   const vals = days.filter(x => x.v != null).map(x => x.v), max = Math.max(1, ...vals, sp.avg || 0);
   const best = vals.length ? days.filter(x => x.v != null).reduce((a, c) => c.v > a.v ? c : a) : null, low = vals.length ? days.filter(x => x.v != null).reduce((a, c) => c.v < a.v ? c : a) : null;
   const chart = (() => {
-    const W = 720, H = 230, pl = 6, pr = 50, pt = 14, pb = 26, step = niceStep(max / 4), top = Math.ceil(max / step) * step || 1;
+    const ltr = document.documentElement.dir === "ltr", W = 720, H = 230, pl = ltr ? 50 : 6, pr = ltr ? 6 : 50, pt = 14, pb = 26, step = niceStep(max / 4), top = Math.ceil(max / step) * step || 1;
     const cw = (W - pl - pr) / days.length, bw = Math.max(4, Math.min(18, cw * .62)), y = v => pt + (H - pt - pb) * (1 - v / top);
     let g = "";
-    for (let v = 0; v <= top + 1e-9; v += step) g += `<line x1="${pl}" x2="${W - pr}" y1="${y(v)}" y2="${y(v)}" stroke="var(--line)" ${v ? 'stroke-dasharray="2 4"' : ""}/><text x="${W - pr + 8}" y="${y(v) + 4}" font-size="10.5" fill="var(--muted)">${fmt0(v)}</text>`;
-    days.forEach((x, i) => { const cx = W - pr - cw * (i + .5);   /* RTL: the 1st on the right */
+    for (let v = 0; v <= top + 1e-9; v += step) g += `<line x1="${pl}" x2="${W - pr}" y1="${y(v)}" y2="${y(v)}" stroke="var(--line)" ${v ? 'stroke-dasharray="2 4"' : ""}/><text x="${ltr ? pl - 8 : W - pr + 8}" y="${y(v) + 4}" font-size="10.5" fill="var(--muted)"${ltr ? ' text-anchor="end"' : ""}>${fmt0(v)}</text>`;
+    days.forEach((x, i) => { const cx = ltr ? pl + cw * (i + .5) : W - pr - cw * (i + .5);   /* the 1st on the right in Arabic, on the left in English */
       if (x.v != null) g += `<rect x="${cx - bw / 2}" y="${y(x.v)}" width="${bw}" height="${Math.max(1, y(0) - y(x.v))}" rx="${Math.min(4, bw / 3)}" fill="${x.d === (best && best.d) ? "var(--red)" : "color-mix(in srgb,var(--red) 55%,var(--card))"}"><title>${dayName(x.d)} ${dmy(x.d)}: ${fmt(x.v)}</title></rect>`;
       else if (x.d <= t) g += `<rect x="${cx - bw / 2}" y="${y(0) - 2}" width="${bw}" height="2" fill="var(--line)"/>`;
       const dn = +x.d.slice(8); if (dn === 1 || dn % 5 === 0) g += `<text x="${cx}" y="${H - 8}" font-size="10.5" fill="var(--muted)" text-anchor="middle">${dn}</text>`; });

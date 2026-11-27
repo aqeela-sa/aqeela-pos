@@ -368,3 +368,6 @@
 @media (max-width:1023px){#pxtop{gap:6px}.px-menu,.px-ic,.px-new{width:36px!important;height:36px}}
 @media (max-width:440px){.px-mlogo{display:none!important}}
 .px-rl.spin svg{animation:pxrl .8s linear infinite}@keyframes pxrl{to{transform:rotate(360deg)}}
+/* the CFO month table fits a phone in either language */
+@media (max-width:600px){.cfo-tbl{font-size:12px!important}.cfo-tbl td,.cfo-tbl th{padding:6px 3px!important;font-size:12px!important}.cfo-tbl th{white-space:normal!important;line-height:1.25}.cfo-tbl td.num{white-space:nowrap}}
+@media (max-width:600px){.st-open{font-size:12px;padding:2px 9px}}

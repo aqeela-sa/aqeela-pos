@@ -662,6 +662,7 @@ if (typeof BK_NAMES !== "undefined") Object.assign(BK_NAMES, {hrFiles:"مستن�
 /* ---- the letter (fixed light colours: it is paper) ---- */
 .lt-page{width:794px;height:1123px;background:#fff;color:#1c1c1e;font-family:"PlexAr","TajawalE","Tajawal",Tahoma,sans-serif;position:relative;display:flex;flex-direction:column;overflow:hidden;box-sizing:border-box}
 .lt-page *{box-sizing:border-box;letter-spacing:0!important}
+.lt-page tbody tr:nth-child(even) td{background-color:transparent}
 .lt-band{height:9px;background:linear-gradient(90deg,#7A0C1A,#C8102E 55%,#7A0C1A);flex:none}.lt-band.b{height:6px}
 .lt-wm{position:absolute;width:420px;height:420px;object-fit:contain;left:50%;top:52%;transform:translate(-50%,-50%);opacity:.035;pointer-events:none}
 .lt-head{display:flex;justify-content:space-between;align-items:center;gap:20px;padding:26px 58px 18px;border-bottom:1.5px solid #E9DDDF;flex:none}
