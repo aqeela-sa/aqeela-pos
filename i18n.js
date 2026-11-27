@@ -113,5 +113,9 @@
   /* left-to-right details the layout can't flip by itself */
   const st = document.createElement("style"); st.textContent = `
 html[dir=ltr] .num,html[dir=ltr] .money{direction:ltr}
+/* manager console: the menu slides in from the left (where its button is), the detail panel from the right */
+@media (max-width:920px){html[dir=ltr] .cx-side{right:auto;left:0;transform:translateX(-105%);box-shadow:10px 0 40px rgba(0,0,0,.18)}html[dir=ltr] .cx.nav .cx-side{transform:none}}
+html[dir=ltr] .cx-dr{left:auto;right:0;box-shadow:-12px 0 40px rgba(0,0,0,.18);animation-name:cxdl}
+@keyframes cxdl{from{transform:translateX(30px);opacity:0}}
 `; (document.head || H).appendChild(st);
 })();

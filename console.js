@@ -122,7 +122,9 @@ function drawNav() {
 function onClick(e) {
   const b = e.target.closest("[data-go],[data-grp],[data-act]"); if (!b || !root.contains(b)) return;
   if (b.dataset.go) return go(b.dataset.go);
-  if (b.dataset.grp) { st.open[b.dataset.grp] = !st.open[b.dataset.grp]; save(); return drawNav(); }
+  if (b.dataset.grp) { const g = b.dataset.grp, on = st.open[g] = !st.open[g]; save(); drawNav();
+    /* an opened group at the bottom of the menu: bring its pages into view */
+    if (on) requestAnimationFrame(() => { const el = document.querySelector(`[data-grp="${g}"]`)?.closest(".cx-grp"); el?.scrollIntoView({ block: "nearest", behavior: "smooth" }); }); return; }
   const a = b.dataset.act;
   if (a === "nav") return root.querySelector("#cx").classList.toggle("nav");
   if (a === "pos") return exitToPos();
