@@ -116,7 +116,7 @@ html[dir=ltr] .num,html[dir=ltr] .money{direction:ltr}
 html[dir=ltr] .cx .tm,html[dir=ltr] .cx-dr .tm{direction:ltr}
 html[dir=ltr] .sw::after{right:auto;left:3px}html[dir=ltr] .sw.on::after{right:auto;left:25px}   /* a switch is on to the right */   /* «1:54 PM», not «PM 1:54» */
 /* manager console: the menu slides in from the left (where its button is), the detail panel from the right */
-@media (max-width:920px){html[dir=ltr] .cx-side{right:auto;left:0;transform:translateX(-105%);box-shadow:10px 0 40px rgba(0,0,0,.18)}html[dir=ltr] .cx.nav .cx-side{transform:none}}
+@media (max-width:920px){html[dir=ltr] .cx-side{right:auto;left:0;transform:translateX(-105%)}html[dir=ltr] .cx.nav .cx-side{transform:none;box-shadow:10px 0 40px rgba(0,0,0,.18)}}
 html[dir=ltr] .cx-dr{left:auto;right:0;box-shadow:-12px 0 40px rgba(0,0,0,.18);animation-name:cxdl}
 @keyframes cxdl{from{transform:translateX(30px);opacity:0}}
 `; (document.head || H).appendChild(st);

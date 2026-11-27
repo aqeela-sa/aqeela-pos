@@ -224,8 +224,8 @@
 @media (max-width:1180px){.cx-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.cx-card.s2{grid-column:1/-1}}
 @media (max-width:920px){
   .cx{grid-template-columns:1fr}
-  .cx-side{position:fixed;inset-block:0;right:0;width:292px;z-index:40;transform:translateX(105%);transition:transform .22s ease;box-shadow:-10px 0 40px rgba(0,0,0,.18)}
-  .cx.nav .cx-side{transform:none}
+  .cx-side{position:fixed;inset-block:0;right:0;width:292px;z-index:40;transform:translateX(105%);transition:transform .22s ease}
+  .cx.nav .cx-side{transform:none;box-shadow:-10px 0 40px rgba(0,0,0,.18)}
   .cx.nav .cx-scrim{display:block;position:fixed;inset:0;background:rgba(16,16,20,.35);z-index:39}
   .cx-burger{display:inline-flex}
   .cx-top{padding:0 14px;height:64px}
@@ -295,3 +295,11 @@ a.cx-ni{text-decoration:none;box-sizing:border-box}
 .cx-devs{display:grid}.cx-dev{display:flex;justify-content:space-between;gap:12px;padding:10px 0;border-bottom:1px solid var(--line2)}.cx-dev:last-child{border-bottom:0}
 .cx-dev>div{display:grid;gap:2px}.cx-dev small{color:var(--mut);font-size:12px}.cx-dw{text-align:left;font-size:13px}
 @media (max-width:860px){.cx-agrid{grid-template-columns:minmax(0,1fr)}}
+/* app opened from the home screen: fill the whole screen down to the bottom edge (iPhone measures «100%» short there) */
+@media (display-mode: standalone){
+  .cx{bottom:auto;height:100vh}
+  .cx-scrim2{bottom:auto;height:100vh}
+}
+@media (display-mode: standalone) and (max-width:920px){
+  .cx-side,.cx.nav .cx-scrim{bottom:auto;height:100vh}
+}
