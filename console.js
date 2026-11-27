@@ -289,7 +289,7 @@ function donut(entries, names = {}, f) {
 }
 
 /* ---------- أدوات مشتركة ---------- */
-let CMPLAB = "السابق";
+let CMPLAB = "السابق", CMPK = 1, LEG = null;   /* CMPK: the comparison scaled to the same number of days; LEG: the two lines of every chart */
 function deltaHtml(cur, prev, inverse) {
   if (!st.cmp || prev == null || !isFinite(prev) || !isFinite(cur)) return `<div class="cx-dl"></div>`;
   if (!prev && !cur) return `<div class="cx-dl"><b class="eq">0%</b><span>${st.cmpR ? "مقارنة بفترة المقارنة" : "مقارنة بالفترة السابقة"}</span></div>`;
@@ -420,8 +420,8 @@ const oneDay = R => R[0] === R[1];
 /* «4 أيام» … the right Arabic form for a count of days */
 const daysAr = n => n === 1 ? "يوم واحد" : n === 2 ? "يومان" : n <= 10 ? `<span class="num">${n}</span> أيام` : `<span class="num">${n}</span> يوماً`;
 const lenNote = (a, b) => window.aqLang && window.aqLang() === "en"
-  ? `The two periods differ in length (<span class="num">${a}</span> vs <span class="num">${b}</span> days), so their totals are compared as they are.`
-  : `الفترتان مختلفتان في الطول: الحالية ${daysAr(a)} وفترة المقارنة ${daysAr(b)}، فالمقارنة بين مجموعيهما كما هما.`;
+  ? `The current period is <span class="num">${a}</span> day(s) and the comparison period <span class="num">${b}</span>, so figures are compared with ${a === 1 ? "the comparison period's average day" : `the comparison period scaled to <span class="num">${a}</span> days`} to keep it fair. Each day is listed in “Days compared” below.`
+  : `الفترة الحالية ${daysAr(a)} وفترة المقارنة ${daysAr(b)}، لذلك تُقارَن الأرقام ${a === 1 ? "بمتوسط اليوم الواحد من فترة المقارنة" : `بفترة المقارنة بعد حسابها على ${daysAr(a)}`} حتى تكون المقارنة عادلة. أرقام كل يوم في جدول «أيام المقارنة» تحت هذا التنبيه.`;
 const nDays = R => Math.round((new Date(R[1]) - new Date(R[0])) / 864e5) + 1;
 function prevRange([a, b]) { if (st.cmpR) return st.cmpR;   /* a period the manager picked to compare with */
   if (st.p === "month") return A.dshRange("month", A.addDays(a, -1)); const n = Math.round((new Date(b) - new Date(a)) / 864e5) + 1; return [A.addDays(a, -n), A.addDays(b, -n)]; }
@@ -445,7 +445,10 @@ PAGES.dash = async () => {
   try { const all = await load(...R); L = applyF(all); if (st.cmp && st.dtab === "gen") Lp = applyF(await load(...prevRange(R))); bindFlt(PAGES.dash, all.map(o => o.cashierName)); }
   catch (e) { $("#dbody").innerHTML = errBox(e); return; }
   if (st.page !== "dash") return;
-  charts.clear(); EXP = []; CMPLAB = st.cmpR ? "فترة المقارنة" : partial(R) ? "السابق لنفس المدة" : "السابق";
+  charts.clear(); EXP = [];
+  const nc = nDays(R), np = nDays(prevRange(R)); CMPK = st.cmp && nc !== np ? nc / np : 1;
+  CMPLAB = CMPK !== 1 ? (nc === 1 ? "متوسط يوم في فترة المقارنة" : `فترة المقارنة محسوبة على ${nc} أيام`) : st.cmpR ? "فترة المقارنة" : partial(R) ? "السابق لنفس المدة" : "السابق";
+  LEG = st.cmp ? [rLab(...R), rLab(...prevRange(R)) + (oneDay(R) && np > 1 ? " · متوسط اليوم" : "")] : null;
   await ({ gen: dashGen, kitchen: dashKitchen, cash: dashCash })[st.dtab](L, Lp, R);
   if (st.page === "dash") drawCharts();
 };
@@ -471,22 +474,39 @@ function likeFor(Lp, R) {
   return Lp.filter(o => o.day <= last);
 }
 function series(L, B, f, avg) { return B.keys.map(k => { const g = L.filter(o => B.of(o) === k); if (avg) { const v = g.map(f).filter(x => x != null); return v.length ? v.reduce((a, b) => a + b, 0) / v.length : (avg === "zero" ? 0 : null); } return g.reduce((s, o) => s + f(o), 0); }); }
+/* totals of the comparison period brought to the current period's number of days; averages and ratios stay as they are */
+function scaleAgg(p, k) { if (k === 1) return p; const q = { ...p }; ["n", "net", "gross", "disc", "discN", "vN", "vT", "cost", "food", "pack", "gp", "qty"].forEach(f => q[f] = p[f] * k); return q; }
+/* every day of the two periods, side by side: orders and net sales, with the total and the average day */
+function cmpTable(L, Lp, R) {
+  const P = prevRange(R), en = window.aqLang && window.aqLang() === "en";
+  const wd = d => new Date(d + "T12:00:00").toLocaleDateString(en ? "en-GB" : "ar", { weekday: "long" });
+  const part = (arr, a, b, title, cls) => { const ok = arr.filter(isOk), days = []; for (let d = a; d <= b; d = A.addDays(d, 1)) days.push(d);
+    const rows = days.map(d => { const g = ok.filter(o => o.day === d); return [d, g.length, g.reduce((s, o) => s + o.total, 0)]; });
+    const n = rows.reduce((s, r) => s + r[1], 0), v = rows.reduce((s, r) => s + r[2], 0);
+    return `<tr class="cx-sec ${cls}"><td colspan="3">${title}</td></tr>`
+      + (rows.length <= 31 ? rows.map(r => `<tr><td><b>${dLab(r[0])}</b><span class="cx-mut">${wd(r[0])}</span></td><td class="num">${ni(r[1])}</td><td class="num">${nf(r[2])}</td></tr>`).join("") : "")
+      + (rows.length > 1 ? `<tr class="cx-sumr"><td>المجموع · ${daysAr(rows.length)}</td><td class="num">${ni(n)}</td><td class="num">${nf(v)}</td></tr><tr class="cx-sumr"><td>متوسط اليوم</td><td class="num">${nf(n / rows.length, 1)}</td><td class="num">${nf(v / rows.length)}</td></tr>` : ""); };
+  return `<div class="cx-card s3"><div class="cx-ch"><h3>أيام المقارنة</h3></div><table class="cx-t cx-cmpt"><thead><tr><th>اليوم</th><th>الطلبات</th><th>صافي المبيعات</th></tr></thead>
+    <tbody>${part(L, R[0], R[1], "الفترة الحالية", "cur")}${part(Lp, P[0], P[1], "فترة المقارنة", "cmp")}</tbody></table></div>`;
+}
 function kpiCard(o) {
   const ser = [{ name: st.cmp && o.ps ? "الفترة الحالية" : o.t, color: o.color || "#C1121F", values: o.s }]; if (st.cmp && o.ps) ser.push({ name: st.cmpR ? rLab(...st.cmpR) : "الفترة السابقة", color: "#A1A1AA", values: o.ps, dash: 1 });
   return `<div class="cx-card ${o.span || ""}"><div class="cx-ch"><h3>${o.t}</h3>${o.go ? `<button class="cx-link" data-go="${o.go}">عرض التقرير</button>` : ""}</div>
-    <div class="cx-val">${o.html}</div>${deltaHtml(o.v, o.pv, o.inv)}${o.s ? chart({ kind: "line", labels: o.B.labels, tips: o.B.tips, series: ser, f: o.f }) : ""}</div>`;
+    <div class="cx-val">${o.html}</div>${deltaHtml(o.v, o.pv, o.inv)}${o.s ? chart({ kind: "line", labels: o.B.labels, tips: o.B.tips, series: ser, f: o.f }) : ""}${st.cmp && o.ps && LEG ? `<div class="cx-leg2"><span><i></i>${LEG[0]}</span><span><i class="d"></i>${LEG[1]}</span></div>` : ""}</div>`;
 }
 function dashGen(L, Lp, R) {
-  const B = buckets(L, R), ok = L.filter(isOk), okp = Lp.filter(isOk), vd = L.filter(o => isVoid(o)), vdp = Lp.filter(o => isVoid(o)), a = agg(L), p = st.cmp ? agg(likeFor(Lp, R)) : {};
+  const B = buckets(L, R), ok = L.filter(isOk), okp = Lp.filter(isOk), vd = L.filter(o => isVoid(o)), vdp = Lp.filter(o => isVoid(o)), a = agg(L), p = st.cmp ? scaleAgg(agg(likeFor(Lp, R)), CMPK) : {};
   const fut = futureMask(B, R), Bp = st.cmp ? buckets(Lp, prevRange(R), oneDay(R)) : B;
   const S = (arr, f, avg) => series(arr, B, f, avg).map((v, i) => fut[i] ? null : v);
-  const SP = (arr, f, avg) => { const v = series(arr, Bp, f, avg); return B.keys.map((_, i) => i < v.length ? v[i] : null); };
+  const hk = oneDay(R) && nDays(prevRange(R)) > 1 ? 1 / nDays(prevRange(R)) : 1;   /* one day by the hour vs several days: their average day */
+  const SP = (arr, f, avg) => { const v = series(arr, Bp, f, avg).map(x => x == null || avg ? x : x * hk); return B.keys.map((_, i) => i < v.length ? v[i] : null); };
   if (!L.length && !st.cmp) { $("#dbody").innerHTML = `<div class="cx-card">${emptyBox("لا توجد طلبات في هذه الفترة. جرّب يوماً آخر أو فعّل «إظهار الطلبات التجريبية» من التصفية.")}</div>`; return; }
   const hrs = [...Array(24).keys()].map(i => (i + (A.S.config?.cutoff ?? 4)) % 24), hv = hrs.map(h => ok.filter(o => new Date(o.ts).getHours() === h).reduce((s, o) => s + o.total, 0)), hn = hrs.map(h => ok.filter(o => new Date(o.ts).getHours() === h).length);
   const items = {}; ok.forEach(o => { const f = o.subtotal ? o.total / o.subtotal : 1; o.lines.forEach(l => { items[l.name] = (items[l.name] || 0) + l.qty * l.price * f; }); });
   const by = (arr, k) => { const m = {}; arr.forEach(o => { if (k === "method") A.payParts(o).forEach(p => m[p.m] = (m[p.m] || 0) + (+p.a || 0)); else m[o[k]] = (m[o[k]] || 0) + o.total; }); return Object.entries(m); };
   const typeSeries = A.TYPES.map(([k, l]) => ({ name: l, color: TYPE_C[k], values: S(ok.filter(o => o.type === k), () => 1) }));
   $("#dbody").innerHTML = `<div class="cx-grid">
+    ${st.cmp ? cmpTable(L, Lp, R) : ""}
     ${kpiCard({ t: "الطلبات", v: a.n, pv: p.n, html: `<span class="num">${ni(a.n)}</span>`, s: S(ok, () => 1), ps: st.cmp ? SP(okp, () => 1) : null, B, f: "int", go: "orders" })}
     ${kpiCard({ t: "صافي المبيعات", v: a.net, pv: p.net, html: sar(a.net), s: S(ok, o => o.total), ps: st.cmp ? SP(okp, o => o.total) : null, B, go: "sales" })}
     ${kpiCard({ t: "مجمل الربح", v: a.gp, pv: p.gp, html: sar(a.gp), s: S(ok, o => o.total - costOf(o)), ps: st.cmp ? SP(okp, o => o.total - costOf(o)) : null, B, go: "sales", color: "#15803D" })}

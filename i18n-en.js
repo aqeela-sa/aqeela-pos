@@ -1156,5 +1156,18 @@ window.AQ_EN = {
 "الفترتان مختلفتان في الطول:": "The two periods differ in length:",
 "يوم مقابل": "days vs",
 "يوم، فالمقارنة بين المجموعين كما هما.": "days, so their totals are compared as they are.",
-"أسبوع": "Week"
+"أسبوع": "Week",
+"متوسط يوم في فترة المقارنة": "Comparison average day",
+"أيام المقارنة": "Days compared",
+"الحالية": "Current",
+"المقارنة": "Comparison",
+"متوسط اليوم": "Average day",
+"· متوسط اليوم": "· average day",
+"المجموع ·": "Total ·",
+"يوم واحد": "1 day",
+"يومان": "2 days",
+"أيام": "days",
+"يوماً": "days",
+"فترة المقارنة محسوبة على": "Comparison scaled to",
+"أرقام كل يوم في جدول «أيام المقارنة» تحت هذا التنبيه.": "Each day is listed in “Days compared” below."
 };
