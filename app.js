@@ -4,7 +4,7 @@
 import * as F from "./fb.js";
 import { firebaseConfig } from "./firebase-config.js";
 
-const VERSION = "2.11.5";
+const VERSION = "2.11.6";
 const ADMIN_EMAIL = "abuabraj@gmail.com";
 const DEVICE_EMAIL = "cashier@aqeela-pos.app";
 const APP_NAME = `<span dir="ltr">Cashier AQ</span>`;
@@ -146,6 +146,8 @@ addEventListener("keydown", e => { if (S.view === "pin" && !$("#ov") && $("#dots
 addEventListener("offline", () => { S.online = false; drawTop(); });
 
 F.onAuthStateChanged(auth, u => {
+  /* the same account signing in again (after a password change in «حسابي») keeps the open manager console as it is */
+  if (u && S.user && u.uid === S.user.uid && S.view === "admin") { S.user = u; return; }
   S.unsub.forEach(f => f()); S.unsub = []; shiftSub?.(); shiftSub = null; shiftSubId = "";
   S.user = u; S.role = !u ? null : u.email === ADMIN_EMAIL ? "admin" : u.email === DEVICE_EMAIL ? "device" : "other";
   if (!u) return render("login");
@@ -1712,7 +1714,7 @@ function download(rows, name) {
   a.download = name; document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 4000);
 }
 const API = { S, F, D, C, VERSION, METHODS, TYPES, payParts, paidBy, hasM, mLabel, CATS, bizDay, addDays, ymd, dshRange, toast, download, render, orderCogs, packOf, itemCost, printJob, previewJob, printCanvas, drawShiftReport,
-  signOut: () => F.signOut(auth), admStock: () => admStock(), admMenu: () => admMenu(), admStaff: () => admStaff(), admStore: () => admStore(), admVerify: () => admVerify() };
+  auth, apiKey: firebaseConfig.apiKey, signOut: () => F.signOut(auth), admStock: () => admStock(), admMenu: () => admMenu(), admStaff: () => admStaff(), admStore: () => admStore(), admVerify: () => admVerify() };
 function openAdmin(tab) {
   if (!isAdmin()) return; closeModal(); S.view = "admin";
   import(`./console.js?v=${VERSION}`).then(m => m.mount(API, typeof tab === "string" ? tab : null))

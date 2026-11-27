@@ -61,10 +61,10 @@ const NAV = [
   { g: "reports", ic: "trend", t: "التقارير", items: [["sales", "المبيعات"], ["hours", "المبيعات بالساعة"], ["pays", "المدفوعات"], ["items", "تحليل القائمة"], ["disc", "الخصومات والإلغاءات"], ["shifts", "الورديات"]] },
   { id: "stock", ic: "bag", t: "المخزون" },
   { id: "menu", ic: "food", t: "قائمة المنتجات" },
-  { g: "admin", ic: "gear", t: "إدارة", items: [["staff", "الكاشيرون والرموز"], ["store", "الإيصال والإعدادات"], ["verify", "التحقق من إيصال"]] },
+  { g: "admin", ic: "gear", t: "إدارة", items: [["staff", "الكاشيرون والرموز"], ["store", "الإيصال والإعدادات"], ["verify", "التحقق من إيصال"], ["account", "حسابي وكلمة المرور"]] },
 ];
-const TITLES = { dash: "الملخص", orders: "الطلبات", customers: "العملاء", sales: "تقرير المبيعات", hours: "المبيعات بالساعة", pays: "تقرير المدفوعات", items: "تحليل القائمة", disc: "الخصومات والإلغاءات", shifts: "الورديات", stock: "المخزون — التغليف", menu: "قائمة المنتجات والأسعار", staff: "الكاشيرون والرموز", store: "الإيصال والإعدادات", verify: "التحقق من إيصال" };
-const PARENT = { sales: "التقارير", hours: "التقارير", pays: "التقارير", items: "التقارير", disc: "التقارير", shifts: "التقارير", staff: "إدارة", store: "إدارة", verify: "إدارة" };
+const TITLES = { dash: "الملخص", orders: "الطلبات", customers: "العملاء", sales: "تقرير المبيعات", hours: "المبيعات بالساعة", pays: "تقرير المدفوعات", items: "تحليل القائمة", disc: "الخصومات والإلغاءات", shifts: "الورديات", stock: "المخزون — التغليف", menu: "قائمة المنتجات والأسعار", staff: "الكاشيرون والرموز", store: "الإيصال والإعدادات", verify: "التحقق من إيصال", account: "حسابي" };
+const PARENT = { sales: "التقارير", hours: "التقارير", pays: "التقارير", items: "التقارير", disc: "التقارير", shifts: "التقارير", staff: "إدارة", store: "إدارة", verify: "إدارة", account: "إدارة" };
 
 export function mount(api, tab) {
   A = api; window.__cxUnmount = unmount;
@@ -90,13 +90,14 @@ export function mount(api, tab) {
   addEventListener("hashchange", onHash); addEventListener("online", net); addEventListener("offline", net);
   ro = new ResizeObserver(() => { clearTimeout(ro.t); ro.t = setTimeout(drawCharts, 80); }); ro.observe($("#cxp"));
   net(); go(st.page, true);
+  idleLast = Date.now(); idleWatch(); accLoad(true).then(() => { const n = root.querySelector(".cx-av span"); if (n && ACC.name) n.textContent = ACC.name; });
 }
 function unmount() {
   removeEventListener("hashchange", onHash); removeEventListener("online", net); removeEventListener("offline", net);
-  ro?.disconnect(); closePop(); closeDrawer(); root?.removeEventListener("click", onClick); window.__cxUnmount = null;
+  clearInterval(idleT); ro?.disconnect(); closePop(); closeDrawer(); root?.removeEventListener("click", onClick); window.__cxUnmount = null;
   if (location.hash.startsWith("#/admin")) history.replaceState(null, "", location.pathname + location.search);
 }
-const userName = () => A.S.user?.email === "abuabraj@gmail.com" ? "عاطف" : (A.S.cashier?.name || "المدير");
+const userName = () => ACC.name || (A.S.user?.email ==="abuabraj@gmail.com" ? "عاطف" : (A.S.cashier?.name || "المدير"));
 function net() { const n = $("#cxnet"); if (!n) return; n.classList.toggle("off", !navigator.onLine); n.querySelector("span").textContent = navigator.onLine ? "متصل" : "بدون إنترنت"; }
 function onHash() { const h = location.hash.match(/^#\/admin\/(\w+)/); if (h && TITLES[h[1]] && h[1] !== st.page) go(h[1], true); }
 const save = () => ls.set("st", { open: st.open, p: st.p, cmp: st.cmp, dtab: st.dtab, grp: st.grp, pgrp: st.pgrp, igrp: st.igrp, chart: st.chart, hrs: st.hrs, flt: { ...st.flt }, page: st.page, dkind: st.dkind });
@@ -130,8 +131,9 @@ function onClick(e) {
 function exitToPos() { unmount(); A.render(A.S.cashier ? (A.S.shift ? "pos" : "openshift") : "pin"); }
 function userMenu(anchor) {
   pop(anchor, `<div class="cx-menu"><div class="hd"><b>${esc(userName())}</b><small class="num">${esc(A.S.user?.email || "")}</small></div>
-    <button data-m="pos">${ic("store")}شاشة البيع</button><button data-m="upd">${ic("refresh")}تحديث التطبيق <small class="num" style="margin-inline-start:auto;color:#A1A1AA">${A.VERSION}</small></button><hr>
+    <button data-m="acct">${ic("gear")}حسابي وكلمة المرور</button><button data-m="pos">${ic("store")}شاشة البيع</button><button data-m="upd">${ic("refresh")}تحديث التطبيق <small class="num" style="margin-inline-start:auto;color:#A1A1AA">${A.VERSION}</small></button><hr>
     <button data-m="out" style="color:#C2261F">${ic("logout")}تسجيل الخروج</button></div>`, { align: "end" }, el => {
+    el.querySelector("[data-m=acct]").onclick = () => { closePop(); go("account"); };
     el.querySelector("[data-m=pos]").onclick = () => { closePop(); exitToPos(); };
     el.querySelector("[data-m=upd]").onclick = async () => { closePop(); try { await (await navigator.serviceWorker?.getRegistration())?.update(); } catch {} location.reload(); };
     el.querySelector("[data-m=out]").onclick = () => { closePop(); if (A.S.shift) return A.toast("قفّل الوردية المفتوحة في هذا الجهاز أولاً", true); if (confirm("تسجيل الخروج من حساب المدير في هذا الجهاز؟")) { unmount(); A.signOut(); } };
@@ -863,3 +865,116 @@ PAGES.menu = legacy(() => A.admMenu(), "الأصناف وأسعار المطعم
 PAGES.staff = legacy(() => A.admStaff(), "أسماء الكاشيرين ورموز الدخول ورمز المدير");
 PAGES.store = legacy(() => A.admStore(), "بيانات الإيصال والشعار وملاحظات الأصناف ورسالة واتساب واليوم التشغيلي");
 PAGES.verify = legacy(() => A.admVerify(), "تأكد من صحة أي إيصال برقم الطلب ورمز التحقق");
+
+/* ---------- حسابي: بيانات حساب المدير وكلمة المرور والأجهزة والقفل التلقائي ----------
+   هو نفس حساب المالك في AQ ACC: الاسم والجوال والمسمى محفوظة في acc_users/{uid}، وتغيير كلمة المرور يسري على البرنامجين */
+const ACC = { name: "" };
+const IDLE_K = "cx_idle", IDLE_OPT = [[0, "بدون قفل"], [10, "بعد 10 دقائق"], [30, "بعد 30 دقيقة"], [60, "بعد ساعة"]];
+const idleMin = () => { try { return +localStorage.getItem(IDLE_K) || 0; } catch { return 0; } };
+let idleLast = Date.now(), idleT = null;
+["pointerdown", "keydown", "wheel", "touchstart", "input"].forEach(t => addEventListener(t, () => { idleLast = Date.now(); }, { capture: true, passive: true }));
+function idleWatch() {
+  clearInterval(idleT);
+  idleT = setInterval(() => {
+    const m = idleMin(); if (!m || !window.__cxUnmount || Date.now() - idleLast < m * 60000) return;
+    /* مع وردية مفتوحة في هذا الجهاز: تُغلق اللوحة ويعود لشاشة البيع، وإلا يخرج من حساب المدير */
+    if (A.S.shift) { exitToPos(); A.toast("أُغلقت لوحة المدير تلقائياً بعد مدة دون استخدام"); }
+    else { unmount(); A.signOut(); }
+  }, 20000);
+}
+const devId = () => { try { let k = localStorage.getItem("acc-device"); if (!k) { k = [...crypto.getRandomValues(new Uint8Array(8))].map(x => x.toString(16).padStart(2, "0")).join(""); localStorage.setItem("acc-device", k); } return k; } catch { return "unknown"; } };
+const devLabel = () => { const u = navigator.userAgent || "";
+  const os = /iPhone/.test(u) ? "iPhone" : /iPad/.test(u) || (/Macintosh/.test(u) && navigator.maxTouchPoints > 1) ? "iPad" : /Android/.test(u) ? "Android" : /Windows/.test(u) ? "Windows" : /Mac OS X|Macintosh/.test(u) ? "Mac" : "جهاز";
+  const br = /Edg\//.test(u) ? "Edge" : /CriOS|Chrome\//.test(u) ? "Chrome" : /FxiOS|Firefox\//.test(u) ? "Firefox" : /Safari\//.test(u) ? "Safari" : "متصفح";
+  return os + " · " + br; };
+const accRef = () => A.D("acc_users", A.auth.currentUser.uid);
+async function accLoad(touch) {
+  const u = A.auth.currentUser; if (!u) return {};
+  let d = {}; try { const s = await A.F.getDoc(accRef()); d = s.exists() ? s.data() || {} : {}; } catch {}
+  if (touch) { const now = new Date().toISOString(), dv = { ...(d.devices || {}) }, k = devId();
+    dv[k] = { label: devLabel() + " (الكاشير)", first: dv[k]?.first || now, last: now };
+    d.devices = Object.fromEntries(Object.entries(dv).sort((a, b) => String(b[1].last).localeCompare(String(a[1].last))).slice(0, 12));
+    try { await A.F.setDoc(accRef(), { devices: d.devices, lastSeen: now }, { merge: true }); } catch {} }
+  ACC.name = d.nameSet && d.name ? d.name : ""; return d;
+}
+const idt = async (op, body) => {
+  try { const r = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:${op}?key=${encodeURIComponent(A.apiKey)}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    const j = await r.json().catch(() => ({})); return r.ok ? { ok: true, j } : { ok: false, code: j.error?.message || "HTTP " + r.status }; }
+  catch { return { ok: false, code: "NETWORK" }; } };
+const pwErr = c => /INVALID_PASSWORD|INVALID_LOGIN_CREDENTIALS|INVALID_CREDENTIAL/.test(c) ? "كلمة المرور الحالية غير صحيحة"
+  : /TOO_MANY/.test(c) ? "محاولات كثيرة. انتظر بضع دقائق ثم حاول مرة أخرى" : /WEAK_PASSWORD|PASSWORD_DOES_NOT_MEET/.test(c) ? "كلمة المرور الجديدة ضعيفة"
+  : /NETWORK/.test(c) ? "لا يوجد اتصال بالإنترنت" : "تعذّر التنفيذ (" + c + ")";
+const pwRules = p => [[p.length >= 8, "8 أحرف على الأقل"], [/[A-Za-z؀-ۿ]/.test(p), "حرف واحد على الأقل"], [/\d/.test(p), "رقم واحد على الأقل"]];
+const pwStr = p => { let s = 0; if (p.length >= 8) s++; if (p.length >= 12) s++; if (/[A-Za-z؀-ۿ]/.test(p) && /\d/.test(p)) s++; if ((/[a-z]/.test(p) && /[A-Z]/.test(p)) || /[^A-Za-z0-9؀-ۿ]/.test(p)) s++; return s; };
+const STR_T = ["", "ضعيفة", "مقبولة", "جيدة", "قوية"], STR_C = ["#E7E7EB", "#C2261F", "#B45309", "#2F7D4F", "#15803D"];
+const when = t => { if (!t) return "—"; const d = new Date(t); if (isNaN(d)) return "—"; return `<span class="num">${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()} · ${tm(d)}</span>`; };
+const agoTx = t => { const m = Math.round((Date.now() - new Date(t)) / 60000); return !t || isNaN(m) ? "" : m < 2 ? "الآن" : m < 60 ? `قبل ${m} دقيقة` : m < 1440 ? `قبل ${Math.round(m / 60)} ساعة` : `قبل ${Math.round(m / 1440)} يوم`; };
+
+PAGES.account = async () => {
+  page(`<div id="acb">${loadingCards(2, 220)}</div>`, { sub: "بيانات حساب المدير وكلمة المرور، وهو نفس حسابك في برنامج المحاسبة AQ ACC" });
+  const d = await accLoad(false); if (st.page !== "account") return;
+  const u = A.auth.currentUser || {}, md = u.metadata || {}, nm = ACC.name || userName(), em = u.email || "", dev = devId();
+  const devs = Object.entries(d.devices || {}).sort((a, b) => String(b[1].last).localeCompare(String(a[1].last)));
+  const eye = id => `<button type="button" class="cx-eye" data-eye="${id}">إظهار</button>`;
+  $("#acb").innerHTML = `
+    <div class="cx-card cx-ahero"><div class="cx-aav">${esc((nm || "م").trim().charAt(0))}</div>
+      <div class="cx-aid"><b>${esc(nm)}</b><span class="cx-chip ok">المالك · كل الصلاحيات</span><small dir="ltr">${esc(em)}</small></div>
+      <div class="cx-ameta"><div><small>آخر تسجيل دخول</small>${when(md.lastSignInTime)}</div><div><small>الحساب منذ</small>${when(md.creationTime)}</div><div><small>آخر تغيير لكلمة المرور</small>${d.pwChangedAt ? when(d.pwChangedAt) : `<span class="mut">لم تتغير من البرنامج</span>`}</div></div></div>
+    <div class="cx-agrid">
+      <form class="cx-card cx-af" id="acp" autocomplete="off"><h3>البيانات الشخصية</h3>
+        <label>الاسم الظاهر<input class="cx-in" id="ac_nm" maxlength="40" value="${esc(nm)}" required></label>
+        <label>المسمى<input class="cx-in" id="ac_tt" maxlength="40" value="${esc(d.title || "المالك والمدير العام")}"></label>
+        <label>رقم الجوال<input class="cx-in" id="ac_ph" type="tel" dir="ltr" inputmode="tel" maxlength="20" placeholder="05xxxxxxxx" value="${esc(d.phone || "")}"></label>
+        <label>البريد الإلكتروني (اسم الدخول)<input class="cx-in" dir="ltr" value="${esc(em)}" readonly></label>
+        <p class="cx-hint">الاسم يظهر في لوحة المدير وفي برنامج المحاسبة. البريد هو اسم الدخول ومرتبط بالصلاحيات، فلا يتغير من هنا.</p>
+        <div class="cx-aact"><button class="cx-btn pri" type="submit" id="ac_ps">حفظ البيانات</button></div></form>
+      <form class="cx-card cx-af" id="acw" autocomplete="on" novalidate><h3>تغيير كلمة المرور</h3>
+        <input type="email" autocomplete="username" value="${esc(em)}" hidden>
+        <label>كلمة المرور الحالية<span class="cx-pin"><input class="cx-in" id="ac_c" type="password" dir="ltr" autocomplete="current-password">${eye("ac_c")}</span></label>
+        <label>كلمة المرور الجديدة<span class="cx-pin"><input class="cx-in" id="ac_n" type="password" dir="ltr" autocomplete="new-password">${eye("ac_n")}</span><span class="cx-meter"><i id="ac_bar"></i></span><small id="ac_st"></small></label>
+        <label>تأكيد كلمة المرور الجديدة<span class="cx-pin"><input class="cx-in" id="ac_r" type="password" dir="ltr" autocomplete="new-password">${eye("ac_r")}</span><small id="ac_mt"></small></label>
+        <ul class="cx-rules" id="ac_rl">${pwRules("").map(([, t]) => `<li>${t}</li>`).join("")}</ul>
+        <div id="ac_msg"></div>
+        <p class="cx-hint">تتغير لحساب المالك في لوحة المدير وفي برنامج المحاسبة، وتخرج الأجهزة الأخرى خلال ساعة على الأكثر. هذا الجهاز يبقى داخلاً.</p>
+        <div class="cx-aact"><button class="cx-btn pri" type="submit" id="ac_go">تغيير كلمة المرور</button><button class="cx-btn" type="button" id="ac_rs">نسيت الحالية؟ أرسل رابط التعيين لبريدي</button></div></form>
+    </div>
+    <div class="cx-agrid">
+      <div class="cx-card cx-af"><h3>الأمان على هذا الجهاز</h3>
+        <label>قفل لوحة المدير عند عدم الاستخدام<select class="cx-in" id="ac_idle">${IDLE_OPT.map(([v, l]) => `<option value="${v}" ${v === idleMin() ? "selected" : ""}>${l}</option>`).join("")}</select></label>
+        <p class="cx-hint">بعد المدة المختارة دون لمس يخرج من حساب المدير ويطلب كلمة المرور من جديد. وإذا كانت في الجهاز وردية مفتوحة، تُغلق اللوحة ويعود لشاشة البيع دون الخروج. مناسب لجهاز الكاشير الذي يستخدمه الموظفون.</p>
+        <div class="cx-aact"><button class="cx-btn" type="button" id="ac_out">${ic("logout")}تسجيل الخروج من هذا الجهاز</button></div></div>
+      <div class="cx-card cx-af"><h3>الأجهزة التي استُخدم بها الحساب</h3>
+        ${devs.length ? `<div class="cx-devs">${devs.map(([k, v]) => `<div class="cx-dev"><div><b>${esc(v.label || "جهاز")}</b>${k === dev ? ` <span class="cx-chip ok">هذا الجهاز</span>` : ""}<small>أول استخدام ${when(v.first)}</small></div><div class="cx-dw">${k === dev ? "الآن" : esc(agoTx(v.last))}<small>${when(v.last)}</small></div></div>`).join("")}</div>` : `<p class="cx-hint">تظهر الأجهزة هنا بعد أول فتح للوحة أو لبرنامج المحاسبة منها.</p>`}
+        <p class="cx-hint">إذا رأيت جهازاً لا تعرفه، غيّر كلمة المرور فوراً.</p></div>
+    </div>`;
+  $$("[data-eye]").forEach(b => b.onclick = () => { const i = $("#" + b.dataset.eye), sh = i.type === "password"; i.type = sh ? "text" : "password"; b.textContent = sh ? "إخفاء" : "إظهار"; });
+  $("#ac_idle").onchange = e => { try { localStorage.setItem(IDLE_K, e.target.value); } catch {} idleLast = Date.now(); A.toast(+e.target.value ? "سيُقفل " + e.target.selectedOptions[0].textContent : "أُلغي القفل التلقائي"); };
+  $("#ac_out").onclick = () => { if (A.S.shift) return A.toast("قفّل الوردية المفتوحة في هذا الجهاز أولاً", true); if (confirm("تسجيل الخروج من حساب المدير في هذا الجهاز؟")) { unmount(); A.signOut(); } };
+  $("#acp").onsubmit = async e => { e.preventDefault(); const n = $("#ac_nm").value.trim(), ph = $("#ac_ph").value.trim();
+    if (n.length < 2) return A.toast("اكتب الاسم الظاهر", true); if (ph && !/^\+?[0-9 ]{7,20}$/.test(ph)) return A.toast("رقم الجوال غير صحيح", true);
+    const b = $("#ac_ps"); b.disabled = true;
+    try { await A.F.setDoc(accRef(), { name: n, nameSet: true, title: $("#ac_tt").value.trim(), phone: ph, updatedAt: new Date().toISOString() }, { merge: true }); ACC.name = n; A.toast("حُفظت بياناتك ✓"); const sp = root.querySelector(".cx-av span"); if (sp) sp.textContent = n; PAGES.account(); }
+    catch (x) { A.toast("تعذّر الحفظ: " + (x.code || x.message), true); b.disabled = false; } };
+  const c = $("#ac_c"), nw = $("#ac_n"), rp = $("#ac_r"), msg = $("#ac_msg");
+  const live = () => { const v = nw.value, k = v ? pwStr(v) : 0; $("#ac_bar").style.cssText = `width:${k * 25}%;background:${STR_C[k]}`;
+    $("#ac_st").textContent = v ? "القوة: " + STR_T[k] : ""; $("#ac_st").style.color = STR_C[k];
+    $("#ac_rl").innerHTML = pwRules(v).map(([ok, t]) => `<li class="${ok ? "ok" : ""}">${t}</li>`).join("");
+    $("#ac_mt").textContent = rp.value ? (rp.value === v ? "✓ متطابقة" : "غير متطابقة") : ""; $("#ac_mt").style.color = rp.value === v ? "#15803D" : "#C2261F"; };
+  nw.oninput = live; rp.oninput = live;
+  const say = (t, ok) => { msg.innerHTML = `<div class="cx-amsg ${ok ? "ok" : "bad"}">${t}</div>`; };
+  $("#acw").onsubmit = async e => { e.preventDefault(); msg.innerHTML = ""; const v = nw.value;
+    if (!pwRules(v).every(x => x[0])) return say("كلمة المرور الجديدة لا تحقق الشروط: 8 أحرف على الأقل فيها حرف ورقم.");
+    if (v !== rp.value) return say("تأكيد كلمة المرور لا يطابق الجديدة."); if (v === c.value) return say("كلمة المرور الجديدة هي نفسها الحالية.");
+    const b = $("#ac_go"); b.disabled = true; b.textContent = "جارٍ التغيير…";
+    const a1 = await idt("signInWithPassword", { email: em, password: c.value, returnSecureToken: true });
+    const a2 = a1.ok ? await idt("update", { idToken: a1.j.idToken, password: v, returnSecureToken: true }) : a1;
+    b.disabled = false; b.textContent = "تغيير كلمة المرور";
+    if (!a2.ok) { say(esc(pwErr(a2.code || ""))); if (/INVALID/.test(a2.code || "")) { c.value = ""; c.focus(); } return; }
+    const t = new Date().toISOString();
+    try { await A.F.signInWithEmailAndPassword(A.auth, em, v); } catch { say("تغيّرت كلمة المرور. سجّل الدخول بها من جديد.", true); setTimeout(() => { unmount(); A.signOut(); }, 2500); return; }
+    try { await A.F.setDoc(accRef(), { pwChangedAt: t }, { merge: true }); } catch {}
+    A.toast("تغيّرت كلمة المرور ✓"); PAGES.account(); };
+  $("#ac_rs").onclick = async () => { if (!confirm("نرسل رابط تعيين كلمة مرور جديدة إلى " + em + "؟")) return;
+    const r = await idt("sendOobCode", { requestType: "PASSWORD_RESET", email: em });
+    say(r.ok ? "أُرسل الرابط إلى بريدك. افتحه واختر كلمة مرور جديدة، وإن لم تجده فانظر في البريد غير المرغوب." : esc(pwErr(r.code || "")), r.ok); };
+};
