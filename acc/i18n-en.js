@@ -3826,5 +3826,14 @@ window.ACC_EN = {
 "=يوم": "Day",
 "=شهر": "Month",
 "=أسبوع": "Week",
-"th:اليوم": "Day"
+"th:اليوم": "Day",
+"نسخة البرنامج على هذا الجهاز": "App version on this device",
+"هذه النسخة نُشرت:": "This copy was published:",
+"جارٍ التحقق من وجود تحديث…": "Checking for an update…",
+"التحقق الآن": "Check now",
+"تحديث البرنامج": "Update the app",
+"✓ لديك أحدث نسخة": "✓ You have the latest version",
+"يتوفر تحديث أحدث — اضغط «تحديث البرنامج»": "A newer update is available — tap “Update the app”",
+"لا يوجد اتصال بالإنترنت للتحقق": "No internet connection to check",
+"تعذّر التحقق الآن، حاول لاحقاً": "Couldn't check now, try later"
 };

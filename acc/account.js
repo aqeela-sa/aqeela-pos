@@ -37,6 +37,15 @@
     : /WEAK_PASSWORD|PASSWORD_DOES_NOT_MEET/.test(c) ? "كلمة المرور الجديدة ضعيفة. اجعلها 8 أحرف على الأقل فيها حروف وأرقام"
     : /NETWORK/.test(c) ? "لا يوجد اتصال بالإنترنت" : /USER_DISABLED/.test(c) ? "هذا الحساب موقوف" : "تعذّر التغيير (" + c + ")";
 
+  /* when the copy of the program on this device was published (the page's own date, from the site) */
+  function acPub(){ const d = new Date(document.lastModified); if (isNaN(d)) return "—";
+    const p = n => String(n).padStart(2, "0"), h = d.getHours(), h12 = h % 12 || 12;
+    return `${p(d.getDate())}/${p(d.getMonth() + 1)}/${d.getFullYear()} · ${h12}:${p(d.getMinutes())} ${h < 12 ? "ص" : "م"}`; }
+  async function acUpd(){ const el = $("#ac_upd"); if (!el) return; el.textContent = "جارٍ التحقق من وجود تحديث…";
+    const st = window.accUpdateStatus ? await window.accUpdateStatus() : "unknown"; if (!$("#ac_upd")) return;
+    el.innerHTML = st === "same" ? `<span style="color:var(--ok,#1E7B4F);font-weight:600">✓ لديك أحدث نسخة</span>`
+      : st === "new" ? `<span style="color:var(--red,#C1121F);font-weight:600">يتوفر تحديث أحدث — اضغط «تحديث البرنامج»</span>`
+      : st === "offline" ? "لا يوجد اتصال بالإنترنت للتحقق" : "تعذّر التحقق الآن، حاول لاحقاً"; }
   function viewAccount(){
     const u = FB(), me = (u && u.meta && u.meta()) || {}, p = prof(), em = (u && u.email && u.email()) || "", mem = member();
     const dev = u && u.device ? u.device() : "", devs = Object.entries(p.devices || {}).sort((a, b) => (b[1].last || "").localeCompare(a[1].last || ""));
@@ -77,11 +86,16 @@
       ${devs.length ? `<div class="ac-devs">${devs.map(([id, d]) => `<div class="ac-dev"><div><b>${esc(d.label || "جهاز")}</b>${id === dev ? ` <span class="chip ok">هذا الجهاز</span>` : ""}<div class="small muted">أول استخدام ${at(d.first)}</div></div><div class="small" style="text-align:left">${id === dev ? "الآن" : esc(ago(d.last))}<div class="muted">${at(d.last)}</div></div></div>`).join("")}</div>`
         : `<p class="small muted" style="margin:0">تظهر هنا الأجهزة بعد أول فتح للبرنامج منها.</p>`}
       <p class="small muted" style="margin:10px 0 0">إذا رأيت جهازاً لا تعرفه، غيّر كلمة المرور فوراً: يخرج كل جهاز آخر من الحساب.</p></div>
+    <div class="card"><h3>نسخة البرنامج على هذا الجهاز</h3>
+      <p style="margin:0">هذه النسخة نُشرت: <b class="num">${acPub()}</b></p>
+      <div id="ac_upd" class="small muted" style="margin-top:6px">جارٍ التحقق من وجود تحديث…</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px"><button type="button" class="btn ghost sm" id="ac_chk">التحقق الآن</button><button type="button" class="btn sm" id="ac_rl">تحديث البرنامج</button></div></div>
     </div>`;
   }
 
   function bindAccount(){
     const u = FB(); if (!u) return;
+    $("#ac_chk").onclick = acUpd; $("#ac_rl").onclick = () => window.accReload ? accReload() : location.reload(); acUpd();
     $("#ac_out").onclick = () => { if (confirm("تسجيل الخروج من هذا الجهاز؟")) u.signOut(); };
     document.querySelectorAll("[data-eye]").forEach(b => b.onclick = () => { const i = document.getElementById(b.dataset.eye), show = i.type === "password"; i.type = show ? "text" : "password"; b.innerHTML = show ? EYE_OFF : EYE_ON; b.title = show ? "إخفاء" : "إظهار"; b.setAttribute("aria-label", show ? "إخفاء كلمة المرور" : "إظهار كلمة المرور"); });
     $("#ac_idle").onchange = e => { try { localStorage.setItem(IDLE_KEY, e.target.value); } catch(x){} last = Date.now(); toast(+e.target.value ? "سيُقفل البرنامج " + e.target.selectedOptions[0].textContent : "أُلغي القفل التلقائي على هذا الجهاز"); };

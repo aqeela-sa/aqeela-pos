@@ -191,17 +191,24 @@
   window.accReload = fresh;
   /* a newer version is out when the published page names a program file (file.js?v=12 …) that this copy has not loaded */
   let shown = false;
+  /* «new» when the published page is newer than this copy: it names a program file (file.js?v=12 …) this copy has not loaded,
+     or it was published after this copy (its date). «same» when this copy is the latest. */
+  async function status(){
+    if (!navigator.onLine) return "offline";
+    const r = await fetch(location.pathname + "?chk=" + Date.now(), { cache: "no-store" }); if (!r.ok) return "unknown";
+    const h = await r.text();
+    const want = [...h.matchAll(/<(?:script|link)\b[^>]*?(?:src|href)="([^"]+\?v=[^"]+)"/g)].map(m => m[1]);
+    const have = new Set([...document.querySelectorAll("script[src],link[href]")].map(e => e.getAttribute("src") || e.getAttribute("href")));
+    if (want.some(u => !have.has(u))) return "new";
+    const pub = Date.parse(r.headers.get("last-modified") || ""), mine = Date.parse(document.lastModified);
+    if (pub && mine && pub - mine > 60000) return "new";
+    return "same";
+  }
   async function check(){
     if (shown || document.hidden || !navigator.onLine) return;
-    try {
-      const r = await fetch(location.pathname + "?chk=" + Date.now(), { cache: "no-store" }); if (!r.ok) return;
-      const h = await r.text();
-      const want = [...h.matchAll(/<(?:script|link)\b[^>]*?(?:src|href)="([^"]+\?v=[^"]+)"/g)].map(m => m[1]);
-      if (!want.length) return;
-      const have = new Set([...document.querySelectorAll("script[src],link[href]")].map(e => e.getAttribute("src") || e.getAttribute("href")));
-      if (want.some(u => !have.has(u))) offer();
-    } catch(e){}
+    try { if (await status() === "new") offer(); } catch(e){}
   }
+  window.accUpdateStatus = () => status().catch(() => "unknown");
   function offer(){
     if (shown) return; shown = true;
     const b = document.createElement("div"); b.id = "acc_upd"; b.setAttribute("role", "status");

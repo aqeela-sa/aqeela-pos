@@ -12,7 +12,7 @@
   if (lang !== "en") { window.tr = s => s; return; }
   H.lang = "en"; H.dir = "ltr";
   /* the dictionary is read only in English (synchronously, before the page draws) */
-  document.write('<script src="i18n-en.js?v=6"><\/script>');
+  document.write('<script src="i18n-en.js?v=7"><\/script>');
 
   const AR = /[؀-ۿ]/, LET = /[ء-ي٠-٩ٮ-ۓۺ-ۿ]/;
   let DICT = null, RX = null;
