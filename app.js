@@ -4,7 +4,7 @@
 import * as F from "./fb.js";
 import { firebaseConfig } from "./firebase-config.js";
 
-const VERSION = "2.14.1";
+const VERSION = "2.15.0";
 /* the screen language (per device): Arabic or English; the receipt and kitchen ticket stay Arabic */
 const isEn = () => !!(window.aqLang && window.aqLang() === "en");
 const langLink = id => `<button type="button" class="link" id="${id}" data-noi18n style="color:var(--mut);font-size:14px">${isEn() ? "العربية" : "English"}</button>`;
@@ -118,7 +118,7 @@ const S = {
   today: [], pending: 0, online: navigator.onLine,
   dev: ls.get("dev", null) || (() => { const d = rid(4); ls.set("dev", d); return d; })(),
   device: Object.assign({ printMode: "browser", printerIp: "", autoPrint: true, test: false, kitchenMode: "same", kitchenIp: "", drawer: false }, ls.get("device", {})),
-  printer: null, unprinted: null,
+  printer: null, unprinted: null, kds: ls.get("kds", false),
   unsub: [],
 };
 const saveDevice = () => ls.set("device", S.device);
@@ -145,9 +145,9 @@ const D = (...p) => F.doc(db, ...p);
 const C = (...p) => F.collection(db, ...p);
 function fire(p, what) { p.catch(e => { console.error(what, e); toast(`تعذّر الحفظ (${what}): ${e.code || e.message}`, true); }); return p; }
 
-addEventListener("online", () => { S.online = true; drawTop(); });
+addEventListener("online", () => { S.online = true; drawTop(); kdsNet(); });
 addEventListener("keydown", e => { if (S.view === "pin" && !$("#ov") && $("#dots") && S.pinKey && !e.metaKey && !e.ctrlKey) S.pinKey(e.key); });
-addEventListener("offline", () => { S.online = false; drawTop(); });
+addEventListener("offline", () => { S.online = false; drawTop(); kdsNet(); });
 
 F.onAuthStateChanged(auth, u => {
   /* the same account signing in again (after a password change in «حسابي») keeps the open manager console as it is */
@@ -173,11 +173,12 @@ let todaySub = null, todayKey = "";
 function watchToday() {
   const d = bizDay(); if (todayKey === d && todaySub) return; todaySub?.(); todayKey = d;
   todaySub = F.onSnapshot(F.query(C("orders"), F.where("day", "==", d)), { includeMetadataChanges: true }, s => {
-    S.today = s.docs.map(x => ({ ...x.data(), _pending: x.metadata.hasPendingWrites })).sort((a, b) => b.ts - a.ts);
+    S.today = s.docs.map(x => ({ ...x.data(), _pending: x.metadata.hasPendingWrites })).sort((a, b) => b.ts - a.ts); S.todayDay = d;
     S.pending = S.today.filter(o => o._pending).length; drawTop(); if ($("#orders-list")) drawOrdersList(); if ($("#prep-list")) drawPrep();
+    readyFromKitchen(); if (S.view === "kitchen") drawKdsBody();
   }, e => console.error(e));
 }
-setInterval(() => { if (S.view === "pos") { watchToday(); if (!document.querySelector("#q:focus")) drawTop(); } }, 60e3);
+setInterval(() => { if (S.view === "kitchen") watchToday(); if (S.view === "pos") { watchToday(); if (!document.querySelector("#q:focus")) drawTop(); } }, 60e3);
 
 /* ترقية بيانات قديمة مرة واحدة (من حساب المدير فقط): تكلفة الأصناف، والعلب، وأسعار التغليف */
 let migrated = false;
@@ -199,6 +200,7 @@ function route() {
   if (!S.configReady || !S.menuReady) return;
   if (!S.config || !S.menu.length) return render(isAdmin() ? "setup" : "notready");
   if (S.view === "admin") return;
+  if (S.kds || location.hash.startsWith("#/kitchen")) return S.view === "kitchen" ? drawKdsBody() : render("kitchen");
   if (isAdmin() && location.hash.startsWith("#/admin") && S.view !== "admin") return openAdmin();
   /* the owner opening the app on a phone (its home-screen icon) lands on the manager console; the sales screen stays one tap away */
   if (!S.routedOnce) { S.routedOnce = true; if (isAdmin() && !S.shift && matchMedia("(max-width: 700px)").matches) return openAdmin(); }
@@ -222,6 +224,7 @@ function render(view, msg) {
   if (view === "admin") return openAdmin();
   if (view === "pos") { if (!S.shift) return render("openshift"); return drawPos(); }
   if (view === "openshift") return drawOpenShift();
+  if (view === "kitchen") return drawKds();
 }
 
 function drawLogin(msg) {
@@ -276,7 +279,7 @@ function drawPin() {
     <div class="dots" id="dots">${"<i></i>".repeat(4)}</div>
     <div class="pad">${[1, 2, 3, 4, 5, 6, 7, 8, 9].map(k => `<button data-k="${k}">${k}</button>`).join("")}<button class="fn" data-k="c">مسح</button><button data-k="0">0</button><button class="fn" data-k="b">⌫</button></div>
     <div style="display:flex;justify-content:space-between;margin-top:14px">${isAdmin() ? `<button class="link" id="toadm">لوحة المدير</button>` : `<button class="link" id="pdev" style="display:inline-flex;align-items:center;gap:6px">${ic("gear")}إعدادات الجهاز</button>`}<button class="link" id="lo" style="color:var(--mut)">خروج الجهاز</button></div>
-    <div style="display:flex;justify-content:center;align-items:center;gap:14px;margin-top:10px"><button class="link" id="pup" style="color:var(--mut);font-size:13px">${ic("refresh")} تحديث الكاشير · الإصدار <span class="num">${VERSION}</span></button>${langLink("pn_lang")}</div>
+    <div style="display:flex;justify-content:center;align-items:center;gap:14px;margin-top:10px"><button class="link" id="pkds" style="color:var(--mut);font-size:13px;display:inline-flex;align-items:center;gap:5px">${ic("fire")}شاشة المطبخ</button><button class="link" id="pup" style="color:var(--mut);font-size:13px">${ic("refresh")} تحديث الكاشير · الإصدار <span class="num">${VERSION}</span></button>${langLink("pn_lang")}</div>
   </div></div>`;
   bindLang("pn_lang");
   const dots = () => $$("#dots i").forEach((d, i) => d.classList.toggle("on", i < pin.length));
@@ -293,6 +296,7 @@ function drawPin() {
   /* لوحة مفاتيح خارجية: الأرقام والحذف */
   S.pinKey = k => { if (/^\d$/.test(k) && pin.length < 4) { pin += k; dots(); if (pin.length === 4) check(); } else if (k === "Backspace") { pin = pin.slice(0, -1); dots(); } };
   $("#pdev") && ($("#pdev").onclick = () => askManager("إعدادات الجهاز", openDevice));
+  $("#pkds").onclick = openKds;
   $("#pup") && ($("#pup").onclick = async () => { try { const r = await navigator.serviceWorker?.getRegistration(); await r?.update(); } catch {} location.reload(); });
   $("#lo").onclick = () => { if (S.shift) return toast("قفّل الوردية المفتوحة أولاً", true); askManager("خروج الجهاز من الحساب", () => F.signOut(auth)); };
   if ($("#toadm")) $("#toadm").onclick = openAdmin;
@@ -959,6 +963,7 @@ function saveEdit(forPay) {
   if (u.total === ord.total && JSON.stringify(u.lines) === JSON.stringify(ord.lines)) { if (!forPay) { resetCart(); toast("لا تغيير على الطلب"); } else resetCart(); return forPay ? ord : null; }
   u.pack = packOf(u.lines); u.cogs = orderCogs({ ...ord, ...u });
   if (added.length && ord.prep === "done") u.prep = "open";
+  if (added.length) u.kAdd = { at: now, lines: added.map(l => ({ name: l.name, qty: l.qty, mods: l.mods.map(m => ({ name: m.name })), notes: l.notes || [], note: l.note || "" })) };
   Object.assign(ord, u); keepLocal(ord);
   fire(F.updateDoc(D("orders", ord.id), u), "تعديل الطلب");
   resetCart(); closeModal(); drawTop();
@@ -1050,6 +1055,98 @@ function drawPrep() {
   $$("#prep-list [data-pk]").forEach(b => b.onclick = () => { const o = S.today.find(x => x.id === b.dataset.pk); if (o) printJob(o, { kitchen: true }, true); });
 }
 setInterval(() => { if ($("#prep-list")) drawPrep(); }, 30e3);
+
+/* ----- شاشة المطبخ (KDS): آيباد في المطبخ يعرض الطلبات قيد التحضير لحظة تسجيلها، الأقدم أولاً، بعدّاد وقت يتلوّن،
+   وصوت للطلب الجديد وللمتأخر. «جاهز» يُنهي التحضير (يُسجَّل وقته) ويُنبّه الكاشير. ورقة المطبخ تبقى تُطبع كما هي. */
+const KDS_WARN = 5, KDS_LATE = 8, KDS_BY = "المطبخ";
+let kdsAC = null, kdsWake = null, kdsFirst = null, kdsLateSeen = new Set(), kdsUndo = "", kdsUndoT = 0;
+function beep(kind) {
+  try { kdsAC ||= new (window.AudioContext || window.webkitAudioContext)(); const ac = kdsAC; if (ac.state === "suspended") ac.resume();
+    const seq = kind === "late" ? [[587, 0], [587, .28], [587, .56]] : kind === "ready" ? [[784, 0], [1175, .16]] : [[988, 0], [1319, .13], [1568, .26]];
+    seq.forEach(([f, t]) => { const o = ac.createOscillator(), g = ac.createGain(), at = ac.currentTime + t; o.type = "sine"; o.frequency.value = f;
+      g.gain.setValueAtTime(.0001, at); g.gain.exponentialRampToValueAtTime(.5, at + .02); g.gain.exponentialRampToValueAtTime(.0001, at + .24);
+      o.connect(g); g.connect(ac.destination); o.start(at); o.stop(at + .26); });
+  } catch {}
+}
+/* iPad Safari plays sound only after a tap: the first tap anywhere opens the sound */
+addEventListener("pointerdown", () => { try { kdsAC ||= new (window.AudioContext || window.webkitAudioContext)(); if (kdsAC.state === "suspended") kdsAC.resume(); } catch {} }, { passive: true });
+async function kdsWakeOn() { try { if ("wakeLock" in navigator && document.visibilityState === "visible" && !kdsWake) { kdsWake = await navigator.wakeLock.request("screen"); kdsWake.addEventListener("release", () => kdsWake = null); } } catch {} }
+document.addEventListener("visibilitychange", () => { if (S.view === "kitchen" && document.visibilityState === "visible") { kdsWakeOn(); drawKdsBody(); } });
+/* the cashier hears and sees it when the kitchen marks an order ready */
+function readyFromKitchen() {
+  const was = S.prepWas; S.prepWas = new Map(S.today.map(o => [o.id, o.prep]));
+  if (!was || S.view !== "pos") return;
+  const R = S.today.filter(o => was.get(o.id) === "open" && o.prep === "done" && o.deliveredBy === KDS_BY && o.status !== "void" && !!o.test === !!S.device.test);
+  if (!R.length) return; beep("ready");
+  toast(R.length === 1 ? `الطلب ${R[0].no ?? ""} جاهز من المطبخ ✓` : `جاهزة من المطبخ: ${R.map(o => o.no ?? "").join("، ")} ✓`);
+}
+function openKds() { S.kds = true; ls.set("kds", true); history.replaceState(null, "", location.pathname + location.search + "#/kitchen"); render("kitchen"); }
+function exitKds() {
+  modal(`${mh("الخروج من شاشة المطبخ")}<div class="mdl-b"><p style="margin:0 0 16px;line-height:1.8">يرجع هذا الجهاز إلى شاشة دخول الكاشير. الطلبات لا تتأثر.</p>
+    <div style="display:flex;gap:10px"><button class="btn ghost" data-close style="flex:1">بقاء</button><button class="btn" id="kxo" style="flex:1">خروج</button></div></div>`, { mid: true });
+  $("#kxo").onclick = () => { S.kds = false; ls.set("kds", false); kdsFirst = null; try { kdsWake?.release(); } catch {} kdsWake = null;
+    history.replaceState(null, "", location.pathname + location.search); closeModal(); S.view = "boot"; route(); };
+}
+const kdsStart = o => o.kAdd?.at && o.deliveredAt && o.deliveredAt < o.kAdd.at ? o.kAdd.at : o.ts;
+const kdsLv = mn => mn >= KDS_LATE ? "late" : mn >= KDS_WARN ? "warn" : "ok";
+const mmss = ms => { const t = Math.max(0, Math.floor(ms / 1000)); return `${Math.floor(t / 60)}:${pad(t % 60)}`; };
+function drawKds() {
+  watchToday(); kdsFirst = null;
+  $("#app").innerHTML = `${S.device.test ? `<div class="testbar">وضع تجريبي — تظهر الطلبات التجريبية فقط</div>` : ""}<div class="kds">
+    <header class="kds-h"><div class="kds-b"><img src="icons/logo.png" alt=""><div><b>شاشة المطبخ</b><small>${APP_NAME}</small></div></div>
+      <div class="kds-c" id="kdsc"></div><div class="sp"></div><span id="kdsnet"></span><span class="kds-clk num" id="kdsclk"></span>
+      <button class="tbtn sq" id="kdsrl" aria-label="تحديث">${ic("refresh")}</button><button class="tbtn" id="kdsx">خروج</button></header>
+    <div id="kdsoff"></div><main class="kds-g" id="kdsg"></main><footer class="kds-f" id="kdsf"></footer></div>
+    <div class="kds-go" id="kdsgo"><div><div class="logo"><img src="icons/logo.png" alt=""></div><h2>شاشة المطبخ</h2><p>اضغط «ابدأ» لتشغيل صوت الطلبات وإبقاء الشاشة مضيئة.</p><button class="btn" id="kdsgob">ابدأ</button></div></div>`;
+  $("#kdsgob").onclick = () => { beep("ready"); kdsWakeOn(); $("#kdsgo").remove(); };
+  $("#kdsx").onclick = exitKds;
+  $("#kdsrl").onclick = async () => { try { const r = await navigator.serviceWorker?.getRegistration(); await r?.update(); } catch {} location.reload(); };
+  kdsNet(); drawKdsBody();
+}
+function kdsNet() {
+  if (S.view !== "kitchen" || !$("#kdsnet")) return;
+  $("#kdsnet").innerHTML = S.online ? `<span class="net"><i></i><span>متصل</span></span>` : `<span class="net off"><i></i><span>بدون إنترنت</span></span>`;
+  $("#kdsoff").innerHTML = S.online ? "" : `<div class="kds-off">انقطع الإنترنت: الطلبات الجديدة لن تظهر هنا حتى يرجع الاتصال. اعتمد على ورقة المطبخ المطبوعة.</div>`;
+}
+function drawKdsBody() {
+  const G = $("#kdsg"); if (!G) return;
+  if (S.todayDay !== bizDay()) { G.innerHTML = `<div class="kds-e"><b>جارٍ تحميل الطلبات…</b></div>`; return; }
+  const now = Date.now(), L = prepOpen().sort((a, b) => kdsStart(a) - kdsStart(b)), first = !kdsFirst;
+  if (first) kdsFirst = new Map();
+  let fresh = false;
+  L.forEach(o => { const key = o.id + ":" + (o.kAdd?.at || 0); if (!kdsFirst.has(key)) { kdsFirst.set(key, first ? 0 : now); if (!first) fresh = true; } });
+  let late = false;
+  L.forEach(o => { if ((now - kdsStart(o)) / 60000 >= KDS_LATE && !kdsLateSeen.has(o.id)) { kdsLateSeen.add(o.id); if (!first) late = true; } });
+  if (fresh) beep("new"); else if (late) beep("late");
+  const ln = l => `<li><span class="kq num">${l.qty}</span><div><b>${esc(l.name)}</b>${(l.mods || []).map(m => `<div class="km">+ ${esc(m.name)}</div>`).join("")}${[...(l.notes || []), ...(l.note ? [l.note] : [])].map(t => `<div class="kn">${esc(t)}</div>`).join("")}</div></li>`;
+  const card = o => { const st = kdsStart(o), lv = kdsLv((now - st) / 60000), key = o.id + ":" + (o.kAdd?.at || 0), nw = now - (kdsFirst.get(key) || 0) < 10e3;
+    const add = o.kAdd?.at && o.kAdd.at > o.ts ? o.kAdd : null;
+    return `<article class="kc ${lv}${nw ? " new" : ""}" data-st="${st}" data-nw="${kdsFirst.get(key) || 0}"><div class="kc-h"><span class="kc-no num">${o.no ?? ""}</span><span class="sp"></span><span class="kc-tm num">${mmss(now - st)}</span></div>
+      <div class="kc-tg"><span class="kc-ty">${ic(TYPE_IC[o.type] || "take")}${tName(o.type)}</span>${isUnpaid(o) ? `<span class="kc-un">لم يُدفع</span>` : ""}${o.name ? `<span class="kc-who">${esc(o.name)}</span>` : ""}</div>
+      ${add ? `<div class="kc-add"><div class="kc-at">إضافة جديدة · <span class="num">${hm(add.at)}</span></div><ul>${add.lines.map(ln).join("")}</ul></div><div class="kc-was">الطلب كاملاً</div>` : ""}
+      <ul class="kc-l${add ? " dim" : ""}">${o.lines.map(ln).join("")}</ul>
+      <button class="kc-ok" data-kok="${esc(o.id)}">${ic("check")}جاهز</button></article>`; };
+  G.innerHTML = L.length ? L.map(card).join("") : `<div class="kds-e"><b>لا توجد طلبات الآن</b><span>الطلب الجديد يظهر هنا فور تسجيله في الكاشير</span></div>`;
+  const nL = L.filter(o => kdsLv((now - kdsStart(o)) / 60000) === "late").length;
+  $("#kdsc").innerHTML = `<span class="kds-n"><b class="num">${L.length}</b> قيد التحضير</span>${nL ? `<span class="kds-n late"><b class="num">${nL}</b> متأخر</span>` : ""}`;
+  const Dn = S.today.filter(o => o.prep === "done" && o.status !== "void" && o.deliveredAt && !!o.test === !!S.device.test && now - o.deliveredAt < 30 * 60e3).sort((a, b) => b.deliveredAt - a.deliveredAt).slice(0, 8);
+  $("#kdsf").innerHTML = Dn.length ? `<span class="kf-t">جاهز مؤخراً</span>${Dn.map(o => `<button class="kf ${kdsUndo === o.id && now - kdsUndoT < 4e3 ? "ask" : ""}" data-kun="${esc(o.id)}"><b class="num">${o.no ?? ""}</b>${kdsUndo === o.id && now - kdsUndoT < 4e3 ? "إرجاع؟" : `<span class="num">${hm(o.deliveredAt)}</span>`}</button>`).join("")}` : "";
+  $$("#kdsg [data-kok]").forEach(b => b.onclick = () => { const o = S.today.find(x => x.id === b.dataset.kok); if (!o) return;
+    const u = { prep: "done", deliveredAt: Date.now(), deliveredBy: KDS_BY }; Object.assign(o, u); kdsLateSeen.delete(o.id);
+    fire(F.updateDoc(D("orders", o.id), u), "حالة الطلب"); drawKdsBody(); });
+  $$("#kdsf [data-kun]").forEach(b => b.onclick = () => { const id = b.dataset.kun;
+    if (kdsUndo !== id || Date.now() - kdsUndoT > 4e3) { kdsUndo = id; kdsUndoT = Date.now(); drawKdsBody(); setTimeout(() => { if (kdsUndo === id) { kdsUndo = ""; drawKdsBody(); } }, 4100); return; }
+    kdsUndo = ""; const o = S.today.find(x => x.id === id); if (!o) return; const u = { prep: "open", deliveredAt: null, deliveredBy: null }; Object.assign(o, u);
+    fire(F.updateDoc(D("orders", id), u), "حالة الطلب"); drawKdsBody(); });
+}
+/* the clock and the timers move every second without redrawing the cards */
+setInterval(() => { if (S.view !== "kitchen") return; const now = Date.now(); const c = $("#kdsclk"); if (c) c.textContent = hm(now);
+  let redraw = false;
+  $$("#kdsg .kc").forEach(k => { const st = +k.dataset.st, lv = kdsLv((now - st) / 60000); const t = k.querySelector(".kc-tm"); if (t) t.textContent = mmss(now - st);
+    if (!k.classList.contains(lv)) redraw = true;
+    if (k.classList.contains("new") && now - +k.dataset.nw >= 10e3) k.classList.remove("new"); });
+  if (redraw) drawKdsBody(); }, 1000);
+setInterval(() => { if (S.view === "kitchen") drawKdsBody(); }, 15e3);
 
 /* ----- orders today ----- */
 /* ----- تقارير الكاشير (أثناء العمل): الملخص، الطلبات، الأصناف المباعة — بدون التكلفة والأرباح ----- */
