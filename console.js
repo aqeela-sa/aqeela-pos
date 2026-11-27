@@ -946,7 +946,42 @@ PAGES.account = async () => {
       <div class="cx-card cx-af"><h3>الأجهزة التي استُخدم بها الحساب</h3>
         ${devs.length ? `<div class="cx-devs">${devs.map(([k, v]) => `<div class="cx-dev"><div><b>${esc(v.label || "جهاز")}</b>${k === dev ? ` <span class="cx-chip ok">هذا الجهاز</span>` : ""}<small>أول استخدام ${when(v.first)}</small></div><div class="cx-dw">${k === dev ? "الآن" : esc(agoTx(v.last))}<small>${when(v.last)}</small></div></div>`).join("")}</div>` : `<p class="cx-hint">تظهر الأجهزة هنا بعد أول فتح للوحة أو لبرنامج المحاسبة منها.</p>`}
         <p class="cx-hint">إذا رأيت جهازاً لا تعرفه، غيّر كلمة المرور فوراً.</p></div>
-    </div>`;
+    </div>
+    <form class="cx-card cx-af" id="acd" autocomplete="off" novalidate><h3>حساب جهاز الكاشير</h3>
+      <p class="cx-hint">الحساب الذي تُسجَّل به أجهزة الكاشير، ويدخل بعده كل موظف برمزه. صلاحياته البيع والورديات فقط.${A.S.config?.devicePwAt ? ` آخر تغيير لكلمة مروره: ${when(A.S.config.devicePwAt)}.` : ""}</p>
+      <div class="cx-agrid" style="margin:0">
+        <label>البريد (اسم الدخول)<input class="cx-in" dir="ltr" value="${esc(A.deviceEmail || "")}" readonly></label>
+        <label>كلمة المرور الحالية للجهاز<span class="cx-pin"><input class="cx-in" id="dv_c" type="password" dir="ltr" autocomplete="off">${eye("dv_c")}</span></label>
+        <label>كلمة المرور الجديدة<span class="cx-pin"><input class="cx-in" id="dv_n" type="password" dir="ltr" autocomplete="new-password">${eye("dv_n")}</span><span class="cx-meter"><i id="dv_bar"></i></span><small id="dv_st"></small></label>
+        <label>تأكيد كلمة المرور الجديدة<span class="cx-pin"><input class="cx-in" id="dv_r" type="password" dir="ltr" autocomplete="new-password">${eye("dv_r")}</span><small id="dv_mt"></small></label>
+      </div>
+      <ul class="cx-rules" id="dv_rl">${pwRules("").map(([, t]) => `<li>${t}</li>`).join("")}</ul>
+      <div id="dv_open"></div><div id="dv_msg"></div>
+      <p class="cx-hint"><b>بعد التغيير:</b> تخرج كل أجهزة الكاشير من الحساب خلال ساعة على الأكثر، وتظهر فيها شاشة الدخول بالبريد نفسه، فاكتب كلمة المرور الجديدة في كل جهاز. الأفضل تغييرها بعد إغلاق الورديات. لا تتأثر أي بيانات.</p>
+      <div class="cx-aact"><button class="cx-btn pri" type="submit" id="dv_go">تغيير كلمة مرور الجهاز</button></div></form>`;
+  /* open shifts on any cashier device: they keep their data, but their devices will have to sign in again */
+  (async () => { try { const q = await A.F.getDocs(A.F.query(A.C("shifts"), A.F.where("status", "==", "open"))); const n = q.docs.filter(x => !x.data().test).length; const el = $("#dv_open");
+    if (el && n) el.innerHTML = `<div class="cx-amsg bad">توجد ${n === 1 ? "وردية مفتوحة" : `${n} ورديات مفتوحة`} الآن. يمكنك التغيير، لكن الكاشير سيحتاج تسجيل الدخول من جديد قبل إغلاقها.</div>`; } catch {} })();
+  const dn = $("#dv_n"), dr = $("#dv_r");
+  const dlive = () => { const v = dn.value, k = v ? pwStr(v) : 0; $("#dv_bar").style.cssText = `width:${k * 25}%;background:${STR_C[k]}`;
+    $("#dv_st").textContent = v ? "القوة: " + STR_T[k] : ""; $("#dv_st").style.color = STR_C[k];
+    $("#dv_rl").innerHTML = pwRules(v).map(([ok, t]) => `<li class="${ok ? "ok" : ""}">${t}</li>`).join("");
+    $("#dv_mt").textContent = dr.value ? (dr.value === v ? "✓ متطابقة" : "غير متطابقة") : ""; $("#dv_mt").style.color = dr.value === v ? "#15803D" : "#C2261F"; };
+  dn.oninput = dlive; dr.oninput = dlive;
+  $("#acd").onsubmit = async e => { e.preventDefault(); const m = $("#dv_msg"), say2 = (t, ok) => { m.innerHTML = `<div class="cx-amsg ${ok ? "ok" : "bad"}">${t}</div>`; }; m.innerHTML = "";
+    const cur = $("#dv_c").value, v = dn.value;
+    if (!cur) return say2("اكتب كلمة المرور الحالية للجهاز.");
+    if (!pwRules(v).every(x => x[0])) return say2("كلمة المرور الجديدة لا تحقق الشروط: 8 أحرف على الأقل فيها حرف ورقم.");
+    if (v !== dr.value) return say2("تأكيد كلمة المرور لا يطابق الجديدة."); if (v === cur) return say2("كلمة المرور الجديدة هي نفسها الحالية.");
+    if (!confirm("تغيير كلمة مرور جهاز الكاشير؟ ستحتاج كتابتها في كل جهاز كاشير بعد خروجه.")) return;
+    const b = $("#dv_go"); b.disabled = true; b.textContent = "جارٍ التغيير…";
+    const a1 = await idt("signInWithPassword", { email: A.deviceEmail, password: cur, returnSecureToken: true });
+    const a2 = a1.ok ? await idt("update", { idToken: a1.j.idToken, password: v, returnSecureToken: true }) : a1;
+    b.disabled = false; b.textContent = "تغيير كلمة مرور الجهاز";
+    if (!a2.ok) return say2(esc(pwErr(a2.code || "")).replace("الحالية غير صحيحة", "الحالية للجهاز غير صحيحة"));
+    try { await A.F.updateDoc(A.D("config", "main"), { devicePwAt: new Date().toISOString() }); } catch {}
+    $("#dv_c").value = dn.value = dr.value = ""; dlive();
+    say2("✓ تغيّرت كلمة مرور جهاز الكاشير. احفظها في مكان آمن، واكتبها في أجهزة الكاشير عندما تطلب الدخول.", true); A.toast("تغيّرت كلمة مرور الجهاز ✓"); };
   $$("[data-eye]").forEach(b => b.onclick = () => { const i = $("#" + b.dataset.eye), sh = i.type === "password"; i.type = sh ? "text" : "password"; b.textContent = sh ? "إخفاء" : "إظهار"; });
   $("#ac_idle").onchange = e => { try { localStorage.setItem(IDLE_K, e.target.value); } catch {} idleLast = Date.now(); A.toast(+e.target.value ? "سيُقفل " + e.target.selectedOptions[0].textContent : "أُلغي القفل التلقائي"); };
   $("#ac_out").onclick = () => { if (A.S.shift) return A.toast("قفّل الوردية المفتوحة في هذا الجهاز أولاً", true); if (confirm("تسجيل الخروج من حساب المدير في هذا الجهاز؟")) { unmount(); A.signOut(); } };
