@@ -82,16 +82,16 @@
 [data-pro="1"] .kpi .v{font-size:26px;font-weight:700;letter-spacing:-.3px}
 [data-pro="1"] .bal .hd{font-size:14px!important;font-weight:600!important;color:var(--muted)!important}
 [data-pro="1"] .bal .big{font-size:30px!important;letter-spacing:-.4px}
-/* tables: calm header, no zebra, a soft hover */
-[data-pro="1"] table{font-size:13.5px}
-[data-pro="1"] thead th{background:var(--head)!important;color:var(--muted)!important;font-weight:600!important;font-size:12px!important;letter-spacing:.1px}
-[data-pro="1"] th,[data-pro="1"] td{padding:11px 10px}
-[data-pro="1"] tbody tr:nth-child(even) td{background:var(--card)}
-[data-pro="1"] tbody td{border-bottom-color:var(--line2)}
-[data-pro="1"] tbody tr:hover td{background:color-mix(in srgb,var(--ink) 2.5%,var(--card))}
-[data-pro="1"] tbody tr.click:hover td{background:color-mix(in srgb,var(--red) 4%,var(--card))}
+/* tables: calm header, no zebra, a soft hover — not the report and letter tables, which keep their own fixed paper colours */
+[data-pro="1"] table:not(.rp-t):not(.lt-info):not(.lt-money){font-size:13.5px}
+[data-pro="1"] table:not(.rp-t):not(.lt-info):not(.lt-money) thead th{background:var(--head)!important;color:var(--muted)!important;font-weight:600!important;font-size:12px!important}
+[data-pro="1"] table:not(.rp-t):not(.lt-info):not(.lt-money) th,[data-pro="1"] table:not(.rp-t):not(.lt-info):not(.lt-money) td{padding:11px 10px}
+[data-pro="1"] table:not(.rp-t):not(.lt-info):not(.lt-money) tbody tr:nth-child(even) td{background:var(--card)}
+[data-pro="1"] table:not(.rp-t):not(.lt-info):not(.lt-money) tbody td{border-bottom-color:var(--line2)}
+[data-pro="1"] table:not(.rp-t):not(.lt-info):not(.lt-money) tbody tr:hover td{background:color-mix(in srgb,var(--ink) 2.5%,var(--card))}
+[data-pro="1"] table:not(.rp-t):not(.lt-info):not(.lt-money) tbody tr.click:hover td{background:color-mix(in srgb,var(--red) 4%,var(--card))}
 [data-pro="1"] .stick tbody tr:nth-child(even) td:first-child{background:var(--card)}
-[data-pro="1"] tr.tot td{background:var(--head)!important;font-weight:700}
+[data-pro="1"] table:not(.rp-t):not(.lt-info):not(.lt-money) tr.tot td{background:var(--head)!important;font-weight:700}
 /* buttons */
 [data-pro="1"] .btn{height:38px;border-radius:10px!important;font-weight:600;font-size:14px;padding:0 16px}
 [data-pro="1"] .btn:not(.ghost):not(.danger){background:var(--red)!important;box-shadow:0 1px 2px rgba(16,24,40,.08),inset 0 1px 0 rgba(255,255,255,.12)!important}
