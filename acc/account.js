@@ -28,6 +28,8 @@
 
   /* password strength: length, letters, digits, mixed case or a symbol */
   const strength = p => { let s = 0; if (p.length >= 8) s++; if (p.length >= 12) s++; if (/[A-Za-z؀-ۿ]/.test(p) && /\d/.test(p)) s++; if ((/[a-z]/.test(p) && /[A-Z]/.test(p)) || /[^A-Za-z0-9؀-ۿ]/.test(p)) s++; return s; };
+  const EYE_ON = `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>`;
+  const EYE_OFF = `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.6 5.1A10.4 10.4 0 0 1 12 5c6.4 0 10 7 10 7a17 17 0 0 1-2.6 3.5M6.6 6.6C3.7 8.5 2 12 2 12s3.6 7 10 7a9.8 9.8 0 0 0 5.4-1.6M9.9 9.9a3 3 0 0 0 4.2 4.2M3 3l18 18"/></svg>`;
   const S_TXT = ["", "ضعيفة", "مقبولة", "جيدة", "قوية"], S_COL = ["var(--line)", "var(--bad)", "var(--warn)", "#2F7D4F", "var(--good)"];
   const rules = p => [[p.length >= 8, "8 أحرف على الأقل"], [/[A-Za-z؀-ۿ]/.test(p), "حرف واحد على الأقل"], [/\d/.test(p), "رقم واحد على الأقل"]];
   const ERR = c => /INVALID_PASSWORD|INVALID_LOGIN_CREDENTIALS|INVALID_CREDENTIAL/.test(c) ? "كلمة المرور الحالية غير صحيحة"
@@ -57,10 +59,10 @@
     <form class="card entry" id="ac_pw" autocomplete="on" novalidate><h3>تغيير كلمة المرور</h3>
       <input type="email" autocomplete="username" value="${esc(em)}" hidden aria-hidden="true">
       <div class="fields ac-pwf">
-        <div class="f"><label for="ac_c">كلمة المرور الحالية</label><div class="ac-pin"><input id="ac_c" type="password" dir="ltr" autocomplete="current-password" required><button type="button" class="ac-eye" data-eye="ac_c" aria-label="إظهار">إظهار</button></div></div>
-        <div class="f"><label for="ac_n">كلمة المرور الجديدة</label><div class="ac-pin"><input id="ac_n" type="password" dir="ltr" autocomplete="new-password" required minlength="8"><button type="button" class="ac-eye" data-eye="ac_n" aria-label="إظهار">إظهار</button></div>
+        <div class="f"><label for="ac_c">كلمة المرور الحالية</label><div class="ac-pin"><input id="ac_c" type="password" dir="ltr" autocomplete="current-password" required><button type="button" class="ac-eye" data-eye="ac_c" aria-label="إظهار كلمة المرور" title="إظهار">${EYE_ON}</button></div></div>
+        <div class="f"><label for="ac_n">كلمة المرور الجديدة</label><div class="ac-pin"><input id="ac_n" type="password" dir="ltr" autocomplete="new-password" required minlength="8"><button type="button" class="ac-eye" data-eye="ac_n" aria-label="إظهار كلمة المرور" title="إظهار">${EYE_ON}</button></div>
           <div class="ac-meter" aria-hidden="true"><i id="ac_bar"></i></div><div class="small" id="ac_st"></div></div>
-        <div class="f"><label for="ac_r">تأكيد كلمة المرور الجديدة</label><div class="ac-pin"><input id="ac_r" type="password" dir="ltr" autocomplete="new-password" required><button type="button" class="ac-eye" data-eye="ac_r" aria-label="إظهار">إظهار</button></div><div class="small" id="ac_mt"></div></div>
+        <div class="f"><label for="ac_r">تأكيد كلمة المرور الجديدة</label><div class="ac-pin"><input id="ac_r" type="password" dir="ltr" autocomplete="new-password" required><button type="button" class="ac-eye" data-eye="ac_r" aria-label="إظهار كلمة المرور" title="إظهار">${EYE_ON}</button></div><div class="small" id="ac_mt"></div></div>
       </div>
       <ul class="ac-rules" id="ac_rl">${rules("").map(([, t]) => `<li>${t}</li>`).join("")}</ul>
       <div id="ac_msg"></div>
@@ -81,7 +83,7 @@
   function bindAccount(){
     const u = FB(); if (!u) return;
     $("#ac_out").onclick = () => { if (confirm("تسجيل الخروج من هذا الجهاز؟")) u.signOut(); };
-    document.querySelectorAll("[data-eye]").forEach(b => b.onclick = () => { const i = document.getElementById(b.dataset.eye), show = i.type === "password"; i.type = show ? "text" : "password"; b.textContent = show ? "إخفاء" : "إظهار"; });
+    document.querySelectorAll("[data-eye]").forEach(b => b.onclick = () => { const i = document.getElementById(b.dataset.eye), show = i.type === "password"; i.type = show ? "text" : "password"; b.innerHTML = show ? EYE_OFF : EYE_ON; b.title = show ? "إخفاء" : "إظهار"; b.setAttribute("aria-label", show ? "إخفاء كلمة المرور" : "إظهار كلمة المرور"); });
     $("#ac_idle").onchange = e => { try { localStorage.setItem(IDLE_KEY, e.target.value); } catch(x){} last = Date.now(); toast(+e.target.value ? "سيُقفل البرنامج " + e.target.selectedOptions[0].textContent : "أُلغي القفل التلقائي على هذا الجهاز"); };
     $("#ac_pf").onsubmit = async e => { e.preventDefault(); const b = $("#ac_ps"), nm = $("#ac_nm").value.trim(), ph = $("#ac_ph").value.trim();
       if (!member() && nm.length < 2) return toast("اكتب الاسم الظاهر");
@@ -130,8 +132,8 @@
 .ac-grid>.card{min-width:0;margin:0}
 .ac-pwf{grid-template-columns:minmax(0,1fr)}
 .ac-pin{position:relative}
-.ac-pin input{padding-inline-end:70px!important;width:100%}
-.ac-eye{position:absolute;inset-inline-end:6px;top:50%;transform:translateY(-50%);border:0;background:transparent;color:var(--muted);font:inherit;font-size:12px;font-weight:700;cursor:pointer;padding:4px 8px;border-radius:7px}
+.ac-pin input{padding-right:48px!important;padding-left:12px!important;width:100%}
+.ac-eye{position:absolute;right:6px;left:auto;top:50%;transform:translateY(-50%);width:36px;height:36px;border:0;background:transparent;color:var(--muted);display:grid;place-items:center;cursor:pointer;padding:0;border-radius:8px}
 .ac-eye:hover{background:var(--head);color:var(--ink)}
 .ac-meter{height:5px;border-radius:9px;background:var(--line);overflow:hidden;margin-top:6px}
 .ac-meter i{display:block;height:100%;width:0;transition:width .2s,background .2s}

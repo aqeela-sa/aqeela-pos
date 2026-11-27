@@ -285,8 +285,9 @@ a.cx-ni{text-decoration:none;box-sizing:border-box}
 .cx-af label small{font-weight:500;font-size:12.5px}
 .cx-hint{margin:0;color:var(--mut);font-size:13px;line-height:1.7}
 .cx-aact{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
-.cx-pin{position:relative;display:block}.cx-pin .cx-in{padding-inline-end:72px}
-.cx-eye{position:absolute;inset-inline-end:6px;top:50%;transform:translateY(-50%);border:0;background:none;color:var(--mut);font:inherit;font-size:12.5px;font-weight:700;padding:6px 8px;border-radius:7px;cursor:pointer}.cx-eye:hover{background:var(--line2);color:var(--ink)}
+/* the eye sits at the far right of the field; the password is typed left to right, so the room is kept on the right */
+.cx-pin{position:relative;display:block}.cx-pin .cx-in{width:100%;padding-right:48px!important;padding-left:12px!important}
+.cx-eye{position:absolute;right:6px;left:auto;top:50%;transform:translateY(-50%);width:36px;height:36px;border:0;background:none;color:var(--mut);display:grid;place-items:center;padding:0;border-radius:8px;cursor:pointer}.cx-eye:hover{background:var(--line2);color:var(--ink)}
 .cx-meter{display:block;height:5px;border-radius:9px;background:var(--line);overflow:hidden}.cx-meter i{display:block;height:100%;width:0;transition:width .2s}
 .cx-rules{list-style:none;margin:0;padding:0;display:flex;gap:6px 16px;flex-wrap:wrap;font-size:12.5px;color:var(--mut)}
 .cx-rules li::before{content:"○ "}.cx-rules li.ok{color:var(--ok)}.cx-rules li.ok::before{content:"✓ "}

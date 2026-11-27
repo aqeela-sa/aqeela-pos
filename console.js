@@ -906,6 +906,8 @@ const pwErr = c => /INVALID_PASSWORD|INVALID_LOGIN_CREDENTIALS|INVALID_CREDENTIA
   : /NETWORK/.test(c) ? "لا يوجد اتصال بالإنترنت" : "تعذّر التنفيذ (" + c + ")";
 const pwRules = p => [[p.length >= 8, "8 أحرف على الأقل"], [/[A-Za-z؀-ۿ]/.test(p), "حرف واحد على الأقل"], [/\d/.test(p), "رقم واحد على الأقل"]];
 const pwStr = p => { let s = 0; if (p.length >= 8) s++; if (p.length >= 12) s++; if (/[A-Za-z؀-ۿ]/.test(p) && /\d/.test(p)) s++; if ((/[a-z]/.test(p) && /[A-Z]/.test(p)) || /[^A-Za-z0-9؀-ۿ]/.test(p)) s++; return s; };
+const EYE_ON = `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>`;
+const EYE_OFF = `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.6 5.1A10.4 10.4 0 0 1 12 5c6.4 0 10 7 10 7a17 17 0 0 1-2.6 3.5M6.6 6.6C3.7 8.5 2 12 2 12s3.6 7 10 7a9.8 9.8 0 0 0 5.4-1.6M9.9 9.9a3 3 0 0 0 4.2 4.2M3 3l18 18"/></svg>`;
 const STR_T = ["", "ضعيفة", "مقبولة", "جيدة", "قوية"], STR_C = ["#E7E7EB", "#C2261F", "#B45309", "#2F7D4F", "#15803D"];
 const when = t => { if (!t) return "—"; const d = new Date(t); if (isNaN(d)) return "—"; return `<span class="num">${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()} · ${tm(d)}</span>`; };
 const agoTx = t => { const m = Math.round((Date.now() - new Date(t)) / 60000); return !t || isNaN(m) ? "" : m < 2 ? "الآن" : m < 60 ? `قبل ${m} دقيقة` : m < 1440 ? `قبل ${Math.round(m / 60)} ساعة` : `قبل ${Math.round(m / 1440)} يوم`; };
@@ -915,7 +917,7 @@ PAGES.account = async () => {
   const d = await accLoad(false); if (st.page !== "account") return;
   const u = A.auth.currentUser || {}, md = u.metadata || {}, nm = ACC.name || userName(), em = u.email || "", dev = devId();
   const devs = Object.entries(d.devices || {}).sort((a, b) => String(b[1].last).localeCompare(String(a[1].last)));
-  const eye = id => `<button type="button" class="cx-eye" data-eye="${id}">إظهار</button>`;
+  const eye = id => `<button type="button" class="cx-eye" data-eye="${id}" aria-label="إظهار كلمة المرور" title="إظهار">${EYE_ON}</button>`;
   $("#acb").innerHTML = `
     <div class="cx-card cx-ahero"><div class="cx-aav">${esc((nm || "م").trim().charAt(0))}</div>
       <div class="cx-aid"><b>${esc(nm)}</b><span class="cx-chip ok">المالك · كل الصلاحيات</span><small dir="ltr">${esc(em)}</small></div>
@@ -982,7 +984,7 @@ PAGES.account = async () => {
     try { await A.F.updateDoc(A.D("config", "main"), { devicePwAt: new Date().toISOString() }); } catch {}
     $("#dv_c").value = dn.value = dr.value = ""; dlive();
     say2("✓ تغيّرت كلمة مرور جهاز الكاشير. احفظها في مكان آمن، واكتبها في أجهزة الكاشير عندما تطلب الدخول.", true); A.toast("تغيّرت كلمة مرور الجهاز ✓"); };
-  $$("[data-eye]").forEach(b => b.onclick = () => { const i = $("#" + b.dataset.eye), sh = i.type === "password"; i.type = sh ? "text" : "password"; b.textContent = sh ? "إخفاء" : "إظهار"; });
+  $$("[data-eye]").forEach(b => b.onclick = () => { const i = $("#" + b.dataset.eye), sh = i.type === "password"; i.type = sh ? "text" : "password"; b.innerHTML = sh ? EYE_OFF : EYE_ON; b.title = sh ? "إخفاء" : "إظهار"; b.setAttribute("aria-label", sh ? "إخفاء كلمة المرور" : "إظهار كلمة المرور"); });
   $("#ac_idle").onchange = e => { try { localStorage.setItem(IDLE_K, e.target.value); } catch {} idleLast = Date.now(); A.toast(+e.target.value ? "سيُقفل " + e.target.selectedOptions[0].textContent : "أُلغي القفل التلقائي"); };
   $("#ac_out").onclick = () => { if (A.S.shift) return A.toast("قفّل الوردية المفتوحة في هذا الجهاز أولاً", true); if (confirm("تسجيل الخروج من حساب المدير في هذا الجهاز؟")) { unmount(); A.signOut(); } };
   $("#acp").onsubmit = async e => { e.preventDefault(); const n = $("#ac_nm").value.trim(), ph = $("#ac_ph").value.trim();
