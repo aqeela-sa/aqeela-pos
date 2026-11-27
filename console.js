@@ -544,8 +544,20 @@ function cmpBody(sides, basis) {
     if (f.p) { const d = a - b; return `<span class="cq-d ${Math.abs(d) < .05 ? "eq" : (d < 0) === !!f.inv ? "up" : "dn"}">${d >= 0 ? "▲" : "▼"} ${nf(Math.abs(d), 1)} نقطة</span>`; }
     if (!b) return a ? `<span class="cq-d up">جديد</span>` : `<span class="cq-d eq">0%</span>`;
     const d = (a - b) / Math.abs(b) * 100; return `<span class="cq-d ${Math.abs(d) < .05 ? "eq" : (d >= 0) !== !!f.inv ? "up" : "dn"}">${d >= 0 ? "▲" : "▼"} ${nf(Math.abs(d), 1)}%</span>`; };
-  const head = `<th>المؤشر</th>${sides.map(sd => `<th><i class="cq-dot" style="background:${CMP_COL[sd.i]}"></i>${CMP_N[sd.i]}</th>`).join("")}${sides.slice(1).map(sd => `<th>${CMP_N[0]} مقابل ${CMP_N[sd.i]}</th>`).join("")}`;
-  const rows = F.map(f => `<tr><td>${f.t}</td>${sides.map(sd => `<td class="num ${sd.i === 0 ? "b" : ""}">${fmt(f, val(sd, f))}</td>`).join("")}${sides.slice(1).map(sd => `<td>${dlt(f, val(A0, f), val(sd, f))}</td>`).join("")}</tr>`).join("");
+  /* scorecard: metrics grouped, each side with a bar sized to the larger value; the better side is highlighted */
+  const G = [["المبيعات", ["net", "n", "avg", "qty"]], ["الربحية", ["gp", "cpct"]], ["التشغيل", ["disc", "vT", "prep"]]];
+  const tile = f => {
+    const vs = sides.map(sd => val(sd, f)), ok = vs.filter(v => v != null && isFinite(v)), zero = !ok.some(v => v);
+    const mx = Math.max(1e-9, ...ok.map(Math.abs)), bv = f.inv ? Math.min(...ok) : Math.max(...ok), tie = ok.every(v => Math.abs(v - bv) < 1e-9);
+    const bd = sides.slice(1).map(sd => `<span class="cq-vs">${sides.length > 2 ? `<em>${CMP_N[0]} مقابل ${CMP_N[sd.i]}</em>` : ""}${dlt(f, vs[0], vs[sd.i])}</span>`).join("");
+    const df = f.k === "net" && sides.length === 2 && !zero ? `<small class="cq-df">الفرق <b class="num">${nf(Math.abs(vs[0] - vs[1]))}</b> ر.س</small>` : "";
+    if (zero && f.k !== "net") return `<div class="cq-m z"><div class="cq-mh"><span class="cq-mt">${f.t}</span><span class="cq-zt">${ok.length ? "صفر في كل الأطراف" : "لا توجد بيانات"}</span></div></div>`;
+    return `<div class="cq-m${f.k === "net" ? " hero" : ""}${zero ? " z" : ""}"><div class="cq-mh"><span class="cq-mt">${f.t}</span><span class="cq-bds">${bd}</span></div>${df}
+      ${sides.map(sd => { const v = vs[sd.i], w = !zero && !tie && v != null && Math.abs(v - bv) < 1e-9;
+        return `<div class="cq-mr${w ? " w" : ""}" style="--c:${CMP_COL[sd.i]}"><span class="cq-ml">${CMP_N[sd.i]}</span><span class="cq-mb"><i style="width:${zero || v == null ? 0 : Math.max(3, Math.abs(v) / mx * 100)}%"></i></span><b class="num">${fmt(f, v)}</b></div>`; }).join("")}</div>`; };
+  const score = `<div class="cx-card s3 cq-sc"><div class="cx-ch"><h3>النتيجة${basis === "avg" ? " · متوسط اليوم" : " · المجموع"}</h3>${sides.length === 2 ? `<span class="cq-cap">التغيّر: ${CMP_N[0]} مقابل ${CMP_N[1]}</span>` : ""}</div>
+    <div class="cq-lg">${sides.map(sd => `<span style="--c:${CMP_COL[sd.i]}"><i>${CMP_N[sd.i]}</i>${sideLabel(sd.s)[0]}</span>`).join("")}</div>
+    ${G.map(([g, ks]) => `<div class="cq-grp"><h4>${g}</h4><div class="cq-ms">${ks.map(kk => tile(F.find(f => f.k === kk))).join("")}</div></div>`).join("")}</div>`;
   expT("المقارنة", [["t", "المؤشر"], ...sides.map(sd => [`s${sd.i}`, `${CMP_N[sd.i]}: ${sideLabel(sd.s).join(" · ")}`])], F.map(f => ({ t: f.t, ...Object.fromEntries(sides.map(sd => { const v = val(sd, f); return [`s${sd.i}`, v == null || !isFinite(v) ? "" : r2(v)]; })) })));
   /* hours of the business day, per side (total or average day) */
   const cut = A.S.config?.cutoff ?? 4, hrs = [...Array(24).keys()].map(i => (i + cut) % 24);
@@ -581,7 +593,7 @@ function cmpBody(sides, basis) {
     ${sides.map(sd => `<tr class="cx-sec" style="--c:${CMP_COL[sd.i]}"><td colspan="3">${sideT(sd.i)} · ${sideLabel(sd.s)[0]}</td></tr>${dayRows(sd)}${sd.days.length > 7 ? `<tr class="cq-mo"><td colspan="3"><button class="cx-link" data-more="${sd.i}">عرض كل الأيام (<span class="num">${sd.days.length}</span>)</button></td></tr>` : ""}
       ${sd.days.length > 1 ? `<tr class="cx-sumr"><td>المجموع · ${daysAr(sd.days.length)}</td><td class="num">${ni(sd.a.n)}</td><td class="num">${nf(sd.a.net)}</td></tr><tr class="cx-sumr"><td>متوسط اليوم</td><td class="num">${nf(sd.a.n / sd.days.length, 1)}</td><td class="num">${nf(sd.a.net / sd.days.length)}</td></tr>` : ""}`).join("")}</tbody></table></div>`;
   return `${find ? `<div class="cq-find" data-noi18n>${ic("trend")}<div>${find}</div></div>` : ""}
-    <div class="cx-grid"><div class="cx-card s3"><div class="cx-ch"><h3>النتيجة${basis === "avg" ? " · متوسط اليوم" : " · المجموع"}</h3></div><div class="cx-tw"><table class="cx-t cq-t"><thead><tr>${head}</tr></thead><tbody>${rows}</tbody></table></div></div>
+    <div class="cx-grid">${score}
     <div class="cx-card s3"><div class="cx-ch"><h3>المبيعات حسب الساعة${basis === "avg" ? " · متوسط اليوم" : ""}</h3></div>${hchart}${leg}</div>
     ${brk("طرق الدفع", Object.keys(A.METHODS), m => A.METHODS[m], (sd, m) => sd.ok.reduce((s, o) => s + A.paidBy(o, m), 0))}
     ${brk("أنواع الطلب", A.TYPES.map(t => t[0]), t => A.TYPES.find(x => x[0] === t)[1], (sd, t) => sd.ok.filter(o => o.type === t).reduce((s, o) => s + o.total, 0))}

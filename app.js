@@ -4,7 +4,7 @@
 import * as F from "./fb.js";
 import { firebaseConfig } from "./firebase-config.js";
 
-const VERSION = "2.14.0";
+const VERSION = "2.14.1";
 /* the screen language (per device): Arabic or English; the receipt and kitchen ticket stay Arabic */
 const isEn = () => !!(window.aqLang && window.aqLang() === "en");
 const langLink = id => `<button type="button" class="link" id="${id}" data-noi18n style="color:var(--mut);font-size:14px">${isEn() ? "العربية" : "English"}</button>`;

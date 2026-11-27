@@ -1206,5 +1206,10 @@ window.AQ_EN = {
 "اختر يوماً واحداً على الأقل من الأسبوع": "Pick at least one weekday",
 "أكمل اختيار الأيام أولاً": "Finish picking the days first",
 "الشهر التالي": "Next month",
-"عرض كل الأيام (": "Show all days ("
+"عرض كل الأيام (": "Show all days (",
+"الربحية": "Profitability",
+"التشغيل": "Operations",
+"التغيّر": "Change",
+"صفر في كل الأطراف": "Zero on every side",
+"لا توجد بيانات": "No data"
 };
