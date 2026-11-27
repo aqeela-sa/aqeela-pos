@@ -349,3 +349,5 @@
 [data-pro="1"] .st-log{border:1px solid var(--line)!important;border-radius:14px!important;box-shadow:var(--shadow)}
 /* «save» actions keep their green, in the calm Pro shade */
 [data-pro="1"] #fs button[type=submit],[data-pro="1"] #i_save,[data-pro="1"] #c_save,[data-pro="1"] #a_new,[data-pro="1"] #fpay button[type=submit],[data-pro="1"] #fsup button[type=submit],[data-pro="1"] #fstaff button[type=submit],[data-pro="1"] #fadv button[type=submit],[data-pro="1"] #fsp button[type=submit],[data-pro="1"] #fsti button[type=submit],[data-pro="1"] #fstc button[type=submit],[data-pro="1"] #sk_count,[data-pro="1"] #pr_appr,[data-pro="1"] #pr_create,[data-pro="1"] #pr_payall,[data-pro="1"] [data-spay]{background:#15803D!important;box-shadow:0 1px 2px rgba(16,24,40,.08)!important}
+
+.px-lang{font-weight:800;font-size:13px;letter-spacing:0;font-family:inherit}

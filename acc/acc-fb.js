@@ -259,7 +259,9 @@ function loginScreen(msg){
       <label for="acc_pw">كلمة المرور</label>
       <input id="acc_pw" type="password" dir="ltr" autocomplete="current-password" required>
       <button type="submit" id="acc_go">دخول</button>
+      <button type="button" id="acc_lg_lang" data-noi18n style="margin-top:12px;background:none;border:0;color:inherit;opacity:.75;font:inherit;font-size:14px;cursor:pointer;text-decoration:underline">${window.accLang && accLang() === "en" ? "العربية" : "English"}</button>
     </form>`;
+  document.getElementById("acc_lg_lang").onclick = () => window.accSetLang && accSetLang(accLang() === "en" ? "ar" : "en");
   el.hidden = false;
   setTimeout(() => (last ? document.getElementById("acc_pw") : document.getElementById("acc_em")).focus(), 30);
   document.getElementById("acc_lg_f").onsubmit = async e => {

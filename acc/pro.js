@@ -68,7 +68,8 @@
     top.innerHTML = `<button type="button" class="px-menu" id="px_menu" aria-label="القائمة">${icon("bars")}</button><img class="px-mlogo" src="${aqSrc}" alt="">
       <div class="px-crumb"><span id="px_grp"></span><i>/</i><b id="px_page"></b></div>
       <div class="px-neww"><button type="button" class="px-new" id="px_new" aria-haspopup="true" aria-expanded="false"><b>+</b><span>إضافة</span></button><div class="px-pop" id="px_pop" hidden></div></div>
-      <button type="button" class="px-ic" id="px_find2" aria-label="بحث وانتقال سريع">${icon("search")}</button>`;
+      <button type="button" class="px-ic" id="px_find2" aria-label="بحث وانتقال سريع">${icon("search")}</button>
+      <button type="button" class="px-ic px-lang" id="px_lang" data-noi18n title="${window.accLang && accLang() === "en" ? "العربية" : "English"}">${window.accLang && accLang() === "en" ? "ع" : "EN"}</button>`;
     const st = document.getElementById("status"); if (st) top.appendChild(st);
     const scrim = document.createElement("div"); scrim.id = "pxscrim"; scrim.className = "px-only";
     const bot = document.createElement("nav"); bot.id = "pxbot"; bot.className = "px-only"; bot.setAttribute("aria-label", "الصفحات الرئيسية");
@@ -130,6 +131,7 @@
     const openK = () => { if (!pro()) return; close(); k.hidden = false; q.value = ""; sel = 0; draw(); setTimeout(() => q.focus(), 20); };
     const closeK = () => { k.hidden = true; };
     document.getElementById("px_find").onclick = openK; document.getElementById("px_find2").onclick = openK;
+    document.getElementById("px_lang").onclick = () => window.accSetLang && accSetLang(accLang() === "en" ? "ar" : "en");
     q.oninput = () => { sel = 0; draw(); };
     q.onkeydown = e => { if (e.key === "ArrowDown"){ e.preventDefault(); sel = Math.min(items.length - 1, sel + 1); draw(); }
       else if (e.key === "ArrowUp"){ e.preventDefault(); sel = Math.max(0, sel - 1); draw(); }
