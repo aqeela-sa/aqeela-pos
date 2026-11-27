@@ -314,3 +314,6 @@ a.cx-ni{text-decoration:none;box-sizing:border-box}
 .cx-cmpt tr.cx-sec td{font-weight:700;font-size:13px;padding-top:12px;padding-bottom:8px}.cx-cmpt tr.cx-sec.cur td{color:#C1121F;background:#FDECEE}.cx-cmpt tr.cx-sec.cmp td{color:#52525B;background:#F1F1F3}
 .cx-cmpt tr.cx-sumr td{background:#FAFAFA;font-weight:700}
 .cx-tag.cur{background:#FDECEE;color:#C1121F}.cx-tag.cmp{background:#F1F1F3;color:#52525B}
+.pk2-sw{display:flex;gap:4px;padding:4px;margin:0 0 10px;background:#F4F4F5;border-radius:10px}
+.pk2-sw button{flex:1;border:0;background:none;padding:8px 10px;border-radius:8px;font:inherit;font-size:13px;font-weight:600;color:#52525B;cursor:pointer}
+.pk2-sw button.on{background:#fff;color:#C1121F;box-shadow:0 1px 3px rgba(0,0,0,.1)}

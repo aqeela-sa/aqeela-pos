@@ -163,7 +163,9 @@ function picker(anchor, o) {
   const t = A.bizDay(); let y = +(o.a || t).slice(0, 4), m = +(o.a || t).slice(5, 7) - 1, half = null;
   const presets = [["اليوم", t, t], ["الأمس", A.addDays(t, -1), A.addDays(t, -1)], ["هذا الأسبوع", ...A.dshRange("week", t)], ["الأسبوع السابق", ...A.dshRange("week", A.addDays(t, -7))], ["هذا الشهر", ...A.dshRange("month", t)], ["الشهر السابق", ...A.dshRange("month", A.addDays(t.slice(0, 8) + "01", -1))]];
   const done = (a, b) => { closePop(); o.onPick(a, b); };
-  const html = () => {
+  const sw = () => o.switchable ? `<div class="pk2-sw"><button data-sm="day" class="${o.mode === "day" ? "on" : ""}">يوم واحد</button><button data-sm="range" class="${o.mode === "range" ? "on" : ""}">فترة من – إلى</button></div>` : "";
+  const html = () => sw() + html0();
+  const html0 = () => {
     const head = title => `<div class="pk2-h"><button data-n="-1" aria-label="السابق"><svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M8.6 16.6 13.2 12 8.6 7.4 10 6l6 6-6 6z"/></svg></button><b>${title}</b><button data-n="1" aria-label="التالي"><svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M15.4 7.4 10.8 12l4.6 4.6L14 18l-6-6 6-6z"/></svg></button></div>`;
     if (o.mode === "month") return head(y) + `<div class="pk2-m">${AR_M.map((n, i) => { const k = `${y}-${pad(i + 1)}`; return `<button data-mo="${k}" class="${o.a.slice(0, 7) === k ? "on" : ""}">${n}</button>`; }).join("")}</div>`;
     if (o.mode === "week") {
@@ -181,6 +183,7 @@ function picker(anchor, o) {
     return `<div class="pk2-r"><div>${cal}<p class="pk2-hint">${half ? "اختر يوم النهاية" : "اختر يوم البداية ثم يوم النهاية"}</p></div><div class="pk2-p">${presets.map(([l, a, b]) => `<button data-pr="${a}|${b}" class="${o.a === a && o.b === b ? "on" : ""}">${l}</button>`).join("")}</div></div>`;
   };
   const bind = el => {
+    el.querySelectorAll("[data-sm]").forEach(x => x.onclick = () => { o.mode = x.dataset.sm; half = null; redraw(); });
     el.querySelectorAll("[data-n]").forEach(x => x.onclick = () => { const s = +x.dataset.n; if (o.mode === "month") y += s; else { m += s; if (m < 0) { m = 11; y--; } if (m > 11) { m = 0; y++; } } redraw(); });
     el.querySelectorAll("[data-mo]").forEach(x => x.onclick = () => done(...A.dshRange("month", x.dataset.mo + "-01")));
     el.querySelectorAll("[data-wk]").forEach(x => x.onclick = () => done(...x.dataset.wk.split("|")));
@@ -439,7 +442,8 @@ PAGES.dash = async () => {
   $("#cxd").onclick = e => st.p === "range" ? pickRange(e.currentTarget, R[0], R[1], (x, y) => { st.ra = x; st.rb = y; })
     : picker(e.currentTarget, { mode: st.p, a: R[0], b: R[1], onPick: a => { st.d = a; PAGES.dash(); } });
   if ($("#cxcmp")) $("#cxcmp").onclick = () => { st.cmp = !st.cmp; if (!st.cmp) st.cmpR = null; save(); PAGES.dash(); };
-  if ($("#cxcr")) $("#cxcr").onclick = e => { const P = prevRange(R); pickRange(e.currentTarget, P[0], P[1], (x, y) => { st.cmpR = [x, y]; }); };
+  if ($("#cxcr")) $("#cxcr").onclick = e => { const P = prevRange(R);
+    picker(e.currentTarget, { mode: oneDay(P) ? "day" : "range", switchable: true, a: P[0], b: P[1], onPick: (x, y) => { st.cmpR = [x, y || x]; save(); PAGES.dash(); } }); };
   if ($("#cxcrx")) $("#cxcrx").onclick = () => { st.cmpR = null; save(); PAGES.dash(); };
   let L, Lp = [];
   try { const all = await load(...R); L = applyF(all); if (st.cmp && st.dtab === "gen") Lp = applyF(await load(...prevRange(R))); bindFlt(PAGES.dash, all.map(o => o.cashierName)); }

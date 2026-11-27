@@ -1164,10 +1164,11 @@ window.AQ_EN = {
 "متوسط اليوم": "Average day",
 "· متوسط اليوم": "· average day",
 "المجموع ·": "Total ·",
-"يوم واحد": "1 day",
+"يوم واحد": "One day",
 "يومان": "2 days",
 "أيام": "days",
 "يوماً": "days",
 "فترة المقارنة محسوبة على": "Comparison scaled to",
-"أرقام كل يوم في جدول «أيام المقارنة» تحت هذا التنبيه.": "Each day is listed in “Days compared” below."
+"أرقام كل يوم في جدول «أيام المقارنة» تحت هذا التنبيه.": "Each day is listed in “Days compared” below.",
+"فترة من – إلى": "From – to period"
 };
