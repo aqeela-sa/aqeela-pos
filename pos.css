@@ -453,3 +453,4 @@ body{background:var(--page)}
 .kds-go h2{margin:14px 0 8px;font-size:28px}.kds-go p{margin:0 0 22px;opacity:.85;font-size:16px;line-height:1.7}.kds-go .btn{min-width:200px;height:56px;font-size:20px}
 .kds-go .logo{display:flex;justify-content:center}.kds-go .logo img{width:84px;height:84px;border-radius:20px}
 @media (max-width:700px){.kds-b small,.kds-clk,.kds-b img{display:none}.kds-h{gap:8px;padding-inline:10px;flex-wrap:wrap}.kds-c{margin:0}.kds-g{min-width:0}.kds-g{grid-template-columns:1fr;padding:10px}.kds-n{padding:5px 10px;font-size:13px}}
+.kc-test{white-space:nowrap;font-size:12.5px;font-weight:700;color:#6B21A8;background:#F3E8FF;border-radius:8px;padding:4px 8px}.kc.test{background-image:repeating-linear-gradient(135deg,transparent 0 14px,rgba(147,51,234,.035) 14px 28px)}

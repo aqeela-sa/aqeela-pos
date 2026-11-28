@@ -4,7 +4,7 @@
 import * as F from "./fb.js";
 import { firebaseConfig } from "./firebase-config.js";
 
-const VERSION = "2.15.0";
+const VERSION = "2.15.1";
 /* the screen language (per device): Arabic or English; the receipt and kitchen ticket stay Arabic */
 const isEn = () => !!(window.aqLang && window.aqLang() === "en");
 const langLink = id => `<button type="button" class="link" id="${id}" data-noi18n style="color:var(--mut);font-size:14px">${isEn() ? "العربية" : "English"}</button>`;
@@ -1087,12 +1087,15 @@ function exitKds() {
   $("#kxo").onclick = () => { S.kds = false; ls.set("kds", false); kdsFirst = null; try { kdsWake?.release(); } catch {} kdsWake = null;
     history.replaceState(null, "", location.pathname + location.search); closeModal(); S.view = "boot"; route(); };
 }
+/* the kitchen sees every order to prepare, the training (test) ones too, marked «تجريبي»: a cashier in test mode is
+   training, and the kitchen should see what it is asked to cook */
+const kdsOpen = () => S.today.filter(o => o.prep === "open" && o.status !== "void");
 const kdsStart = o => o.kAdd?.at && o.deliveredAt && o.deliveredAt < o.kAdd.at ? o.kAdd.at : o.ts;
 const kdsLv = mn => mn >= KDS_LATE ? "late" : mn >= KDS_WARN ? "warn" : "ok";
 const mmss = ms => { const t = Math.max(0, Math.floor(ms / 1000)); return `${Math.floor(t / 60)}:${pad(t % 60)}`; };
 function drawKds() {
   watchToday(); kdsFirst = null;
-  $("#app").innerHTML = `${S.device.test ? `<div class="testbar">وضع تجريبي — تظهر الطلبات التجريبية فقط</div>` : ""}<div class="kds">
+  $("#app").innerHTML = `<div class="kds">
     <header class="kds-h"><div class="kds-b"><img src="icons/logo.png" alt=""><div><b>شاشة المطبخ</b><small>${APP_NAME}</small></div></div>
       <div class="kds-c" id="kdsc"></div><div class="sp"></div><span id="kdsnet"></span><span class="kds-clk num" id="kdsclk"></span>
       <button class="tbtn sq" id="kdsrl" aria-label="تحديث">${ic("refresh")}</button><button class="tbtn" id="kdsx">خروج</button></header>
@@ -1111,7 +1114,7 @@ function kdsNet() {
 function drawKdsBody() {
   const G = $("#kdsg"); if (!G) return;
   if (S.todayDay !== bizDay()) { G.innerHTML = `<div class="kds-e"><b>جارٍ تحميل الطلبات…</b></div>`; return; }
-  const now = Date.now(), L = prepOpen().sort((a, b) => kdsStart(a) - kdsStart(b)), first = !kdsFirst;
+  const now = Date.now(), L = kdsOpen().sort((a, b) => kdsStart(a) - kdsStart(b)), first = !kdsFirst;
   if (first) kdsFirst = new Map();
   let fresh = false;
   L.forEach(o => { const key = o.id + ":" + (o.kAdd?.at || 0); if (!kdsFirst.has(key)) { kdsFirst.set(key, first ? 0 : now); if (!first) fresh = true; } });
@@ -1121,15 +1124,15 @@ function drawKdsBody() {
   const ln = l => `<li><span class="kq num">${l.qty}</span><div><b>${esc(l.name)}</b>${(l.mods || []).map(m => `<div class="km">+ ${esc(m.name)}</div>`).join("")}${[...(l.notes || []), ...(l.note ? [l.note] : [])].map(t => `<div class="kn">${esc(t)}</div>`).join("")}</div></li>`;
   const card = o => { const st = kdsStart(o), lv = kdsLv((now - st) / 60000), key = o.id + ":" + (o.kAdd?.at || 0), nw = now - (kdsFirst.get(key) || 0) < 10e3;
     const add = o.kAdd?.at && o.kAdd.at > o.ts ? o.kAdd : null;
-    return `<article class="kc ${lv}${nw ? " new" : ""}" data-st="${st}" data-nw="${kdsFirst.get(key) || 0}"><div class="kc-h"><span class="kc-no num">${o.no ?? ""}</span><span class="sp"></span><span class="kc-tm num">${mmss(now - st)}</span></div>
-      <div class="kc-tg"><span class="kc-ty">${ic(TYPE_IC[o.type] || "take")}${tName(o.type)}</span>${isUnpaid(o) ? `<span class="kc-un">لم يُدفع</span>` : ""}${o.name ? `<span class="kc-who">${esc(o.name)}</span>` : ""}</div>
+    return `<article class="kc ${lv}${nw ? " new" : ""}${o.test ? " test" : ""}" data-st="${st}" data-nw="${kdsFirst.get(key) || 0}"><div class="kc-h"><span class="kc-no num">${o.no ?? ""}</span><span class="sp"></span><span class="kc-tm num">${mmss(now - st)}</span></div>
+      <div class="kc-tg"><span class="kc-ty">${ic(TYPE_IC[o.type] || "take")}${tName(o.type)}</span>${isUnpaid(o) ? `<span class="kc-un">لم يُدفع</span>` : ""}${o.test ? `<span class="kc-test">تجريبي</span>` : ""}${o.name ? `<span class="kc-who">${esc(o.name)}</span>` : ""}</div>
       ${add ? `<div class="kc-add"><div class="kc-at">إضافة جديدة · <span class="num">${hm(add.at)}</span></div><ul>${add.lines.map(ln).join("")}</ul></div><div class="kc-was">الطلب كاملاً</div>` : ""}
       <ul class="kc-l${add ? " dim" : ""}">${o.lines.map(ln).join("")}</ul>
       <button class="kc-ok" data-kok="${esc(o.id)}">${ic("check")}جاهز</button></article>`; };
   G.innerHTML = L.length ? L.map(card).join("") : `<div class="kds-e"><b>لا توجد طلبات الآن</b><span>الطلب الجديد يظهر هنا فور تسجيله في الكاشير</span></div>`;
   const nL = L.filter(o => kdsLv((now - kdsStart(o)) / 60000) === "late").length;
   $("#kdsc").innerHTML = `<span class="kds-n"><b class="num">${L.length}</b> قيد التحضير</span>${nL ? `<span class="kds-n late"><b class="num">${nL}</b> متأخر</span>` : ""}`;
-  const Dn = S.today.filter(o => o.prep === "done" && o.status !== "void" && o.deliveredAt && !!o.test === !!S.device.test && now - o.deliveredAt < 30 * 60e3).sort((a, b) => b.deliveredAt - a.deliveredAt).slice(0, 8);
+  const Dn = S.today.filter(o => o.prep === "done" && o.status !== "void" && o.deliveredAt && now - o.deliveredAt < 30 * 60e3).sort((a, b) => b.deliveredAt - a.deliveredAt).slice(0, 8);
   $("#kdsf").innerHTML = Dn.length ? `<span class="kf-t">جاهز مؤخراً</span>${Dn.map(o => `<button class="kf ${kdsUndo === o.id && now - kdsUndoT < 4e3 ? "ask" : ""}" data-kun="${esc(o.id)}"><b class="num">${o.no ?? ""}</b>${kdsUndo === o.id && now - kdsUndoT < 4e3 ? "إرجاع؟" : `<span class="num">${hm(o.deliveredAt)}</span>`}</button>`).join("")}` : "";
   $$("#kdsg [data-kok]").forEach(b => b.onclick = () => { const o = S.today.find(x => x.id === b.dataset.kok); if (!o) return;
     const u = { prep: "done", deliveredAt: Date.now(), deliveredBy: KDS_BY }; Object.assign(o, u); kdsLateSeen.delete(o.id);
