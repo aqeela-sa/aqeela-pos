@@ -4,7 +4,7 @@
 import * as F from "./fb.js";
 import { firebaseConfig } from "./firebase-config.js";
 
-const VERSION = "2.15.1";
+const VERSION = "2.15.2";
 /* the screen language (per device): Arabic or English; the receipt and kitchen ticket stay Arabic */
 const isEn = () => !!(window.aqLang && window.aqLang() === "en");
 const langLink = id => `<button type="button" class="link" id="${id}" data-noi18n style="color:var(--mut);font-size:14px">${isEn() ? "العربية" : "English"}</button>`;
@@ -139,8 +139,10 @@ const isAdmin = () => S.role === "admin";
 const app = F.initializeApp(firebaseConfig);
 const auth = F.getAuth(app);
 let db;
-try { db = F.initializeFirestore(app, { localCache: F.persistentLocalCache({ tabManager: F.persistentSingleTabManager() }) }); }
-catch { db = F.initializeFirestore(app, {}); }
+/* the kitchen screen (often an older iPad on the truck's Wi-Fi) listens by long polling: a stalled stream there showed new orders late */
+const KDS_DEV = ls.get("kds", false) || location.hash.startsWith("#/kitchen");
+try { db = F.initializeFirestore(app, { localCache: F.persistentLocalCache({ tabManager: F.persistentSingleTabManager() }), ...(KDS_DEV ? { experimentalForceLongPolling: true } : {}) }); }
+catch { db = F.initializeFirestore(app, KDS_DEV ? { experimentalForceLongPolling: true } : {}); }
 const D = (...p) => F.doc(db, ...p);
 const C = (...p) => F.collection(db, ...p);
 function fire(p, what) { p.catch(e => { console.error(what, e); toast(`تعذّر الحفظ (${what}): ${e.code || e.message}`, true); }); return p; }
@@ -1080,7 +1082,8 @@ function readyFromKitchen() {
   if (!R.length) return; beep("ready");
   toast(R.length === 1 ? `الطلب ${R[0].no ?? ""} جاهز من المطبخ ✓` : `جاهزة من المطبخ: ${R.map(o => o.no ?? "").join("، ")} ✓`);
 }
-function openKds() { S.kds = true; ls.set("kds", true); history.replaceState(null, "", location.pathname + location.search + "#/kitchen"); render("kitchen"); }
+function openKds() { S.kds = true; ls.set("kds", true); history.replaceState(null, "", location.pathname + location.search + "#/kitchen");
+  if (!KDS_DEV) return location.reload(); /* the kitchen's connection settings (long polling) apply from the start */ render("kitchen"); }
 function exitKds() {
   modal(`${mh("الخروج من شاشة المطبخ")}<div class="mdl-b"><p style="margin:0 0 16px;line-height:1.8">يرجع هذا الجهاز إلى شاشة دخول الكاشير. الطلبات لا تتأثر.</p>
     <div style="display:flex;gap:10px"><button class="btn ghost" data-close style="flex:1">بقاء</button><button class="btn" id="kxo" style="flex:1">خروج</button></div></div>`, { mid: true });
@@ -1150,6 +1153,13 @@ setInterval(() => { if (S.view !== "kitchen") return; const now = Date.now(); co
     if (k.classList.contains("new") && now - +k.dataset.nw >= 10e3) k.classList.remove("new"); });
   if (redraw) drawKdsBody(); }, 1000);
 setInterval(() => { if (S.view === "kitchen") drawKdsBody(); }, 15e3);
+/* safety net: every 15 s the kitchen asks the server for the open orders directly (a few reads), so an order never waits on a slow listener */
+setInterval(async () => { if (S.view !== "kitchen" || !S.online || document.visibilityState !== "visible" || S.todayDay !== bizDay()) return;
+  try { const q = await F.getDocs(F.query(C("orders"), F.where("day", "==", bizDay()), F.where("prep", "==", "open"))); let ch = false;
+    q.docs.forEach(x => { const o = x.data(), i = S.today.findIndex(t => t.id === o.id);
+      if (i < 0) { S.today = [o, ...S.today]; ch = true; } else if (S.today[i].deliveredBy === KDS_BY && Date.now() - (S.today[i].deliveredAt || 0) < 60e3) return; /* just marked ready here: the server catches up */
+      else if (S.today[i].prep !== "open" || JSON.stringify(S.today[i].lines) !== JSON.stringify(o.lines) || (S.today[i].kAdd?.at || 0) !== (o.kAdd?.at || 0)) { S.today[i] = { ...S.today[i], ...o }; ch = true; } });
+    if (ch) drawKdsBody(); } catch (e) { console.warn("kds poll", e?.code || e); } }, 15e3);
 
 /* ----- orders today ----- */
 /* ----- تقارير الكاشير (أثناء العمل): الملخص، الطلبات، الأصناف المباعة — بدون التكلفة والأرباح ----- */
