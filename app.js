@@ -4,7 +4,7 @@
 import * as F from "./fb.js";
 import { firebaseConfig } from "./firebase-config.js";
 
-const VERSION = "2.15.2";
+const VERSION = "2.15.3";
 /* the screen language (per device): Arabic or English; the receipt and kitchen ticket stay Arabic */
 const isEn = () => !!(window.aqLang && window.aqLang() === "en");
 const langLink = id => `<button type="button" class="link" id="${id}" data-noi18n style="color:var(--mut);font-size:14px">${isEn() ? "العربية" : "English"}</button>`;
@@ -1094,6 +1094,9 @@ function exitKds() {
    training, and the kitchen should see what it is asked to cook */
 const kdsOpen = () => S.today.filter(o => o.prep === "open" && o.status !== "void");
 const kdsStart = o => o.kAdd?.at && o.deliveredAt && o.deliveredAt < o.kAdd.at ? o.kAdd.at : o.ts;
+/* identical lines (same item, additions and notes) are shown once with their total quantity */
+const kdsMerge = lines => { const m = new Map(); (lines || []).forEach(l => { const notes = [...(l.notes || []), ...(l.note ? [l.note] : [])], key = JSON.stringify([l.name, (l.mods || []).map(x => x.name), notes]);
+  const e = m.get(key); if (e) e.qty += +l.qty || 0; else m.set(key, { name: l.name, qty: +l.qty || 0, mods: l.mods || [], notes, note: "" }); }); return [...m.values()]; };
 const kdsLv = mn => mn >= KDS_LATE ? "late" : mn >= KDS_WARN ? "warn" : "ok";
 const mmss = ms => { const t = Math.max(0, Math.floor(ms / 1000)); return `${Math.floor(t / 60)}:${pad(t % 60)}`; };
 function drawKds() {
@@ -1102,7 +1105,7 @@ function drawKds() {
     <header class="kds-h"><div class="kds-b"><img src="icons/logo.png" alt=""><div><b>شاشة المطبخ</b><small>${APP_NAME}</small></div></div>
       <div class="kds-c" id="kdsc"></div><div class="sp"></div><span id="kdsnet"></span><span class="kds-clk num" id="kdsclk"></span>
       <button class="tbtn sq" id="kdsrl" aria-label="تحديث">${ic("refresh")}</button><button class="tbtn" id="kdsx">خروج</button></header>
-    <div id="kdsoff"></div><main class="kds-g" id="kdsg"></main><footer class="kds-f" id="kdsf"></footer></div>
+    <div id="kdsoff"></div><main class="kds-sc"><div class="kds-g" id="kdsg"></div></main><footer class="kds-f" id="kdsf"></footer></div>
     <div class="kds-go" id="kdsgo"><div><div class="logo"><img src="icons/logo.png" alt=""></div><h2>شاشة المطبخ</h2><p>اضغط «ابدأ» لتشغيل صوت الطلبات وإبقاء الشاشة مضيئة.</p><button class="btn" id="kdsgob">ابدأ</button></div></div>`;
   $("#kdsgob").onclick = () => { beep("ready"); kdsWakeOn(); $("#kdsgo").remove(); };
   $("#kdsx").onclick = exitKds;
@@ -1129,8 +1132,8 @@ function drawKdsBody() {
     const add = o.kAdd?.at && o.kAdd.at > o.ts ? o.kAdd : null;
     return `<article class="kc ${lv}${nw ? " new" : ""}${o.test ? " test" : ""}" data-st="${st}" data-nw="${kdsFirst.get(key) || 0}"><div class="kc-h"><span class="kc-no num">${o.no ?? ""}</span><span class="sp"></span><span class="kc-tm num">${mmss(now - st)}</span></div>
       <div class="kc-tg"><span class="kc-ty">${ic(TYPE_IC[o.type] || "take")}${tName(o.type)}</span>${isUnpaid(o) ? `<span class="kc-un">لم يُدفع</span>` : ""}${o.test ? `<span class="kc-test">تجريبي</span>` : ""}${o.name ? `<span class="kc-who">${esc(o.name)}</span>` : ""}</div>
-      ${add ? `<div class="kc-add"><div class="kc-at">إضافة جديدة · <span class="num">${hm(add.at)}</span></div><ul>${add.lines.map(ln).join("")}</ul></div><div class="kc-was">الطلب كاملاً</div>` : ""}
-      <ul class="kc-l${add ? " dim" : ""}">${o.lines.map(ln).join("")}</ul>
+      ${add ? `<div class="kc-add"><div class="kc-at">إضافة جديدة · <span class="num">${hm(add.at)}</span></div><ul>${kdsMerge(add.lines).map(ln).join("")}</ul></div><div class="kc-was">الطلب كاملاً</div>` : ""}
+      <ul class="kc-l${add ? " dim" : ""}">${kdsMerge(o.lines).map(ln).join("")}</ul>
       <button class="kc-ok" data-kok="${esc(o.id)}">${ic("check")}جاهز</button></article>`; };
   G.innerHTML = L.length ? L.map(card).join("") : `<div class="kds-e"><b>لا توجد طلبات الآن</b><span>الطلب الجديد يظهر هنا فور تسجيله في الكاشير</span></div>`;
   const nL = L.filter(o => kdsLv((now - kdsStart(o)) / 60000) === "late").length;
