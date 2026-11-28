@@ -13,10 +13,18 @@ var db = initializeFirestore(app, { experimentalForceLongPolling: true });
 var $ = function (s) { return document.querySelector(s); };
 var esc = function (s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); };
 var pad = function (n) { return (n < 10 ? "0" : "") + n; };
-var hm = function (t) { var d = new Date(t); return pad(d.getHours()) + ":" + pad(d.getMinutes()); };
+/* a TV's own clock and time zone are often wrong (one showed 20:32 at 04:32 Riyadh time): the time is taken from the web server's
+   clock and shown in Riyadh time (UTC+3, no daylight saving), so the business day and the 5 ready minutes are right whatever the TV says */
+var OFF = 0, TZ = 3 * 3600e3;
+var now = function () { return Date.now() + OFF; };
+function syncClock() {
+  try { var t0 = Date.now(); fetch("board.html?clock=" + t0, { method: "HEAD", cache: "no-store" }).then(function (r) {
+    var d = Date.parse(r.headers.get("Date") || ""); if (d) { OFF = d + (Date.now() - t0) / 2 - Date.now(); if (auth.currentUser) { watchDay(); draw(); } } }).catch(function () {}); } catch (e) {}
+}
+var hm = function (t) { var d = new Date(t + TZ); return pad(d.getUTCHours()) + ":" + pad(d.getUTCMinutes()); };
 var S = { config: null, today: [], day: "", unsub: [], first: null, started: false, online: navigator.onLine };
-var ymd = function (d) { return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate()); };
-var bizDay = function () { return ymd(new Date(Date.now() - ((S.config && S.config.cutoff != null ? S.config.cutoff : 4) * 3600e3))); };
+var ymd = function (d) { return d.getUTCFullYear() + "-" + pad(d.getUTCMonth() + 1) + "-" + pad(d.getUTCDate()); };
+var bizDay = function () { return ymd(new Date(now() + TZ - ((S.config && S.config.cutoff != null ? S.config.cutoff : 4) * 3600e3))); };
 
 /* sound: a clear three-note chime, loud on a TV speaker */
 var AC = null;
@@ -55,21 +63,21 @@ function drawShell() {
   draw();
 }
 function draw() {
-  var P = $("#gp"), R = $("#gr"); if (!P || !R) return; var now = Date.now();
-  if ($("#clk")) $("#clk").textContent = hm(now);
+  var P = $("#gp"), R = $("#gr"); if (!P || !R) return; var t = now();
+  if ($("#clk")) $("#clk").textContent = hm(t);
   if ($("#net")) $("#net").innerHTML = S.online ? "" : '<span class="off">بدون إنترنت · Offline</span>';
   if (S.day !== bizDay()) { P.innerHTML = R.innerHTML = '<div class="brd-e">…</div>'; return; }
   var live = S.today.filter(function (o) { return o.status !== "void"; });
   var start = function (o) { return o.kAdd && o.kAdd.at && o.deliveredAt && o.deliveredAt < o.kAdd.at ? o.kAdd.at : o.ts; };
   var prep = live.filter(function (o) { return o.prep === "open"; }).sort(function (a, b) { return start(a) - start(b); });
-  var ready = live.filter(function (o) { return o.prep === "done" && o.deliveredBy === KDS_BY && o.deliveredAt && now - o.deliveredAt < READY_MIN * 60e3; }).sort(function (a, b) { return b.deliveredAt - a.deliveredAt; });
+  var ready = live.filter(function (o) { return o.prep === "done" && o.deliveredBy === KDS_BY && o.deliveredAt && t - o.deliveredAt < READY_MIN * 60e3; }).sort(function (a, b) { return b.deliveredAt - a.deliveredAt; });
   var first = !S.first; if (first) S.first = {};
-  var fresh = false; ready.forEach(function (o) { var k = o.id + ":" + o.deliveredAt; if (!(k in S.first)) { S.first[k] = first ? 0 : now; if (!first) fresh = true; } });
+  var fresh = false; ready.forEach(function (o) { var k = o.id + ":" + o.deliveredAt; if (!(k in S.first)) { S.first[k] = first ? 0 : t; if (!first) fresh = true; } });
   if (fresh) chime();
   var tag = function (o) { return (TY[o.type] ? "<small>" + TY[o.type] + "</small>" : "") + (o.test ? "<em>تجريبي</em>" : ""); };
   var no = function (o) { return o.no == null ? "" : o.no; };
   P.innerHTML = prep.length ? prep.slice(0, MAXP).map(function (o) { return '<div class="bt"><b>' + no(o) + "</b>" + tag(o) + "</div>"; }).join("") + (prep.length > MAXP ? '<div class="bt more">+' + (prep.length - MAXP) + "</div>" : "") : '<div class="brd-e">—</div>';
-  R.innerHTML = ready.length ? ready.slice(0, MAXR).map(function (o) { var nw = now - (S.first[o.id + ":" + o.deliveredAt] || 0) < 15e3;
+  R.innerHTML = ready.length ? ready.slice(0, MAXR).map(function (o) { var nw = t - (S.first[o.id + ":" + o.deliveredAt] || 0) < 15e3;
     return '<div class="bt' + (nw ? " new" : "") + '"><b>' + no(o) + "</b>" + tag(o) + "</div>"; }).join("") : '<div class="brd-e">—</div>';
 }
 
@@ -94,6 +102,7 @@ setInterval(function () {
   }).catch(function (e) { console.warn("poll", e && e.code); });
 }, 15e3);
 setInterval(function () { if (auth.currentUser) { watchDay(); draw(); } }, 10e3);
+syncClock(); setInterval(syncClock, 30 * 60e3);
 addEventListener("online", function () { S.online = true; draw(); });
 addEventListener("offline", function () { S.online = false; draw(); });
 

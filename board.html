@@ -78,6 +78,6 @@ if (!Array.prototype.flatMap) Array.prototype.flatMap = function (f, t) { return
 if (window.Promise && !Promise.prototype.finally) Promise.prototype.finally = function (f) { return this.then(function (v) { return Promise.resolve(f()).then(function () { return v; }); }, function (e) { return Promise.resolve(f()).then(function () { throw e; }); }); };
 if (!window.queueMicrotask) window.queueMicrotask = function (f) { Promise.resolve().then(f); };
 </script>
-<script src="board.js?v=1"></script>
+<script src="board.js?v=2"></script>
 </body>
 </html>
