@@ -4,7 +4,7 @@
 import * as F from "./fb.js";
 import { firebaseConfig } from "./firebase-config.js";
 
-const VERSION = "2.15.4";
+const VERSION = "2.15.5";
 /* the screen language (per device): Arabic or English; the receipt and kitchen ticket stay Arabic */
 const isEn = () => !!(window.aqLang && window.aqLang() === "en");
 const langLink = id => `<button type="button" class="link" id="${id}" data-noi18n style="color:var(--mut);font-size:14px">${isEn() ? "العربية" : "English"}</button>`;
@@ -1063,11 +1063,16 @@ setInterval(() => { if ($("#prep-list")) drawPrep(); }, 30e3);
 const KDS_WARN = 5, KDS_LATE = 8, KDS_BY = "المطبخ";
 let kdsAC = null, kdsWake = null, kdsFirst = null, kdsLateSeen = new Set(), kdsUndo = "", kdsUndoT = 0;
 function beep(kind) {
+  /* loud on a small tablet speaker: tones around 1–2 kHz, a square/triangle wave and a compressor that lifts the level without clipping */
   try { kdsAC ||= new (window.AudioContext || window.webkitAudioContext)(); const ac = kdsAC; if (ac.state === "suspended") ac.resume();
-    const seq = kind === "late" ? [[587, 0], [587, .28], [587, .56]] : kind === "ready" ? [[784, 0], [1175, .16]] : [[988, 0], [1319, .13], [1568, .26]];
-    seq.forEach(([f, t]) => { const o = ac.createOscillator(), g = ac.createGain(), at = ac.currentTime + t; o.type = "sine"; o.frequency.value = f;
-      g.gain.setValueAtTime(.0001, at); g.gain.exponentialRampToValueAtTime(.5, at + .02); g.gain.exponentialRampToValueAtTime(.0001, at + .24);
-      o.connect(g); g.connect(ac.destination); o.start(at); o.stop(at + .26); });
+    if (!ac.__out) { const c = ac.createDynamicsCompressor(); c.threshold.value = -24; c.knee.value = 6; c.ratio.value = 8; c.attack.value = .002; c.release.value = .15;
+      const g = ac.createGain(); g.gain.value = 1.6; c.connect(g); g.connect(ac.destination); ac.__out = c; }
+    const T = kind === "late" ? { w: "square", d: .26, seq: [[1047, 0], [784, .3], [1047, .6], [784, .9], [1047, 1.2]] }
+      : kind === "ready" ? { w: "triangle", d: .3, seq: [[1175, 0], [1568, .2]] }
+      : { w: "square", d: .3, seq: [[1319, 0], [1760, .2], [1319, .55], [1760, .75]] };
+    T.seq.forEach(([f, t]) => { const o = ac.createOscillator(), g = ac.createGain(), at = ac.currentTime + t; o.type = T.w; o.frequency.value = f;
+      g.gain.setValueAtTime(.0001, at); g.gain.exponentialRampToValueAtTime(.9, at + .015); g.gain.setValueAtTime(.9, at + T.d * .6); g.gain.exponentialRampToValueAtTime(.0001, at + T.d);
+      o.connect(g); g.connect(ac.__out); o.start(at); o.stop(at + T.d + .02); });
   } catch {}
 }
 /* iPad Safari plays sound only after a tap: the first tap anywhere opens the sound */
@@ -1109,7 +1114,7 @@ function drawKds() {
       <button class="tbtn sq" id="kdsrl" aria-label="تحديث">${ic("refresh")}</button><button class="tbtn" id="kdsx">خروج</button></header>
     <div id="kdsoff"></div><main class="kds-sc"><div class="kds-g" id="kdsg"></div></main><footer class="kds-f" id="kdsf"></footer></div>
     <div class="kds-go" id="kdsgo"><div><div class="logo"><img src="icons/logo.png" alt=""></div><h2>شاشة المطبخ</h2><p>اضغط «ابدأ» لتشغيل صوت الطلبات وإبقاء الشاشة مضيئة.</p><button class="btn" id="kdsgob">ابدأ</button></div></div>`;
-  $("#kdsgob").onclick = () => { beep("ready"); kdsWakeOn(); $("#kdsgo").remove(); };
+  $("#kdsgob").onclick = () => { beep("new"); kdsWakeOn(); $("#kdsgo").remove(); };
   $("#kdsx").onclick = exitKds;
   $("#kdsrl").onclick = async () => { try { const r = await navigator.serviceWorker?.getRegistration(); await r?.update(); } catch {} location.reload(); };
   kdsNet(); drawKdsBody();
