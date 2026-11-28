@@ -4,7 +4,7 @@
 import * as F from "./fb.js";
 import { firebaseConfig } from "./firebase-config.js";
 
-const VERSION = "2.16.0";
+const VERSION = "2.16.1";
 /* the screen language (per device): Arabic or English; the receipt and kitchen ticket stay Arabic */
 const isEn = () => !!(window.aqLang && window.aqLang() === "en");
 const langLink = id => `<button type="button" class="link" id="${id}" data-noi18n style="color:var(--mut);font-size:14px">${isEn() ? "العربية" : "English"}</button>`;
@@ -202,7 +202,8 @@ function route() {
   if (!S.configReady || !S.menuReady) return;
   if (!S.config || !S.menu.length) return render(isAdmin() ? "setup" : "notready");
   if (S.view === "admin") return;
-  if (S.board || location.hash.startsWith("#/board")) return S.view === "board" ? drawBoardBody() : render("board");
+  /* the customer screen is its own light page (board.html), built to run on older TV browsers */
+  if (S.board || location.hash.startsWith("#/board")) { ls.set("board", false); return location.replace("board.html"); }
   if (S.kds || location.hash.startsWith("#/kitchen")) return S.view === "kitchen" ? drawKdsBody() : render("kitchen");
   if (isAdmin() && location.hash.startsWith("#/admin") && S.view !== "admin") return openAdmin();
   /* the owner opening the app on a phone (its home-screen icon) lands on the manager console; the sales screen stays one tap away */
@@ -1163,8 +1164,7 @@ function drawKdsBody() {
    مع نغمة. أرقام فقط بلا أسماء ولا جوالات. كل الأنواع، ومعها اسم المنصة لطلبات المندوبين. النصوص بالعربي والإنجليزي معاً لكل الزبائن */
 const BOARD_READY_MIN = 5;
 let brdFirst = null;
-function openBoard() { S.board = true; ls.set("board", true); history.replaceState(null, "", location.pathname + location.search + "#/board");
-  if (!KDS_DEV) return location.reload(); render("board"); }
+function openBoard() { location.href = "board.html"; }
 function exitBoard() {
   modal(`${mh("الخروج من شاشة الزبائن")}<div class="mdl-b"><p style="margin:0 0 16px;line-height:1.8">يرجع هذا الجهاز إلى شاشة دخول الكاشير. الطلبات لا تتأثر.</p>
     <div style="display:flex;gap:10px"><button class="btn ghost" data-close style="flex:1">بقاء</button><button class="btn" id="bxo" style="flex:1">خروج</button></div></div>`, { mid: true });

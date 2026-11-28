@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>شاشة الزبائن · Cashier AQ</title>
+<link rel="icon" href="icons/icon-192.png">
+<style>
+@font-face{font-family:"IBM Plex Sans Arabic";font-style:normal;font-weight:400;font-display:swap;src:url(fonts/plex-arabic-400.woff2) format("woff2");unicode-range:U+0600-06FF,U+0750-077F,U+0870-088E,U+0890-0891,U+0897-08E1,U+08E3-08FF,U+200C-200E,U+2010-2011,U+204F,U+2E41,U+FB50-FDFF,U+FE70-FE74,U+FE76-FEFC}
+@font-face{font-family:"IBM Plex Sans Arabic";font-style:normal;font-weight:400;font-display:swap;src:url(fonts/plex-latin-400.woff2) format("woff2");unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}
+@font-face{font-family:"IBM Plex Sans Arabic";font-style:normal;font-weight:500;font-display:swap;src:url(fonts/plex-arabic-500.woff2) format("woff2");unicode-range:U+0600-06FF,U+0750-077F,U+0870-088E,U+0890-0891,U+0897-08E1,U+08E3-08FF,U+200C-200E,U+2010-2011,U+204F,U+2E41,U+FB50-FDFF,U+FE70-FE74,U+FE76-FEFC}
+@font-face{font-family:"IBM Plex Sans Arabic";font-style:normal;font-weight:500;font-display:swap;src:url(fonts/plex-latin-500.woff2) format("woff2");unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}
+@font-face{font-family:"IBM Plex Sans Arabic";font-style:normal;font-weight:600;font-display:swap;src:url(fonts/plex-arabic-600.woff2) format("woff2");unicode-range:U+0600-06FF,U+0750-077F,U+0870-088E,U+0890-0891,U+0897-08E1,U+08E3-08FF,U+200C-200E,U+2010-2011,U+204F,U+2E41,U+FB50-FDFF,U+FE70-FE74,U+FE76-FEFC}
+@font-face{font-family:"IBM Plex Sans Arabic";font-style:normal;font-weight:600;font-display:swap;src:url(fonts/plex-latin-600.woff2) format("woff2");unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}
+@font-face{font-family:"IBM Plex Sans Arabic";font-style:normal;font-weight:700;font-display:swap;src:url(fonts/plex-arabic-700.woff2) format("woff2");unicode-range:U+0600-06FF,U+0750-077F,U+0870-088E,U+0890-0891,U+0897-08E1,U+08E3-08FF,U+200C-200E,U+2010-2011,U+204F,U+2E41,U+FB50-FDFF,U+FE70-FE74,U+FE76-FEFC}
+@font-face{font-family:"IBM Plex Sans Arabic";font-style:normal;font-weight:700;font-display:swap;src:url(fonts/plex-latin-700.woff2) format("woff2");unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:#0F0F12;color:#fff;font-family:"IBM Plex Sans Arabic",-apple-system,"Segoe UI",Tahoma,sans-serif;-webkit-text-size-adjust:100%}
+body{overflow:hidden;font-size:1.2vw}
+#app{position:fixed;top:0;right:0;bottom:0;left:0}
+.btn{display:inline-block;border:0;border-radius:12px;background:#C1121F;color:#fff;font:inherit;font-weight:700;font-size:20px;padding:14px 34px;cursor:pointer}
+.btn:focus{outline:4px solid #FACC15;outline-offset:3px}
+.bl{position:absolute;top:50%;left:50%;width:440px;max-width:92%;-webkit-transform:translate(-50%,-50%);transform:translate(-50%,-50%);text-align:center;font-size:16px}
+.bl img{width:84px;height:84px;border-radius:20px}.bl h1{margin:12px 0 4px;font-size:26px}.bl p{margin:0 0 18px;color:#A1A1AA}
+.bl label{display:block;text-align:right;margin:0 0 12px;color:#D4D4D8;font-size:15px}
+.bl input{display:block;width:100%;margin-top:6px;padding:12px 14px;border-radius:10px;border:2px solid #3F3F46;background:#18181B;color:#fff;font:inherit;font-size:18px}
+.bl input:focus{border-color:#FACC15;outline:0}.bl .btn{width:100%;margin-top:6px}
+.err{background:#7F1D1D;color:#FEE2E2;border-radius:10px;padding:10px 12px;margin-bottom:12px}
+.brd{position:absolute;top:0;right:0;bottom:0;left:0;display:-webkit-box;display:flex;-webkit-box-orient:vertical;flex-direction:column}
+.brd-h{display:flex;align-items:center;padding:1.1vw 2.2vw;background:#18181B;border-bottom:.3vw solid #C1121F}
+.brd-h img{width:4.2vw;height:4.2vw;border-radius:1vw;margin-left:1.2vw}
+.brd-t b{display:block;font-size:2.2vw;line-height:1.3}.brd-t span{font-size:1.2vw;color:#A1A1AA}
+.sp{flex:1}
+.brd-net .off{background:#7F1D1D;color:#FEE2E2;border-radius:99px;padding:.4vw 1vw;font-size:1.1vw;margin-left:1.2vw}
+.brd-clk{font-size:2.6vw;font-weight:700;color:#E4E4E7;direction:ltr}
+.brd-m{flex:1;min-height:0;display:flex;padding:1.4vw}
+.brd-c{display:flex;flex-direction:column;min-height:0;border-radius:1.4vw;overflow:hidden;background:#1C1C21}
+.brd-c.bp{flex:42;margin-left:1.4vw}.brd-c.br{flex:58}
+.brd-c h2{margin:0;display:flex;align-items:baseline;justify-content:space-between;padding:1vw 1.6vw;font-size:2.4vw;font-weight:800}
+.brd-c h2 small{font-size:1.3vw;font-weight:600;opacity:.85}
+.brd-c.bp h2{background:#3F3F46}.brd-c.br h2{background:#15803D}
+.brd-g{flex:1;min-height:0;overflow:hidden;padding:.7vw;display:flex;flex-wrap:wrap;align-content:flex-start}
+.bt{display:flex;flex-direction:column;align-items:center;justify-content:center;border-radius:1vw;padding:.8vw .4vw;margin:.5vw;background:#2A2A30;min-height:6.6vw;width:calc(25% - 1vw)}
+.bt b{font-size:3.6vw;line-height:1;font-weight:800;direction:ltr}
+.bt small{margin-top:.45vw;font-size:1vw;color:#D4D4D8;font-weight:600}
+.bt em{font-style:normal;margin-top:.3vw;font-size:.9vw;color:#C4B5FD}
+.br .bt{background:#16A34A;min-height:10.5vw;width:calc(33.333% - 1vw)}.br .bt b{font-size:6.2vw}.br .bt small{color:#DCFCE7;font-size:1.25vw}
+.bt.new{-webkit-animation:bnew 1s ease-in-out 8;animation:bnew 1s ease-in-out 8}
+@-webkit-keyframes bnew{50%{background:#FACC15;color:#18181B}}@keyframes bnew{50%{background:#FACC15;color:#18181B}}
+.bt.more{font-size:2.6vw;font-weight:800;color:#A1A1AA;background:none}
+.brd-e{width:100%;text-align:center;font-size:4vw;color:#52525B;padding:4vw 0}
+.brd-f{position:relative;display:flex;align-items:center;justify-content:center;padding:.9vw 4vw;background:#18181B;color:#A1A1AA;font-size:1.25vw}
+.brd-f span{margin:0 1.2vw}
+.brd-f button{position:absolute;left:1vw;top:50%;-webkit-transform:translateY(-50%);transform:translateY(-50%);background:none;border:0;color:#3F3F46;font-size:1.5vw;cursor:pointer;padding:.3vw .6vw}
+.brd-f button:focus{color:#FACC15;outline:0}
+.go{position:absolute;top:0;right:0;bottom:0;left:0;z-index:5;background:rgba(15,15,18,.96);display:flex;align-items:center;justify-content:center;text-align:center}
+.go img{width:96px;height:96px;border-radius:22px}.go h2{margin:14px 0 8px;font-size:32px}.go p{margin:0 0 24px;color:#D4D4D8;font-size:18px}
+.diag{position:absolute;bottom:10px;left:10px;right:10px;background:#7F1D1D;color:#FEE2E2;font:13px/1.5 monospace;direction:ltr;text-align:left;padding:8px 12px;border-radius:8px;white-space:pre-wrap}
+@media (max-aspect-ratio:1/1){body{font-size:2vw}.brd-m{flex-direction:column}.brd-c.bp{margin:0 0 1.4vw}.brd-f{flex-direction:column}.bt{width:calc(25% - 1vw)}.br .bt{width:calc(50% - 1vw)}}
+</style>
+</head>
+<body>
+<div id="app"><div class="bl"><img src="icons/logo.png" alt=""><p>جارٍ التحميل…</p></div></div>
+<script>
+/* if the page cannot start on this browser, say so on the screen (with the reason) instead of loading forever */
+window.__errs = [];
+window.onerror = function (m, s, l, c) { window.__errs.push(m + " @" + (s || "").split("/").pop() + ":" + l + ":" + c); show(); };
+function show() { if (window.__ok && !window.__errs.length) return; var d = document.querySelector(".diag") || document.body.appendChild(document.createElement("div")); d.className = "diag";
+  d.textContent = "تعذّر تشغيل الصفحة على هذا المتصفح · " + navigator.userAgent + "\n" + window.__errs.join("\n"); }
+setTimeout(function () { if (!window.__ok) { window.__errs.push("not started after 20 s"); show(); } }, 20000);
+</script>
+<script>
+/* small polyfills for older TV browsers */
+if (typeof globalThis === "undefined") window.globalThis = window;
+if (!Object.fromEntries) Object.fromEntries = function (it) { var o = {}; Array.from(it).forEach(function (p) { o[p[0]] = p[1]; }); return o; };
+if (!Array.prototype.flat) Array.prototype.flat = function (d) { d = d === undefined ? 1 : d; return d < 1 ? this.slice() : this.reduce(function (a, v) { return a.concat(Array.isArray(v) ? v.flat(d - 1) : v); }, []); };
+if (!Array.prototype.flatMap) Array.prototype.flatMap = function (f, t) { return this.map(f, t).flat(); };
+if (window.Promise && !Promise.prototype.finally) Promise.prototype.finally = function (f) { return this.then(function (v) { return Promise.resolve(f()).then(function () { return v; }); }, function (e) { return Promise.resolve(f()).then(function () { throw e; }); }); };
+if (!window.queueMicrotask) window.queueMicrotask = function (f) { Promise.resolve().then(f); };
+</script>
+<script src="board.js?v=1"></script>
+</body>
+</html>
