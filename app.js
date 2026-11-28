@@ -4,7 +4,7 @@
 import * as F from "./fb.js";
 import { firebaseConfig } from "./firebase-config.js";
 
-const VERSION = "2.15.3";
+const VERSION = "2.15.4";
 /* the screen language (per device): Arabic or English; the receipt and kitchen ticket stay Arabic */
 const isEn = () => !!(window.aqLang && window.aqLang() === "en");
 const langLink = id => `<button type="button" class="link" id="${id}" data-noi18n style="color:var(--mut);font-size:14px">${isEn() ? "العربية" : "English"}</button>`;
@@ -1097,6 +1097,8 @@ const kdsStart = o => o.kAdd?.at && o.deliveredAt && o.deliveredAt < o.kAdd.at ?
 /* identical lines (same item, additions and notes) are shown once with their total quantity */
 const kdsMerge = lines => { const m = new Map(); (lines || []).forEach(l => { const notes = [...(l.notes || []), ...(l.note ? [l.note] : [])], key = JSON.stringify([l.name, (l.mods || []).map(x => x.name), notes]);
   const e = m.get(key); if (e) e.qty += +l.qty || 0; else m.set(key, { name: l.name, qty: +l.qty || 0, mods: l.mods || [], notes, note: "" }); }); return [...m.values()]; };
+/* a note that takes something out (بدون ثوم) is red with ❌, one that adds (زيادة طحينة) green with ✅, any other stays as written */
+const kdsNoteKind = t => { const n = norm(t); return /^(بدون|بلا|من غير|مافي|ما في|لا )/.test(n) ? "minus" : /^(زياده|زيادة|اضافه|إضافة|اضافة|مع |اكسترا|extra|دبل)/.test(n) ? "plus" : "free"; };
 const kdsLv = mn => mn >= KDS_LATE ? "late" : mn >= KDS_WARN ? "warn" : "ok";
 const mmss = ms => { const t = Math.max(0, Math.floor(ms / 1000)); return `${Math.floor(t / 60)}:${pad(t % 60)}`; };
 function drawKds() {
@@ -1127,7 +1129,7 @@ function drawKdsBody() {
   let late = false;
   L.forEach(o => { if ((now - kdsStart(o)) / 60000 >= KDS_LATE && !kdsLateSeen.has(o.id)) { kdsLateSeen.add(o.id); if (!first) late = true; } });
   if (fresh) beep("new"); else if (late) beep("late");
-  const ln = l => `<li><span class="kq num">${l.qty}</span><div><b>${esc(l.name)}</b>${(l.mods || []).map(m => `<div class="km">+ ${esc(m.name)}</div>`).join("")}${[...(l.notes || []), ...(l.note ? [l.note] : [])].map(t => `<div class="kn">${esc(t)}</div>`).join("")}</div></li>`;
+  const ln = l => `<li><span class="kq num">${l.qty}</span><div><b>${esc(l.name)}</b>${(l.mods || []).map(m => `<div class="kn plus"><i>✅</i>${esc(m.name)}</div>`).join("")}${[...(l.notes || []), ...(l.note ? [l.note] : [])].map(t => { const k = kdsNoteKind(t); return `<div class="kn ${k}">${k === "minus" ? "<i>❌</i>" : k === "plus" ? "<i>✅</i>" : ""}${esc(t)}</div>`; }).join("")}</div></li>`;
   const card = o => { const st = kdsStart(o), lv = kdsLv((now - st) / 60000), key = o.id + ":" + (o.kAdd?.at || 0), nw = now - (kdsFirst.get(key) || 0) < 10e3;
     const add = o.kAdd?.at && o.kAdd.at > o.ts ? o.kAdd : null;
     return `<article class="kc ${lv}${nw ? " new" : ""}${o.test ? " test" : ""}" data-st="${st}" data-nw="${kdsFirst.get(key) || 0}"><div class="kc-h"><span class="kc-no num">${o.no ?? ""}</span><span class="sp"></span><span class="kc-tm num">${mmss(now - st)}</span></div>
