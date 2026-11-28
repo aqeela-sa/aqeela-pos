@@ -36,6 +36,10 @@ function chime() {
       o.connect(g); g.connect(AC.__out); o.start(at); o.stop(at + d + .02); });
   } catch (e) {}
 }
+/* full screen (no address bar): asked on «ابدأ», and again with OK/Enter on the remote if the browser left it */
+function fullOn() { try { var el = document.documentElement, f = el.requestFullscreen || el.webkitRequestFullscreen || el.webkitRequestFullScreen || el.mozRequestFullScreen || el.msRequestFullscreen;
+  if (f && !(document.fullscreenElement || document.webkitFullscreenElement)) { var r = f.call(el); if (r && r.catch) r.catch(function () {}); } } catch (e) {} }
+document.addEventListener("keydown", function (e) { if ((e.key === "Enter" || e.keyCode === 13 || e.keyCode === 23) && S.started && !$("#lf") && document.activeElement !== $("#bx")) fullOn(); });
 var wake = null;
 function wakeOn() { try { if (navigator.wakeLock && !wake) navigator.wakeLock.request("screen").then(function (w) { wake = w; w.addEventListener("release", function () { wake = null; }); }).catch(function () {}); } catch (e) {} }
 document.addEventListener("visibilitychange", function () { if (document.visibilityState === "visible") { wakeOn(); draw(); } });
@@ -58,7 +62,7 @@ function drawShell() {
     '<section class="brd-c br"><h2><span>جاهز للاستلام</span><small>Ready for pickup</small></h2><div class="brd-g" id="gr"></div></section></main>' +
     '<footer class="brd-f"><span>عند ظهور رقمك في «جاهز للاستلام» تفضّل بالاستلام من النافذة</span><span>When your number shows under “Ready”, please collect it at the window</span><button id="bx" aria-label="خروج">⏻</button></footer></div>' +
     (S.started ? "" : '<div class="go" id="go"><div><img src="icons/logo.png" alt=""><h2>شاشة الزبائن</h2><p>اضغط «ابدأ» لتشغيل نغمة «جاهز» وإبقاء الشاشة مضيئة.</p><button class="btn" id="gob">ابدأ</button></div></div>');
-  if ($("#gob")) { $("#gob").onclick = function () { S.started = true; chime(); wakeOn(); $("#go").parentNode.removeChild($("#go")); }; setTimeout(function () { try { $("#gob").focus(); } catch (e) {} }, 50); }
+  if ($("#gob")) { $("#gob").onclick = function () { S.started = true; fullOn(); chime(); wakeOn(); $("#go").parentNode.removeChild($("#go")); }; setTimeout(function () { try { $("#gob").focus(); } catch (e) {} }, 50); }
   $("#bx").onclick = function () { if (confirm("الخروج من شاشة الزبائن وتسجيل خروج هذا الجهاز؟")) signOut(auth); };
   draw();
 }
