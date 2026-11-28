@@ -4,7 +4,7 @@
 import * as F from "./fb.js";
 import { firebaseConfig } from "./firebase-config.js";
 
-const VERSION = "2.15.5";
+const VERSION = "2.16.0";
 /* the screen language (per device): Arabic or English; the receipt and kitchen ticket stay Arabic */
 const isEn = () => !!(window.aqLang && window.aqLang() === "en");
 const langLink = id => `<button type="button" class="link" id="${id}" data-noi18n style="color:var(--mut);font-size:14px">${isEn() ? "العربية" : "English"}</button>`;
@@ -118,7 +118,7 @@ const S = {
   today: [], pending: 0, online: navigator.onLine,
   dev: ls.get("dev", null) || (() => { const d = rid(4); ls.set("dev", d); return d; })(),
   device: Object.assign({ printMode: "browser", printerIp: "", autoPrint: true, test: false, kitchenMode: "same", kitchenIp: "", drawer: false }, ls.get("device", {})),
-  printer: null, unprinted: null, kds: ls.get("kds", false),
+  printer: null, unprinted: null, kds: ls.get("kds", false), board: ls.get("board", false),
   unsub: [],
 };
 const saveDevice = () => ls.set("device", S.device);
@@ -140,7 +140,7 @@ const app = F.initializeApp(firebaseConfig);
 const auth = F.getAuth(app);
 let db;
 /* the kitchen screen (often an older iPad on the truck's Wi-Fi) listens by long polling: a stalled stream there showed new orders late */
-const KDS_DEV = ls.get("kds", false) || location.hash.startsWith("#/kitchen");
+const KDS_DEV = ls.get("kds", false) || ls.get("board", false) || location.hash.startsWith("#/kitchen") || location.hash.startsWith("#/board");
 try { db = F.initializeFirestore(app, { localCache: F.persistentLocalCache({ tabManager: F.persistentSingleTabManager() }), ...(KDS_DEV ? { experimentalForceLongPolling: true } : {}) }); }
 catch { db = F.initializeFirestore(app, KDS_DEV ? { experimentalForceLongPolling: true } : {}); }
 const D = (...p) => F.doc(db, ...p);
@@ -177,10 +177,10 @@ function watchToday() {
   todaySub = F.onSnapshot(F.query(C("orders"), F.where("day", "==", d)), { includeMetadataChanges: true }, s => {
     S.today = s.docs.map(x => ({ ...x.data(), _pending: x.metadata.hasPendingWrites })).sort((a, b) => b.ts - a.ts); S.todayDay = d;
     S.pending = S.today.filter(o => o._pending).length; drawTop(); if ($("#orders-list")) drawOrdersList(); if ($("#prep-list")) drawPrep();
-    readyFromKitchen(); if (S.view === "kitchen") drawKdsBody();
+    readyFromKitchen(); if (S.view === "kitchen") drawKdsBody(); if (S.view === "board") drawBoardBody();
   }, e => console.error(e));
 }
-setInterval(() => { if (S.view === "kitchen") watchToday(); if (S.view === "pos") { watchToday(); if (!document.querySelector("#q:focus")) drawTop(); } }, 60e3);
+setInterval(() => { if (S.view === "kitchen" || S.view === "board") watchToday(); if (S.view === "pos") { watchToday(); if (!document.querySelector("#q:focus")) drawTop(); } }, 60e3);
 
 /* ترقية بيانات قديمة مرة واحدة (من حساب المدير فقط): تكلفة الأصناف، والعلب، وأسعار التغليف */
 let migrated = false;
@@ -202,6 +202,7 @@ function route() {
   if (!S.configReady || !S.menuReady) return;
   if (!S.config || !S.menu.length) return render(isAdmin() ? "setup" : "notready");
   if (S.view === "admin") return;
+  if (S.board || location.hash.startsWith("#/board")) return S.view === "board" ? drawBoardBody() : render("board");
   if (S.kds || location.hash.startsWith("#/kitchen")) return S.view === "kitchen" ? drawKdsBody() : render("kitchen");
   if (isAdmin() && location.hash.startsWith("#/admin") && S.view !== "admin") return openAdmin();
   /* the owner opening the app on a phone (its home-screen icon) lands on the manager console; the sales screen stays one tap away */
@@ -227,6 +228,7 @@ function render(view, msg) {
   if (view === "pos") { if (!S.shift) return render("openshift"); return drawPos(); }
   if (view === "openshift") return drawOpenShift();
   if (view === "kitchen") return drawKds();
+  if (view === "board") return drawBoard();
 }
 
 function drawLogin(msg) {
@@ -281,7 +283,7 @@ function drawPin() {
     <div class="dots" id="dots">${"<i></i>".repeat(4)}</div>
     <div class="pad">${[1, 2, 3, 4, 5, 6, 7, 8, 9].map(k => `<button data-k="${k}">${k}</button>`).join("")}<button class="fn" data-k="c">مسح</button><button data-k="0">0</button><button class="fn" data-k="b">⌫</button></div>
     <div style="display:flex;justify-content:space-between;margin-top:14px">${isAdmin() ? `<button class="link" id="toadm">لوحة المدير</button>` : `<button class="link" id="pdev" style="display:inline-flex;align-items:center;gap:6px">${ic("gear")}إعدادات الجهاز</button>`}<button class="link" id="lo" style="color:var(--mut)">خروج الجهاز</button></div>
-    <div style="display:flex;justify-content:center;align-items:center;gap:14px;margin-top:10px"><button class="link" id="pkds" style="color:var(--mut);font-size:13px;display:inline-flex;align-items:center;gap:5px">${ic("fire")}شاشة المطبخ</button><button class="link" id="pup" style="color:var(--mut);font-size:13px">${ic("refresh")} تحديث الكاشير · الإصدار <span class="num">${VERSION}</span></button>${langLink("pn_lang")}</div>
+    <div style="display:flex;justify-content:center;align-items:center;gap:14px;margin-top:10px"><button class="link" id="pkds" style="color:var(--mut);font-size:13px;display:inline-flex;align-items:center;gap:5px">${ic("fire")}شاشة المطبخ</button><button class="link" id="pbrd" style="color:var(--mut);font-size:13px;display:inline-flex;align-items:center;gap:5px">${ic("dash")}شاشة الزبائن</button><button class="link" id="pup" style="color:var(--mut);font-size:13px">${ic("refresh")} تحديث الكاشير · الإصدار <span class="num">${VERSION}</span></button>${langLink("pn_lang")}</div>
   </div></div>`;
   bindLang("pn_lang");
   const dots = () => $$("#dots i").forEach((d, i) => d.classList.toggle("on", i < pin.length));
@@ -298,7 +300,7 @@ function drawPin() {
   /* لوحة مفاتيح خارجية: الأرقام والحذف */
   S.pinKey = k => { if (/^\d$/.test(k) && pin.length < 4) { pin += k; dots(); if (pin.length === 4) check(); } else if (k === "Backspace") { pin = pin.slice(0, -1); dots(); } };
   $("#pdev") && ($("#pdev").onclick = () => askManager("إعدادات الجهاز", openDevice));
-  $("#pkds").onclick = openKds;
+  $("#pkds").onclick = openKds; $("#pbrd").onclick = openBoard;
   $("#pup") && ($("#pup").onclick = async () => { try { const r = await navigator.serviceWorker?.getRegistration(); await r?.update(); } catch {} location.reload(); });
   $("#lo").onclick = () => { if (S.shift) return toast("قفّل الوردية المفتوحة أولاً", true); askManager("خروج الجهاز من الحساب", () => F.signOut(auth)); };
   if ($("#toadm")) $("#toadm").onclick = openAdmin;
@@ -1069,6 +1071,7 @@ function beep(kind) {
       const g = ac.createGain(); g.gain.value = 1.6; c.connect(g); g.connect(ac.destination); ac.__out = c; }
     const T = kind === "late" ? { w: "square", d: .26, seq: [[1047, 0], [784, .3], [1047, .6], [784, .9], [1047, 1.2]] }
       : kind === "ready" ? { w: "triangle", d: .3, seq: [[1175, 0], [1568, .2]] }
+      : kind === "call" ? { w: "triangle", d: .55, seq: [[1047, 0], [1319, .32], [1568, .64]] }
       : { w: "square", d: .3, seq: [[1319, 0], [1760, .2], [1319, .55], [1760, .75]] };
     T.seq.forEach(([f, t]) => { const o = ac.createOscillator(), g = ac.createGain(), at = ac.currentTime + t; o.type = T.w; o.frequency.value = f;
       g.gain.setValueAtTime(.0001, at); g.gain.exponentialRampToValueAtTime(.9, at + .015); g.gain.setValueAtTime(.9, at + T.d * .6); g.gain.exponentialRampToValueAtTime(.0001, at + T.d);
@@ -1155,6 +1158,47 @@ function drawKdsBody() {
     kdsUndo = ""; const o = S.today.find(x => x.id === id); if (!o) return; const u = { prep: "open", deliveredAt: null, deliveredBy: null }; Object.assign(o, u);
     fire(F.updateDoc(D("orders", id), u), "حالة الطلب"); drawKdsBody(); });
 }
+
+/* ----- شاشة الزبائن: تلفزيون أمام نافذة الطلب يعرض أرقام الطلبات قيد التحضير، وما جهّزه المطبخ تحت «جاهز للاستلام» لخمس دقائق
+   مع نغمة. أرقام فقط بلا أسماء ولا جوالات. كل الأنواع، ومعها اسم المنصة لطلبات المندوبين. النصوص بالعربي والإنجليزي معاً لكل الزبائن */
+const BOARD_READY_MIN = 5;
+let brdFirst = null;
+function openBoard() { S.board = true; ls.set("board", true); history.replaceState(null, "", location.pathname + location.search + "#/board");
+  if (!KDS_DEV) return location.reload(); render("board"); }
+function exitBoard() {
+  modal(`${mh("الخروج من شاشة الزبائن")}<div class="mdl-b"><p style="margin:0 0 16px;line-height:1.8">يرجع هذا الجهاز إلى شاشة دخول الكاشير. الطلبات لا تتأثر.</p>
+    <div style="display:flex;gap:10px"><button class="btn ghost" data-close style="flex:1">بقاء</button><button class="btn" id="bxo" style="flex:1">خروج</button></div></div>`, { mid: true });
+  $("#bxo").onclick = () => { S.board = false; ls.set("board", false); brdFirst = null; try { kdsWake?.release(); } catch {} kdsWake = null;
+    history.replaceState(null, "", location.pathname + location.search); closeModal(); S.view = "boot"; route(); };
+}
+const BRD_TY = { hunger: ["هنقرستيشن", "HungerStation"], lokit: ["لوكيت", "Lokit"], delivery: ["توصيل", "Delivery"] };
+function drawBoard() {
+  watchToday(); brdFirst = null; const st = S.config?.store || {};
+  $("#app").innerHTML = `<div class="brd" data-noi18n><header class="brd-h"><img src="icons/logo.png" alt=""><div class="brd-t"><b>${esc(st.name || APP_NAME)}</b><span>حالة الطلبات · Order status</span></div><div class="sp"></div><span class="brd-clk num" id="brdclk"></span></header>
+    <main class="brd-m"><section class="brd-c bp"><h2><span>قيد التحضير</span><small>Preparing</small></h2><div class="brd-g" id="brdp"></div></section>
+      <section class="brd-c br"><h2><span>جاهز للاستلام</span><small>Ready for pickup</small></h2><div class="brd-g" id="brdr"></div></section></main>
+    <footer class="brd-f"><span>عند ظهور رقمك في «جاهز للاستلام» تفضّل بالاستلام من النافذة</span><span>When your number shows under “Ready”, please collect it at the window</span><button id="brdx" aria-label="خروج">⏻</button></footer></div>
+    <div class="kds-go" id="brdgo"><div><div class="logo"><img src="icons/logo.png" alt=""></div><h2>شاشة الزبائن</h2><p>اضغط «ابدأ» لتشغيل نغمة «جاهز» وإبقاء الشاشة مضيئة.</p><button class="btn" id="brdgob">ابدأ</button></div></div>`;
+  $("#brdgob").onclick = () => { beep("call"); kdsWakeOn(); $("#brdgo").remove(); };
+  $("#brdx").onclick = exitBoard;
+  drawBoardBody();
+}
+function drawBoardBody() {
+  const P = $("#brdp"), Rr = $("#brdr"); if (!P || !Rr) return; const now = Date.now(); $("#brdclk") && ($("#brdclk").textContent = hm(now));
+  if (S.todayDay !== bizDay()) return;
+  const live = S.today.filter(o => o.status !== "void");
+  const prep = live.filter(o => o.prep === "open").sort((a, b) => kdsStart(a) - kdsStart(b));
+  const ready = live.filter(o => o.prep === "done" && o.deliveredBy === KDS_BY && o.deliveredAt && now - o.deliveredAt < BOARD_READY_MIN * 60e3).sort((a, b) => b.deliveredAt - a.deliveredAt);
+  const first = !brdFirst; if (first) brdFirst = new Map();
+  let fresh = false; ready.forEach(o => { const k = o.id + ":" + o.deliveredAt; if (!brdFirst.has(k)) { brdFirst.set(k, first ? 0 : now); if (!first) fresh = true; } });
+  if (fresh) beep("call");
+  const tag = o => `${BRD_TY[o.type] ? `<small>${BRD_TY[o.type][0]}</small>` : ""}${o.test ? `<em>تجريبي</em>` : ""}`;
+  const MAXP = 24, MAXR = 12;
+  P.innerHTML = prep.length ? prep.slice(0, MAXP).map(o => `<div class="bt"><b class="num">${o.no ?? ""}</b>${tag(o)}</div>`).join("") + (prep.length > MAXP ? `<div class="bt more">+<span class="num">${prep.length - MAXP}</span></div>` : "") : `<div class="brd-e">—</div>`;
+  Rr.innerHTML = ready.length ? ready.slice(0, MAXR).map(o => { const k = o.id + ":" + o.deliveredAt, nw = now - (brdFirst.get(k) || 0) < 15e3;
+    return `<div class="bt${nw ? " new" : ""}" data-nw="${brdFirst.get(k) || 0}"><b class="num">${o.no ?? ""}</b>${tag(o)}</div>`; }).join("") : `<div class="brd-e">—</div>`;
+}
+setInterval(() => { if (S.view === "board") drawBoardBody(); }, 10e3);
 /* the clock and the timers move every second without redrawing the cards */
 setInterval(() => { if (S.view !== "kitchen") return; const now = Date.now(); const c = $("#kdsclk"); if (c) c.textContent = hm(now);
   let redraw = false;
@@ -1164,12 +1208,15 @@ setInterval(() => { if (S.view !== "kitchen") return; const now = Date.now(); co
   if (redraw) drawKdsBody(); }, 1000);
 setInterval(() => { if (S.view === "kitchen") drawKdsBody(); }, 15e3);
 /* safety net: every 15 s the kitchen asks the server for the open orders directly (a few reads), so an order never waits on a slow listener */
-setInterval(async () => { if (S.view !== "kitchen" || !S.online || document.visibilityState !== "visible" || S.todayDay !== bizDay()) return;
+setInterval(async () => { if ((S.view !== "kitchen" && S.view !== "board") || !S.online || document.visibilityState !== "visible" || S.todayDay !== bizDay()) return;
   try { const q = await F.getDocs(F.query(C("orders"), F.where("day", "==", bizDay()), F.where("prep", "==", "open"))); let ch = false;
     q.docs.forEach(x => { const o = x.data(), i = S.today.findIndex(t => t.id === o.id);
       if (i < 0) { S.today = [o, ...S.today]; ch = true; } else if (S.today[i].deliveredBy === KDS_BY && Date.now() - (S.today[i].deliveredAt || 0) < 60e3) return; /* just marked ready here: the server catches up */
       else if (S.today[i].prep !== "open" || JSON.stringify(S.today[i].lines) !== JSON.stringify(o.lines) || (S.today[i].kAdd?.at || 0) !== (o.kAdd?.at || 0)) { S.today[i] = { ...S.today[i], ...o }; ch = true; } });
-    if (ch) drawKdsBody(); } catch (e) { console.warn("kds poll", e?.code || e); } }, 15e3);
+    /* an order open here but no longer open on the server was finished elsewhere: read just that order */
+    const srv = new Set(q.docs.map(x => x.id)), gone = S.today.filter(o => o.prep === "open" && !srv.has(o.id) && !o._pending).slice(0, 10);
+    for (const o of gone) { const x = await F.getDoc(D("orders", o.id)); if (x.exists()) { const i = S.today.findIndex(t => t.id === o.id); if (i >= 0) { S.today[i] = { ...S.today[i], ...x.data() }; ch = true; } } }
+    if (ch) { if (S.view === "kitchen") drawKdsBody(); else drawBoardBody(); } } catch (e) { console.warn("kds poll", e?.code || e); } }, 15e3);
 
 /* ----- orders today ----- */
 /* ----- تقارير الكاشير (أثناء العمل): الملخص، الطلبات، الأصناف المباعة — بدون التكلفة والأرباح ----- */

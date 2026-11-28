@@ -1229,5 +1229,8 @@ window.AQ_EN = {
 "بقاء": "Stay",
 "وضع تجريبي — تظهر الطلبات التجريبية فقط": "Test mode — only test orders show",
 "جاهز من المطبخ": "ready from the kitchen",
-"جاهزة من المطبخ:": "Ready from the kitchen:"
+"جاهزة من المطبخ:": "Ready from the kitchen:",
+"شاشة الزبائن": "Customer screen",
+"الخروج من شاشة الزبائن": "Leave the customer screen",
+"اضغط «ابدأ» لتشغيل نغمة «جاهز» وإبقاء الشاشة مضيئة.": "Tap “Start” to turn on the “Ready” chime and keep the screen awake."
 };
